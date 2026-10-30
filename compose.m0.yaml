@@ -1,0 +1,28 @@
+# Empty-frontier startup check only. Not a crawl or a persistence test.
+name: onionall-brawler-m0
+
+services:
+  frontier:
+    image: crawlercommons/url-frontier:2.4
+    command: ["rocksdb.path=/crawldir/rocksdb"]
+    tmpfs:
+      - /crawldir
+    networks: [baseline]
+    stop_grace_period: 30s
+
+  crawler:
+    image: storm:2.8.9-jre17
+    depends_on:
+      frontier:
+        condition: service_started
+    # Preserve crawler-conf.yaml's localhost:7071 without editing the topology.
+    network_mode: "service:frontier"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+    entrypoint: ["/bin/bash", "/workspace/scripts/m0-container.sh"]
+    stop_grace_period: 60s
+
+networks:
+  baseline:
+    internal: true
