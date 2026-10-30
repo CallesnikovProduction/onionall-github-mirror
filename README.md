@@ -77,7 +77,7 @@ docker compose -f compose.m0.yaml ps -a
 
 M1 introduces a deliberately permitted test target, conservative limits and a persistent backend with a restart/recovery check. M2 establishes official Tor integration and fail-closed transport. M3 adds onion v3 validation/discovery; M4 adds a real search index.
 
-M1 now has a separate controlled test harness: `compose.m1.yaml`, a synthetic site, a named RocksDB volume, gRPC snapshots, two bounded crawler runs and assertions for links, robots, HTTP outcomes, request spacing and graceful container-recreation recovery. **The end-to-end M1 run is pending.** Fetching, status writes and durable recovery are not yet claimed as verified. Tor, OpenSearch and distributed Storm remain unprovisioned/unverified.
+M1 now has a separate controlled test harness: `compose.m1.yaml`, a synthetic site, a named RocksDB volume, gRPC snapshots, two bounded crawler runs and assertions for links, robots, HTTP outcomes, request spacing and graceful container-recreation recovery. **M1 passed the full user-run Docker test on 2026-10-31.** Reviewed evidence confirms six records, robots denial, deduplication, HTTP 404 as FETCH_ERROR, resumed pending work and preserved state across graceful container recreation. Minimum observed document gap: 2.00265402 seconds. Both crawler exits and cleanup passed; the synthetic RocksDB volume is retained. This does not prove crash recovery. Tor, OpenSearch and distributed Storm remain unprovisioned/unverified.
 
 Run from normal host PowerShell (Docker API access is denied in the agent session):
 
@@ -85,7 +85,7 @@ Run from normal host PowerShell (Docker API access is denied in the agent sessio
 ./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
 ```
 
-The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/m1-controlled.md). Local tests/filter checks/dry-run passed; the fixture HTTP smoke and Docker integration remain unverified in this restricted session.
+The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/m1-controlled.md). Local regression tests pass. Docker evidence comes from the user host run `df35366e0994`, rechecked offline by the agent. The agent cannot directly access Docker Engine. No blocking log defects were found; unavailable cgroup metrics and resolved shutdown warnings are documented.
 
 No `seeds.txt` is supplied or needed for M0. Future local seeds belong in ignored `seeds.local.txt`. Do not commit datasets or credentials. Define content handling, retention and deletion policy before persisting crawled documents.
 

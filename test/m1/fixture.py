@@ -48,7 +48,8 @@ def make_server(address, log_path):
             if self.path != "/health":
                 record = {"path": self.path, "status": status, "started_ns": started,
                           "finished_ns": time.monotonic_ns(), "bytes": len(body),
-                          "user_agent": self.headers.get("User-Agent", "")}
+                          "user_agent": self.headers.get("User-Agent", ""),
+                          "method": self.command, "client_ip": self.client_address[0]}
                 with lock, log_path.open("a", encoding="utf-8") as out:
                     out.write(json.dumps(record, sort_keys=True) + "\n")
 

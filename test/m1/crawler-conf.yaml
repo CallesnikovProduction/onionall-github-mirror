@@ -10,6 +10,9 @@ config:
   fetcher.threads.start.delay: 0
   fetcher.server.delay: 2.0
   fetcher.server.delay.force: true
+  fetcher.queue.mode: "byHost"
+  # M1 uses one SimpleFetcherBolt executor; sleep rather than a throttle side stream.
+  fetcher.max.throttle.sleep: -1
   http.timeout: 5000
   http.content.limit: 65536
   # Exact synthetic fixture IP only; never use this override for real crawling.
@@ -23,6 +26,9 @@ config:
   fetchInterval.fetch.error: 120
   fetchInterval.error: -1
   metadata.persist:
+    # Preserve actual protocol evidence; never synthesize an error cause.
+    - fetch.statusCode
+    - fetch.exception
     - error.cause
     - error.source
     - discoveryDate

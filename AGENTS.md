@@ -8,11 +8,13 @@ Tor v3 has no global registry of onion services. Complete enumeration is not a r
 
 ## Evidence and current state
 
+M1 is accepted on 2026-10-31 from the user-run Docker evidence `.runtime/m1/onionall-brawler-m1-df35366e0994/`, independently rechecked by the agent's offline verifier. All assertions, crawl evidence and both process exits pass; six frontier records persist across graceful recreation, pending work resumes, HTTP 404 is FETCH_ERROR, robots/deduplication/scope pass and minimum document gap is 2.00265402s. Both crawler logs contain zero ERROR/FATAL and 59 WARNs total: 12 unavailable cgroup metrics, two ZooKeeper defaults and 45 shutdown waits, all resolved. Backend logs have no WARN/ERROR. result.json records container removal and retained volume. Docker Engine was not rerun by the agent; evidence is host-run. M0 is unchanged. Tor, search/OpenSearch, crash recovery, distributed deployment and Tika document parsing are not verified. See docs/m1-controlled.md.
+
 This is a bootstrap-stage project generated from the Apache StormCrawler 3.7.0 Maven archetype, not yet an onion search engine. The repository contains a Flux topology and configuration, not application-specific Java or Kotlin source code. The topology declares URLFrontier input and status updates, fetching, sitemap/feed and HTML parsing, optional Tika parsing, and `StdOutIndexer` output. On 2026-10-30, Java 17.0.12 / Maven 3.9.16 built the shaded JAR successfully offline; Flux dry-run constructed one spout, nine bolts and 15 streams. The user then ran scripts/m0.ps1 on the Windows host. Reviewed service/console logs confirm all nine bolts prepared (including Tika configuration loading), the spout opened/activated, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on orchestrated SIGTERM (143); Compose container/network removal is user-reported. M0 is accepted for this empty-frontier local baseline. Actual fetching, document parsing, status writes, durable recovery and search remain unverified. `StdOutIndexer` is not a searchable index. See `docs/m0-baseline.md` for evidence, hashes, warning assessment and limits.
 
 There is no configured Tor transport or fail-closed guarantee, onion v3 validation or autonomous cross-service discovery, search API, desktop interface, graph storage or AI integration. A standalone M1 test harness now exists under test/m1, with Python verifier/fixture tests and Java gRPC/filter probes; it is not wired into Maven test and has not completed a Docker end-to-end run. Do not describe locally checked harness code as a verified crawl.
 
-M0 is committed as `164c2ba` (`test(infra): verify stormcrawler m0 baseline`), confirmed by git log after the user's commit. M1 has a separate compose.m1.yaml, fixed synthetic fixture, persistent named RocksDB volume and two bounded crawl/recreation phases. Ten local Python tests pass (one optional HTTP smoke skipped), real URLFilters checks and Flux dry-run pass, and Java probes compile with --release 17. A localhost HTTP smoke attempt failed with WinError 10013 and Docker API access remains denied. Actual M1 crawling, status writes and recovery remain unverified. See docs/m1-controlled.md.
+M0 is committed as `164c2ba`. M1 uses a separate internal Compose network, synthetic fixture, named RocksDB volume and generated Flux with the stock SimpleFetcherBolt. Test-only Java/Python checks remain outside Maven test.
 
 The user reports that the initial Maven build succeeded, Entire is enabled, Codex hooks were approved, and checkpoints sync to `origin`. On the user's host `entire doctor` reported installed hooks and approval records, and `entire status` showed Codex. A sandboxed session may not be able to read `.codex` or Git internals, so its diagnostic can differ from the host. Check actual host status when relevant; do not modify hook approvals to work around sandbox restrictions.
 
@@ -27,7 +29,7 @@ The user reports that the initial Maven build succeeded, Entire is enabled, Code
 - `scripts/build.ps1` - verified Windows build helper; supports JDK selection, IntelliJ Maven discovery and offline cache.
 - `scripts/m0.ps1`, `scripts/m0-container.sh` - host-run baseline orchestration, readiness wait, bounded local run and cleanup; agent reviewed logs, not an agent runtime rerun.
 - `docs/m0-baseline.md` - 2026-10-30 M0 acceptance evidence, warning assessment, limits and M1 checklist.
-- `compose.m1.yaml`, `scripts/m1.ps1`, `scripts/m1-container.sh` - controlled M1 orchestration; not yet exercised against Docker Engine.
+- `compose.m1.yaml`, `scripts/m1.ps1`, `scripts/m1-container.sh`, `scripts/frontier-volume-init.sh` - controlled M1 orchestration; host verified; M1 accepted after volume ownership, pacing and verifier corrections.
 - `test/m1/` - synthetic Python HTTP fixture, M1-only settings/resources, Java frontier/filter checks and Python evidence verifier/tests. Test Java sources are not application code and are compiled by the M1 helper, not Maven.
 - `docs/m1-controlled.md` - M1 run command, evidence contract, observed local checks, retention and limits.
 - `.gitignore` — ignores Maven output, IDE files, common secrets and local crawl data.
@@ -93,7 +95,7 @@ Develop on Windows 11 and Omarchy/Arch Linux. Avoid platform-specific absolute p
 
 ## Milestones and acceptance criteria
 
-M0 is accepted based on the host-run evidence described above and in docs/m0-baseline.md. M1–M8 remain open; no milestone is complete solely because configuration exists. Nimbus/supervisor/ZooKeeper messages in M0 belong to LocalCluster, not a verified distributed deployment. Tor and OpenSearch are not provisioned or verified.
+M0 is accepted based on the host-run evidence described above and in docs/m0-baseline.md. M1 is accepted for the controlled synthetic crawl and graceful recreation; M2–M8 remain open; no milestone is complete solely because configuration exists. Nimbus/supervisor/ZooKeeper messages in M0 belong to LocalCluster, not a verified distributed deployment. Tor and OpenSearch are not provisioned or verified.
 
 | Milestone | Acceptance criteria |
 | --- | --- |
@@ -107,6 +109,6 @@ M0 is accepted based on the host-run evidence described above and in docs/m0-bas
 | M7 — Advanced research | Content changes and service relationships can be explored; semantic search and local AI assistance are optional and independently evaluated. |
 | M8 — Scaling | Distributed Storm deployment and larger permitted crawls are evaluated using measured throughput, recovery, resource use and operational costs. |
 
-## Immediate next step
+## Current boundary
 
-Run the new M1 harness from normal host PowerShell: ./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17". It uses only hard-coded http://fixture:8080 URLs, a 172.30.71.0/24 internal network, a fixture-only URL/IP policy, one fetcher thread and two-second delays. It creates a unique project/volume and saves evidence under .runtime/m1/<project>; it compares URL kind/metadata/schedule snapshots across graceful frontier container recreation and processes a persisted pending seed in a second run. It preserves the volume and removes containers/network in finally. Review result.json, verification.json, request logs, crawler warnings and backend recovery logs before accepting M1. Never weaken assertions just to make a run pass. Docker access is still denied here; host execution is required. M0 graph/configuration and original JAR are unchanged. Do not start public/onion crawling or discovery, or claim crash recovery/Tor/search readiness.
+M0 and M1 are accepted. Do not begin M2 without a new request. Repeat M1 with `./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.

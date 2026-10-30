@@ -50,9 +50,12 @@ desktop.ini
 data/
 downloads/
 crawl-data/
+/rocksdb/
 indexes/
 seeds.local.txt
 
 # Local Docker overrides
 compose.override.yaml
+compose.override.yml
 docker-compose.override.yml
+docker-compose.override.yaml

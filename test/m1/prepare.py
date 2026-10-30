@@ -4,11 +4,16 @@ import argparse
 
 
 def topology(source):
-    if source.count('name: "crawler"') != 1 or source.count("\nspouts:\n") != 1:
+    fetcher = 'className: "org.apache.stormcrawler.bolt.FetcherBolt"'
+    if source.count('name: "crawler"') != 1 or source.count("\nspouts:\n") != 1 or source.count(fetcher) != 1:
         raise ValueError("Unexpected base Flux shape; inspect before deriving M1")
     override = ('    - resource: false\n      file: "test/m1/crawler-conf.yaml"\n'
                 '      override: true\n\nspouts:\n')
-    return source.replace('name: "crawler"', 'name: "crawler-m1"', 1).replace("spouts:\n", override, 1)
+    # The single-host M1 run needs a cooldown that survives an empty work queue.
+    # SimpleFetcherBolt retains per-host deadlines independently of queued tuples.
+    return (source.replace('name: "crawler"', 'name: "crawler-m1"', 1)
+            .replace("spouts:\n", override, 1)
+            .replace(fetcher, 'className: "org.apache.stormcrawler.bolt.SimpleFetcherBolt"', 1))
 
 
 if __name__ == "__main__":

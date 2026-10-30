@@ -21,18 +21,24 @@ public final class FrontierProbe {
             FilterCheck.main(new String[0]);
             return;
         }
+        if (args[0].equals("delay-check")) {
+            DelayRegressionCheck.main(new String[0]);
+            return;
+        }
+        if (args[0].equals("ready")) ConnectivityCheck.check();
         ManagedChannel channel = ManagedChannelBuilder.forAddress("frontier", 7071).usePlaintext().build();
         try {
             var stub = URLFrontierGrpc.newBlockingStub(channel);
             switch (args[0]) {
                 case "ready" -> {
-                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60);
+                    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
                     while (true) {
                         try {
                             stub.withDeadlineAfter(2, TimeUnit.SECONDS).listCrawls(Local.getDefaultInstance());
                             break;
                         } catch (io.grpc.StatusRuntimeException e) {
-                            if (System.nanoTime() >= deadline) throw e;
+                            if (System.nanoTime() >= deadline)
+                                throw new IllegalStateException("M1 gRPC frontier:7071 unavailable after connectivity preflight; inspect frontier logs", e);
                             Thread.sleep(500);
                         }
                     }
