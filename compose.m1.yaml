@@ -1,0 +1,56 @@
+# Controlled synthetic test only. M0 remains unchanged.
+services:
+  frontier:
+    image: crawlercommons/url-frontier:2.4
+    command: ["rocksdb.path=/crawldir/rocksdb"]
+    volumes:
+      - frontier-data:/crawldir
+    networks: [controlled]
+    stop_grace_period: 30s
+
+  fixture:
+    image: python:3.12-slim
+    command: ["python", "-u", "/tests/fixture.py", "--log", "/evidence/requests.jsonl"]
+    volumes:
+      - ./test/m1:/tests:ro
+      - ${M1_RUN_DIR:?Use scripts/m1.ps1}:/evidence
+    networks:
+      controlled:
+        ipv4_address: 172.30.71.10
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; assert urllib.request.urlopen('http://localhost:8080/health', timeout=2).read() == b'ready'"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  crawler:
+    image: storm:2.8.9-jre17
+    profiles: [tools]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+    environment:
+      M1_RUN_REL: ${M1_RUN_REL:?Use scripts/m1.ps1}
+    entrypoint: ["/bin/bash", "/workspace/scripts/m1-container.sh"]
+    networks: [controlled]
+    stop_grace_period: 60s
+
+  probe:
+    image: storm:2.8.9-jre17
+    profiles: [tools]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+      - ${M1_RUN_DIR:?Use scripts/m1.ps1}:/evidence
+    entrypoint: ["java", "-cp", "/apache-storm/lib/*:/evidence/crawler-m1.jar", "dev.onionall.brawler.m1.FrontierProbe"]
+    networks: [controlled]
+
+volumes:
+  frontier-data:
+
+networks:
+  controlled:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.71.0/24

@@ -1,0 +1,18 @@
+{
+  "org.apache.stormcrawler.filtering.URLFilters": [
+    {
+      "class": "org.apache.stormcrawler.filtering.basic.BasicURLNormalizer",
+      "name": "BasicURLNormalizer",
+      "params": {"removeAnchorPart": true, "checkValidURI": true, "removeHashes": true}
+    },
+    {
+      "class": "org.apache.stormcrawler.filtering.regex.RegexURLFilter",
+      "name": "M1FixtureOnly",
+      "params": {"regexFilterFile": "m1-regex.txt"}
+    },
+    {
+      "class": "org.apache.stormcrawler.filtering.basic.SelfURLFilter",
+      "name": "SelfURLFilter"
+    }
+  ]
+}

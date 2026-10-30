@@ -10,7 +10,7 @@ Bootstrap stage, based on Apache StormCrawler 3.7.0. The repository contains a F
 
 Verified on Windows 11 on 2026-10-30:
 
-- JDK 17.0.12 / Maven 3.9.16: `clean package` succeeded using an offline copy of the existing dependency cache. No repository-owned tests exist.
+- JDK 17.0.12 / Maven 3.9.16: `clean package` succeeded using an offline copy of the existing dependency cache. No project tests existed at the M0 build; the standalone M1 harness below was added afterwards.
 - Flux `--dry-run crawler.flux` succeeded: one spout, nine bolts, 15 streams. This constructs the graph without opening/preparing components.
 - The shaded JAR contains the dependency-supplied `tika-config.xml`.
 - `docker compose -f compose.m0.yaml config --quiet` succeeded.
@@ -77,7 +77,15 @@ docker compose -f compose.m0.yaml ps -a
 
 M1 introduces a deliberately permitted test target, conservative limits and a persistent backend with a restart/recovery check. M2 establishes official Tor integration and fail-closed transport. M3 adds onion v3 validation/discovery; M4 adds a real search index.
 
-M1 is not implemented: the current Compose has no test target, durable volume or restart test. Fetching, link extraction, robots/rate-limit behavior, status writes, document parsing and indexing remain unverified. The existing idle metrics demonstrate logging only. Tor, OpenSearch and distributed Storm are neither provisioned nor verified by M0. See the [M1 checklist](docs/m0-baseline.md#m1-scope-and-blockers).
+M1 now has a separate controlled test harness: `compose.m1.yaml`, a synthetic site, a named RocksDB volume, gRPC snapshots, two bounded crawler runs and assertions for links, robots, HTTP outcomes, request spacing and graceful container-recreation recovery. **The end-to-end M1 run is pending.** Fetching, status writes and durable recovery are not yet claimed as verified. Tor, OpenSearch and distributed Storm remain unprovisioned/unverified.
+
+Run from normal host PowerShell (Docker API access is denied in the agent session):
+
+```powershell
+./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
+```
+
+The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/m1-controlled.md). Local tests/filter checks/dry-run passed; the fixture HTTP smoke and Docker integration remain unverified in this restricted session.
 
 No `seeds.txt` is supplied or needed for M0. Future local seeds belong in ignored `seeds.local.txt`. Do not commit datasets or credentials. Define content handling, retention and deletion policy before persisting crawled documents.
 

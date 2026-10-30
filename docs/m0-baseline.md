@@ -132,7 +132,10 @@ cache. The helper currently captures console output from up and service logs
 before down, so teardown removal is not in those files. Versioned image tags
 can move; this record does not claim digest-level reproduction.
 
-## M1 scope and blockers
+## M1 scope and blockers at M0 acceptance
+
+This subsection records the gaps at M0 acceptance. The later M1 implementation
+and its still-pending Docker verification are tracked in m1-controlled.md.
 
 M1 remains open. Existing components initialized successfully, but no URL tuple
 traversed the fetching/parsing/status/indexing pipeline. Current metrics show
@@ -154,7 +157,9 @@ zero work; they do not prove crawl outcomes or enforced rate limits.
 
 Concrete execution blocker: the agent's Docker API access remains denied;
 runtime checks require host execution or an appropriately provisioned execution
-environment. No M1 target, persistent setup or verification harness exists yet.
+environment. At M0 acceptance no M1 target, persistent setup or verification
+harness existed. They have since been added as a separate, locally checked but
+end-to-end unverified harness; see [M1 controlled testing](m1-controlled.md).
 Tor transport/discovery is M2/M3, a search index is M4, and distributed scaling
 is M8; none is made ready by this local baseline.
 
@@ -169,4 +174,8 @@ ignore rules. The unrelated local .codex/config.toml is outside the commit scope
 The requested commit is `test(infra): verify stormcrawler m0 baseline`.
 Staging the explicit M0 file list failed because this session cannot create
 `.git/index.lock` (Permission denied). No commit was created and no history
-was rewritten. The source/documentation changes remain in the working tree.
+was rewritten. The source/documentation changes remained in the working tree.
+
+Subsequently, the user created commit `164c2ba` with the requested message;
+`git log` confirmed it before M1 work began. The staging failure above describes
+the agent's earlier attempt, not the current M0 commit status.

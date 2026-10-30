@@ -1,6 +1,8 @@
 # Maven
 target/
 .runtime/
+__pycache__/
+*.pyc
 pom.xml.tag
 pom.xml.releaseBackup
 pom.xml.versionsBackup

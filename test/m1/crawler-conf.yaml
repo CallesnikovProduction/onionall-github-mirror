@@ -1,0 +1,30 @@
+config:
+  urlfrontier.host: "frontier"
+  urlfrontier.crawlid: "m1"
+  urlfrontier.max.buckets: 1
+  urlfrontier.max.urls.per.bucket: 2
+  urlfrontier.max.messages.in.flight: 10
+  topology.max.spout.pending: 10
+  fetcher.threads.number: 1
+  fetcher.threads.per.queue: 1
+  fetcher.threads.start.delay: 0
+  fetcher.server.delay: 2.0
+  fetcher.server.delay.force: true
+  http.timeout: 5000
+  http.content.limit: 65536
+  # Exact synthetic fixture IP only; never use this override for real crawling.
+  http.filter.ipaddress.include: "172.30.71.10"
+  http.agent.name: "OnionallBrawlerMOneTest"
+  http.agent.description: "Repository-owned synthetic M1 test only"
+  http.agent.url: "http://fixture:8080/"
+  sitemap.discovery: false
+  urlfilters.config.file: "m1-urlfilters.json"
+  fetchInterval.default: 1440
+  fetchInterval.fetch.error: 120
+  fetchInterval.error: -1
+  metadata.persist:
+    - error.cause
+    - error.source
+    - discoveryDate
+    - lastProcessedDate
+  topology.builtin.metrics.bucket.size.secs: 5

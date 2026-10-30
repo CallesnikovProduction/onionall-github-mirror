@@ -1,0 +1,3 @@
+# Anchored fixture allowlist. Unknown URLs are denied by default.
++^http://fixture:8080/(?:a|b|blocked|missing|pending)?$
+-.
