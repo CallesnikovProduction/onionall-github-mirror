@@ -1,0 +1,15 @@
+RunAsDaemon 0
+DataDirectory /var/lib/tor/data
+Log notice stdout
+SafeLogging 1
+ClientOnly 1
+SocksPort 0
+DNSPort 0
+TransPort 0
+ControlPort 0
+ControlSocket /var/lib/tor/control
+CookieAuthentication 1
+CookieAuthFile /var/lib/tor/control_auth_cookie
+HiddenServiceDir /var/lib/tor/hidden_service
+HiddenServiceVersion 3
+HiddenServicePort 80 fixture:8080

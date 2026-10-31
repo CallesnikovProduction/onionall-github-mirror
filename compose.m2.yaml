@@ -1,0 +1,140 @@
+# Real Tor network integration, controlled onion service only. No host ports.
+services:
+  tor:
+    build:
+      context: .
+      dockerfile: docker/m2/Dockerfile
+    image: onionall-brawler-tor:0.4.9.11-deb12u1
+    volumes:
+      - tor-state:/var/lib/tor
+    networks: [crawler, outbound]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    stop_grace_period: 30s
+
+  onion:
+    build:
+      context: .
+      dockerfile: docker/m2/Dockerfile
+    image: onionall-brawler-tor:0.4.9.11-deb12u1
+    command: [-f, /etc/tor/torrc.onion]
+    volumes:
+      - onion-state:/var/lib/tor
+    networks: [fixture, outbound]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      fixture:
+        condition: service_healthy
+    stop_grace_period: 30s
+
+  fixture:
+    image: python:3.12-slim
+    command: [python, -u, /tests/fixture.py, --log, /evidence/requests.jsonl]
+    volumes:
+      - ./test/m2/fixture.py:/tests/fixture.py:ro
+      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
+    networks: [fixture]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; assert urllib.request.urlopen('http://localhost:8080/health', timeout=2).read() == b'ready'"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  frontier-init:
+    image: crawlercommons/url-frontier:2.4
+    user: '0:0'
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - tr -d '\r' < /tests/frontier-volume-init.sh > /tmp/frontier-volume-init.sh; exec /bin/sh /tmp/frontier-volume-init.sh
+    volumes:
+      - frontier-data:/crawldir
+      - ./scripts/frontier-volume-init.sh:/tests/frontier-volume-init.sh:ro
+    network_mode: none
+
+  frontier:
+    image: crawlercommons/url-frontier:2.4
+    command: [rocksdb.path=/crawldir/rocksdb]
+    volumes:
+      - frontier-data:/crawldir
+    depends_on:
+      frontier-init:
+        condition: service_completed_successfully
+    networks: [crawler]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, /bin/bash, -ec, ': > /dev/tcp/127.0.0.1/7071']
+      interval: 2s
+      timeout: 3s
+      start_period: 5s
+      retries: 20
+
+  crawler:
+    image: storm:2.8.9-jre17
+    profiles: [tools]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
+    environment:
+      M2_RUN_REL: ${M2_RUN_REL:?Use scripts/m2.sh}
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - tr -d '\r' < /workspace/scripts/m2-container.sh > /tmp/m2-container.sh; exec /bin/bash /tmp/m2-container.sh
+    networks: [crawler]
+    dns: [127.0.0.1]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 60s
+
+  probe:
+    image: storm:2.8.9-jre17
+    profiles: [tools]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
+    entrypoint: [java, -cp, '/apache-storm/lib/*:/evidence/crawler-m2.jar', dev.onionall.brawler.m2.FrontierProbe]
+    networks: [crawler]
+    dns: [127.0.0.1]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  network-probe:
+    image: python:3.12-slim
+    profiles: [tools]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
+    entrypoint: [python, /workspace/test/m2/network_probe.py]
+    networks: [crawler]
+    dns: [127.0.0.1]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+
+volumes:
+  frontier-data:
+  tor-state:
+  onion-state:
+
+networks:
+  crawler:
+    internal: true
+  fixture:
+    internal: true
+  outbound:
