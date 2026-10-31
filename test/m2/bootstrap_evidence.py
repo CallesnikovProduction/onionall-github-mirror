@@ -12,7 +12,9 @@ def summarize(path):
     for service, percent in re.findall(r'(?m)^(tor|onion)-\d+[^\n]*Bootstrapped (\d+)%', text):
         progress[service] = int(percent)
     result = {'observed_progress_percent': progress,
-              'bootstrap_complete': all(value == 100 for value in progress.values()),
+              'bootstrap_100_observed': all(value == 100 for value in progress.values()),
+              'observation_kind': 'log_history',
+              'current_connectivity_verified': False,
               'tls_failure_records': text.count('TLS_ERROR'),
               'evidence': ['services.log', 'startup.log']}
     (path / 'tor-readiness.json').write_text(json.dumps(result, indent=2), encoding='utf-8')

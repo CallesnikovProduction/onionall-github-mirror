@@ -111,16 +111,18 @@ No `seeds.txt` is supplied or needed for M0. Future local seeds belong in ignore
 
 Architecture, limitations and acceptance criteria: [AGENTS.md](AGENTS.md).
 
-## M2: Tor transport work in progress
+## M2: bridge-enabled Tor transport, acceptance blocked
 
-M2 now has a Kotlin Tor-only protocol adapter and a separate isolated Compose
-stack with a real Tor gateway and controlled onion service. **M2 is BLOCKED:**
-the real Docker attempt stopped at Tor bootstrap 10% with relay TLS handshake
-failures and timed out after 360 seconds. Cleanup passed; m2_verified=false.
-No successful onion crawl or M2 persistence/outage acceptance is claimed. M0/M1 behavior and both Windows/Linux M1 runners remain supported.
-Build with `mvn -B clean verify`, then use `bash scripts/m2.sh` on Linux.
-See [M2 operations and evidence](docs/m2-tor.md) and
-[the transport ADR](docs/adr/0001-tor-only-transport.md).
+The separate M2 stack now bundles Tor and obfs4 and mounts private bridge lines
+read-only at runtime. Container bootstrap, SOCKS forwarding and a real HTTPS
+Tor check pass. A real controlled onion crawl and graceful frontier persistence
+also passed stages, but the complete security/outage/recovery gate has not yet
+passed. **M2 remains BLOCKED.** Historical failed evidence is preserved.
+
+See [private bridge setup and Linux/Windows commands](docs/m2-bridges.md),
+[hardening audit results](docs/m2-hardening.md), and
+[the transport decision](docs/adr/0001-tor-only-transport.md).
+M0/M1 runners remain supported. Native Windows M2 execution is not yet verified.
 
 ## Upstream references
 

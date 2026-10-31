@@ -39,7 +39,9 @@ public final class TorScenarioProbe {
             case "malformed_onion" -> host="invalid.onion";
             case "out_of_scope_redirect" -> path="/escape";
             case "redirect_loop" -> {path="/loop-a";successExpected=true;}
-            case "timeout" -> {path="/slow";config.put("http.timeout",1000);}
+            // Allow onion stream setup; the fixture intentionally withholds its response for 15s.
+            // A timeout passes only if the real handler marker exists, never on connect failure alone.
+            case "timeout" -> path="/slow";
             case "connection_reset" -> path="/reset";
             case "tor_shutdown_active_crawl" -> {path="/slow";config.put("http.timeout",30000);}
             case "safe_retry_after_tor_return" -> successExpected=true;

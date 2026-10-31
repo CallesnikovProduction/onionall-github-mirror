@@ -181,6 +181,54 @@ public class TorProtocolTest {
         }
     }
 
+    @Test public void http10ImplicitCloseUsesNewSocksConnectionAfterRobotsWithoutRetry() throws Exception {
+        String host = TorPolicyTest.onion(14);
+        try (SocksWire wire = new SocksWire(http10Robots(""), http10Document(""))) {
+            TorProtocol protocol = protocol(host, wire.port());
+            try {
+                assertTrue(protocol.getRobotRules("http://" + host + "/").isAllowed("http://" + host + "/"));
+                ProtocolResponse response = protocol.getProtocolOutput("http://" + host + "/", new Metadata());
+                assertEquals(200, response.getStatusCode());
+                assertArrayEquals("document".getBytes(StandardCharsets.UTF_8), response.getContent());
+                List<Attempt> attempts = wire.await(2);
+                assertTrue(attempts.get(0).request.startsWith("GET /robots.txt HTTP/1.1"));
+                assertTrue(attempts.get(1).request.startsWith("GET / HTTP/1.1"));
+                for (Attempt attempt : attempts) assertEquals(host, attempt.host);
+                wire.assertNoFurtherConnection();
+            } finally { protocol.cleanup(); }
+        }
+    }
+
+    @Test public void http10ExplicitCloseUsesNewSocksConnectionAfterRobots() throws Exception {
+        String host = TorPolicyTest.onion(14);
+        try (SocksWire wire = new SocksWire(http10Robots("Connection: close\r\n"),
+                                          http10Document("Connection: close\r\n"))) {
+            TorProtocol protocol = protocol(host, wire.port());
+            try {
+                assertTrue(protocol.getRobotRules("http://" + host + "/").isAllowed("http://" + host + "/"));
+                ProtocolResponse response = protocol.getProtocolOutput("http://" + host + "/", new Metadata());
+                assertEquals(200, response.getStatusCode());
+                assertArrayEquals("document".getBytes(StandardCharsets.UTF_8), response.getContent());
+                List<Attempt> attempts = wire.await(2);
+                assertTrue(attempts.get(0).request.startsWith("GET /robots.txt HTTP/1.1"));
+                assertTrue(attempts.get(1).request.startsWith("GET / HTTP/1.1"));
+                for (Attempt attempt : attempts) assertEquals(host, attempt.host);
+                wire.assertNoFurtherConnection();
+            } finally { protocol.cleanup(); }
+        }
+    }
+
+    private static String http10Robots(String connectionHeader) {
+        String robots = "User-agent: *\nDisallow: /blocked\nCrawl-delay: 2\n";
+        return "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                + robots.getBytes(StandardCharsets.UTF_8).length + "\r\n" + connectionHeader + "\r\n" + robots;
+    }
+
+    private static String http10Document(String connectionHeader) {
+        return "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: 8\r\n"
+                + connectionHeader + "\r\n" + "document";
+    }
+
     private static String reply(int status, String body) {
         return "HTTP/1.1 " + status + " Test\r\nContent-Type: text/plain\r\nContent-Length: "
                 + body.getBytes(StandardCharsets.UTF_8).length + "\r\nConnection: close\r\n\r\n" + body;

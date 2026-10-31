@@ -53,6 +53,7 @@ class VerificationTest(unittest.TestCase):
         return verifier.verify(self.path)
 
     def outage_evidence(self):
+        self.write('scenario-exits.json', dict(scenario_exit_code=0, pipeline_exit_code=0))
         self.write('network-outage.json', dict(passed=True, outage=True, tor_socks={'connected': False}))
         names = ['tor_stopped', 'socks_port_unavailable', 'invalid_socks_endpoint', 'bootstrap_incomplete',
                  'onion_unreachable', 'malformed_onion', 'out_of_scope_redirect', 'redirect_loop', 'timeout',
@@ -163,6 +164,86 @@ class VerificationTest(unittest.TestCase):
         self.requests.append(dict(path='/a', method='GET', status=200, user_agent='OnionallBrawlerMTwoOutage', started_ns=100, finished_ns=101))
         self.write_requests()
         self.assertFalse(self.result()['fail_closed_verified'])
+
+
+    def test_missing_scenario_driver_exit_file_cannot_pass_fail_closed(self):
+        self.outage_evidence()
+        (self.path / 'scenario-exits.json').unlink()
+        self.assertFalse(self.result()['fail_closed_verified'])
+
+    def test_each_missing_nonzero_or_boolean_driver_exit_is_rejected(self):
+        self.outage_evidence()
+        for key in ('scenario_exit_code', 'pipeline_exit_code'):
+            for value in (None, 1, -1, False, True, '0'):
+                with self.subTest(key=key, value=value):
+                    exits = dict(scenario_exit_code=0, pipeline_exit_code=0)
+                    if value is None:
+                        exits.pop(key)
+                    else:
+                        exits[key] = value
+                    self.write('scenario-exits.json', exits)
+                    result = self.result()
+                    self.assertFalse(result['fail_closed_verified'])
+                    self.assertIn('Scenario driver or outage pipeline exits unavailable/nonzero', result['blockers'])
+
+    def cleanup_evidence(self):
+        return dict(containers_removed=True, network_removed=True, volume_retained=True,
+                    retained_volumes={'frontier-data': True, 'tor-state': True, 'onion-state': True})
+
+    def test_cleanup_retains_all_three_volumes(self):
+        self.write('cleanup.json', self.cleanup_evidence())
+        result = self.result()
+        self.assertIn('cleanup.json', result['evidence'])
+        self.assertNotIn('Cleanup retention of frontier-data, tor-state and onion-state not verified', result['blockers'])
+
+    def test_frontier_only_legacy_cleanup_cannot_verify_tor_keys_retention(self):
+        cleanup = self.cleanup_evidence()
+        cleanup.pop('retained_volumes')
+        self.write('cleanup.json', cleanup)
+        result = self.result()
+        self.assertNotIn('cleanup.json', result['evidence'])
+        self.assertIn('Cleanup retention of frontier-data, tor-state and onion-state not verified', result['blockers'])
+
+    def test_missing_or_failed_retention_of_each_volume_is_rejected(self):
+        for volume in ('frontier-data', 'tor-state', 'onion-state'):
+            for value in (None, False, 1):
+                with self.subTest(volume=volume, value=value):
+                    cleanup = self.cleanup_evidence()
+                    if value is None:
+                        cleanup['retained_volumes'].pop(volume)
+                    else:
+                        cleanup['retained_volumes'][volume] = value
+                    self.write('cleanup.json', cleanup)
+                    result = self.result()
+                    self.assertNotIn('cleanup.json', result['evidence'])
+                    self.assertFalse(result['m2_verified'])
+                    self.assertIn('Cleanup retention of frontier-data, tor-state and onion-state not verified', result['blockers'])
+
+    def test_cleanup_still_rejects_retained_containers_or_networks(self):
+        for key in ('containers_removed', 'network_removed'):
+            cleanup = self.cleanup_evidence()
+            cleanup[key] = False
+            self.write('cleanup.json', cleanup)
+            result = self.result()
+            self.assertNotIn('cleanup.json', result['evidence'])
+            self.assertIn('Cleanup incomplete', result['blockers'])
+
+    def test_bootstrap_log_history_never_sets_transport_or_fail_closed_fields(self):
+        self.write('tor-readiness.json', dict(bootstrap_100_observed=True,
+                                              observation_kind='log_history',
+                                              current_connectivity_verified=False))
+        result = self.result()
+        self.assertFalse(result['real_tor_transport'])
+        self.assertFalse(result['remote_onion_resolution'])
+        self.assertFalse(result['fail_closed_verified'])
+        self.assertFalse(any('No bootstrap100 observed' in blocker for blocker in result['blockers']))
+
+    def test_missing_observed_bootstrap_is_reported_as_log_observation(self):
+        self.write('tor-readiness.json', dict(bootstrap_100_observed=False,
+                                              observed_progress_percent={'tor': 10, 'onion': 10}))
+        result = self.result()
+        self.assertTrue(any(blocker.startswith('No bootstrap100 observed in logs:') for blocker in result['blockers']))
+        self.assertFalse(any('Tor bootstrap incomplete:' in blocker for blocker in result['blockers']))
 
 
 if __name__ == '__main__':

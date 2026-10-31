@@ -1,12 +1,31 @@
 # Real Tor network integration, controlled onion service only. No host ports.
 services:
-  tor:
+  tor-state-init:
     build:
       context: .
       dockerfile: docker/m2/Dockerfile
-    image: onionall-brawler-tor:0.4.9.11-deb12u1
+    image: onionall-brawler-tor:0.4.9.11-obfs4-deb12u1
+    user: '0:0'
+    network_mode: none
+    environment:
+      M2_RUNTIME_USER: ${M2_RUNTIME_USER:-1000:1000}
+    entrypoint: [python3, /usr/local/lib/tor-state-init.py]
+    volumes:
+      - tor-state:/tor-state
+      - onion-state:/onion-state
+
+  tor:
+    user: ${M2_RUNTIME_USER:-1000:1000}
+    depends_on:
+      tor-state-init:
+        condition: service_completed_successfully
+    build:
+      context: .
+      dockerfile: docker/m2/Dockerfile
+    image: onionall-brawler-tor:0.4.9.11-obfs4-deb12u1
     volumes:
       - tor-state:/var/lib/tor
+      - ${M2_BRIDGES_FILE:-./.secrets/m2/bridges.conf}:/run/secrets/tor-bridges:ro
     networks: [crawler, outbound]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -15,19 +34,23 @@ services:
     stop_grace_period: 30s
 
   onion:
+    user: ${M2_RUNTIME_USER:-1000:1000}
     build:
       context: .
       dockerfile: docker/m2/Dockerfile
-    image: onionall-brawler-tor:0.4.9.11-deb12u1
+    image: onionall-brawler-tor:0.4.9.11-obfs4-deb12u1
     command: [-f, /etc/tor/torrc.onion]
     volumes:
       - onion-state:/var/lib/tor
+      - ${M2_BRIDGES_FILE:-./.secrets/m2/bridges.conf}:/run/secrets/tor-bridges:ro
     networks: [fixture, outbound]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true
     tmpfs: [/tmp]
     depends_on:
+      tor-state-init:
+        condition: service_completed_successfully
       fixture:
         condition: service_healthy
     stop_grace_period: 30s
@@ -103,6 +126,9 @@ services:
     dns: [127.0.0.1]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    read_only: true
+    # Storm extracts RocksDB JNI libraries here; noexec prevents startup.
+    tmpfs: ["/tmp:rw,exec,nosuid,nodev,mode=1777"]
     stop_grace_period: 60s
 
   probe:

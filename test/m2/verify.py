@@ -22,8 +22,8 @@ def verify(path):
     if (path/'tor-readiness.json').exists():
         readiness=json.loads((path/'tor-readiness.json').read_text())
         result['evidence'].append('tor-readiness.json')
-        if not readiness.get('bootstrap_complete'):
-            result['blockers'].append('Tor bootstrap incomplete: ' + str(readiness.get('observed_progress_percent')) + '; inspect services.log/startup.log')
+        if not readiness.get('bootstrap_100_observed', readiness.get('bootstrap_complete', False)):
+            result['blockers'].append('No bootstrap100 observed in logs: ' + str(readiness.get('observed_progress_percent')) + '; inspect services.log/startup.log')
     def load(name):
         return json.loads((path / name).read_text(encoding='utf-8-sig'))
     def check(condition, message):
@@ -123,6 +123,10 @@ def verify(path):
                       frontier_persistence_verified=True, frontier_records=len(final), minimum_observed_gap_seconds=min(gaps))
     stage(['crawled.json','before.json','after.json','final.json','requests.jsonl','crawl-runtime.json'], crawl)
     def outage():
+        exits = load('scenario-exits.json')
+        check(all(type(exits.get(key)) is int and exits[key] == 0
+                  for key in ('scenario_exit_code', 'pipeline_exit_code')),
+              'Scenario driver or outage pipeline exits unavailable/nonzero')
         evidence = load('network-outage.json')
         check(evidence['passed'] and evidence['outage'] and not evidence['tor_socks']['connected'], 'Stopped Tor did not fail closed')
         # Network-level failure alone does not establish all application outage scenarios.
@@ -170,7 +174,7 @@ def verify(path):
         check([row['path'] for row in ordered] == ['/robots.txt', '/outage', '/robots.txt', '/outage'], 'Outage documents requested before robots')
         check(all(row['method'] == 'GET' and row['status'] == 200 and row['finished_ns'] >= row['started_ns'] for row in traffic), 'Unexpected outage fixture HTTP outcome')
         result['fail_closed_verified'] = True
-    stage(['network-outage.json','security-scenarios.json','outage-pipeline.json','outage-failed.json','outage-recovered.json'], outage)
+    stage(['scenario-exits.json','network-outage.json','security-scenarios.json','outage-pipeline.json','outage-failed.json','outage-recovered.json'], outage)
     def regression():
         evidence = load('m1-regression.json')
         check(evidence['exit_code'] == 0, 'M1 regression failed')
@@ -183,7 +187,11 @@ def verify(path):
     stage(['m1-regression.json'], regression)
     def cleanup():
         evidence = load('cleanup.json')
-        check(evidence['containers_removed'] is True and evidence['network_removed'] is True and evidence['volume_retained'] is True, 'Cleanup incomplete')
+        check(evidence['containers_removed'] is True and evidence['network_removed'] is True, 'Cleanup incomplete')
+        volumes = evidence.get('retained_volumes')
+        check(isinstance(volumes, dict) and
+              all(volumes.get(name) is True for name in ('frontier-data', 'tor-state', 'onion-state')),
+              'Cleanup retention of frontier-data, tor-state and onion-state not verified')
     stage(['cleanup.json'], cleanup)
     result['m2_verified'] = all(result[field] for field in FIELDS) and not result['blockers']
     return result

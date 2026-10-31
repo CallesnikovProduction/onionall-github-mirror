@@ -5,6 +5,15 @@ import sys
 
 
 def check():
+    running = False
+    for process in Path('/proc').iterdir():
+        if process.name.isdigit():
+            try:
+                running |= (process / 'comm').read_text().strip() == 'obfs4proxy'
+            except OSError:
+                pass
+    if not running:
+        raise RuntimeError('obfs4 client transport unavailable')
     cookie = Path('/var/lib/tor/control_auth_cookie').read_bytes()
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(2)
@@ -19,6 +28,9 @@ def check():
             raise RuntimeError('Tor bootstrap incomplete')
         if stream.readline(4096) != b'250 OK\r\n':
             raise RuntimeError('invalid bootstrap response')
+        stream.write(b'GETCONF UseBridges\r\n')
+        if stream.readline(4096) != b'250 UseBridges=1\r\n':
+            raise RuntimeError('bridge-only policy unavailable')
 
 
 if __name__ == '__main__':

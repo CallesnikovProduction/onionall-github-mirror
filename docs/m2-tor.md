@@ -1,6 +1,10 @@
 # M2 Tor gateway: implementation and verification
 
-Status: **BLOCKED**, not accepted. See the verification summary
+Status: **BLOCKED**, final bridge-enabled verification in progress.
+The bridge-enabled client and native wrappers now supersede the direct-only
+preflight setup below; see [bridge setup](m2-bridges.md) and
+[the hardening audit](m2-hardening.md). Historical direct-bootstrap evidence
+below remains preserved and must not be interpreted as current connectivity. See the verification summary
 in each ignored `.runtime/m2/onionall-brawler-m2-<id>/verification.json`.
 A true build or bootstrap check alone does not constitute M2 acceptance.
 

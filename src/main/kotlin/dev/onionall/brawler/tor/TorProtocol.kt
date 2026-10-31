@@ -2,6 +2,7 @@ package dev.onionall.brawler.tor
 
 import crawlercommons.robots.BaseRobotRules
 import crawlercommons.robots.SimpleRobotRulesParser
+import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -33,6 +34,9 @@ class TorProtocol : Protocol {
         val endpoint=InetSocketAddress(policy.proxyHost, policy.proxyPort)
         require(!endpoint.isUnresolved) { "Invalid SOCKS endpoint" }
         client=OkHttpClient.Builder().proxy(Proxy(Proxy.Type.SOCKS, endpoint))
+            // Do not reuse an idle Tor stream after HTTP/1.0 implicit close.
+            // Keep retry disabled: each scheduled request opens its own SOCKS stream.
+            .connectionPool(ConnectionPool(0, 1, TimeUnit.SECONDS))
             .dns(Dns { throw UnknownHostException("LOCAL_DNS_FORBIDDEN") })
             .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false)
             .connectTimeout(timeout,TimeUnit.MILLISECONDS).readTimeout(timeout,TimeUnit.MILLISECONDS)

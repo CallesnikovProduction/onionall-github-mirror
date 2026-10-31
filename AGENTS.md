@@ -83,7 +83,7 @@ M1 is accepted on 2026-10-31 from the user-run Docker evidence `.runtime/m1/onio
 
 This is a bootstrap-stage project generated from the Apache StormCrawler 3.7.0 Maven archetype, not yet an onion search engine. The repository contains a Flux topology and configuration, plus a new Kotlin M2 transport adapter; it has no search/domain application implementation. The topology declares URLFrontier input and status updates, fetching, sitemap/feed and HTML parsing, optional Tika parsing, and `StdOutIndexer` output. On 2026-10-30, Java 17.0.12 / Maven 3.9.16 built the shaded JAR successfully offline; Flux dry-run constructed one spout, nine bolts and 15 streams. The user then ran scripts/m0.ps1 on the Windows host. Reviewed service/console logs confirm all nine bolts prepared (including Tika configuration loading), the spout opened/activated, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on orchestrated SIGTERM (143); Compose container/network removal is user-reported. M0 is accepted for this empty-frontier local baseline. Actual fetching, document parsing, status writes, durable recovery and search remain unverified. `StdOutIndexer` is not a searchable index. See `docs/m0-baseline.md` for evidence, hashes, warning assessment and limits.
 
-There is no configured Tor transport or fail-closed guarantee, onion v3 validation or autonomous cross-service discovery, search API, desktop interface, graph storage or AI integration. A standalone M1 test harness now exists under test/m1, with Python verifier/fixture tests and Java gRPC/filter probes; it is not wired into Maven test. Full controlled Docker runs are accepted on Windows and Omarchy Linux; this establishes only the synthetic M1 crawl and graceful recreation contract.
+The default M0/M1 topology has no Tor transport. The separate M2 stack now has a bridge-enabled transport and v3 validation, but its full acceptance is BLOCKED. There is no accepted production fail-closed guarantee, autonomous cross-service discovery, search API, desktop interface, graph storage or AI integration. A standalone M1 test harness now exists under test/m1, with Python verifier/fixture tests and Java gRPC/filter probes; it is not wired into Maven test. Full controlled Docker runs are accepted on Windows and Omarchy Linux; this establishes only the synthetic M1 crawl and graceful recreation contract.
 
 M0 is committed as `164c2ba`. M1 uses a separate internal Compose network, synthetic fixture, named RocksDB volume and generated Flux with the stock SimpleFetcherBolt. Test-only Java/Python checks remain outside Maven test.
 
@@ -216,3 +216,53 @@ See docs/m2-tor.md for findings and the optional private-bridge investigation.
   user modifications. If push fails, investigate/report the cause rather than force.
 - This standing authorization does not permit pushing to unrelated remotes or
   repositories.
+
+
+## Bridge integration and hardening audit in progress — 2026-10-31
+
+Latest explicit audit instruction forbids creating new commits unless requested;
+leave current bridge/hardening changes reviewable and uncommitted. Earlier policy
+checkpoint3e108a5 predates that restriction. Preserve standing Entire policy.
+
+The host obfs4 solution is now reproduced in the container preflight: pinned Tor
+0.4.9.11 + obfs4proxy0.0.14, bootstrap100/current control100, SOCKS ATYP3,
+HTTPS IsTor=true and obfs4process observed; container cleanup succeeds. This is
+not full M2 acceptance. Private bridge-only config lives in ignored .secrets/m2,
+mode600, read-only mounted into both Tor clients. No direct fallback is allowed.
+See docs/m2-bridges.md for native Linux/Windows shared Python runner instructions.
+
+Hardening verifier requires both scenario-exits.json codes to be integer0 and
+all three persistent volumes retained. Bootstrap log summaries are historical,
+never live connectivity. Crawler rootfs is read-only; /tmp must be exec,nosuid,
+nodev for RocksDB JNI. Actual dry-run confirmed this requirement. Host JDK tools
+are checked for same-JDK17+; native Windows execution remains unverified.
+
+Real bridge crawl found a pinned HTTP client idle-stream reuse bug after implicit
+HTTP/1.0 close. Focused reproducer failed before the fix; TorProtocol now has
+zero idle pooled connections with retries still disabled. Both implicit/explicit
+robots→root cases pass; Maven verify17tests passes. No fixture assertions weakened.
+Run d42486ff0e09 remains failed/interrupted evidence with all volumes retained.
+Run f269f7dd28b8 proved real onion crawl/persistence/M1 but was correctly rejected
+for a too-short delayed-response test and recovery before onion availability.
+Those test infrastructure defects are corrected: normal10s request timeout for
+15s delayed fixture, and actual controlled onion /health readiness after Tor
+returns. Run04a0afbf1294 then failed initial controlled onion availability despite successful
+bridge bootstrap/SOCKS preflight; direct-egress probes still denied access and
+cleanup retained all three volumes. Initial availability now uses the same
+bounded90s observed /health readiness as recovery. These final readiness changes
+have focused tests but have not completed another full integration. M2 remains
+BLOCKED; do not launch repeated long full runs without resolving availability.
+
+Codex machine-specific notify was removed from project config without changing
+user settings. Entire hooks are unchanged and doctor/shell checks pass on Linux;
+Windows needs sh/entire on PATH and remains a runtime validation item. Operational
+findings and limits are recorded in docs/m2-hardening.md. No automatic volume
+pruning or deletion helper is introduced.
+
+
+Final hardening audit results:41Python M2 tests,17Maven tests and17actualJRE17
+socket/policy tests pass. Entire doctor and hook syntax pass on Linux; native
+Windows and desktop notification delivery were not executed. No new commits
+were made after the explicit audit prohibition. Changes remain in the working
+tree. Full integration has real passed stages and preserved failures, not a
+passing M2 result. See docs/m2-hardening.md and ignored bridge-integration reports.

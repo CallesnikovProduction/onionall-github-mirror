@@ -18,9 +18,19 @@ def connect(host, port):
         return {'connected': False, 'error_type': type(error).__name__, 'elapsed_seconds': time.monotonic() - started}
 
 
-def receive(sock, size):
+def remaining(deadline, maximum):
+    if deadline is None:
+        return maximum
+    budget = deadline - time.monotonic()
+    if budget <= 0:
+        raise TimeoutError('Controlled onion readiness deadline exceeded')
+    return min(maximum, budget)
+
+
+def receive(sock, size, deadline=None):
     result = b''
     while len(result) < size:
+        sock.settimeout(remaining(deadline, 45))
         part = sock.recv(size - len(result))
         if not part:
             raise OSError('SOCKS EOF')
@@ -28,27 +38,28 @@ def receive(sock, size):
     return result
 
 
-def remote_fetch(onion):
+def remote_fetch(onion, deadline=None):
     # ATYP=3 sends the hostname directly to Tor; no getaddrinfo(onion) occurs.
-    with socket.create_connection(('tor', 9050), timeout=5) as sock:
-        sock.settimeout(45)
+    with socket.create_connection(('tor', 9050), timeout=remaining(deadline, 5)) as sock:
+        sock.settimeout(remaining(deadline, 45))
         sock.sendall(b'\x05\x01\x00')
-        if receive(sock, 2) != b'\x05\x00':
+        if receive(sock, 2, deadline) != b'\x05\x00':
             raise OSError('SOCKS authentication negotiation failed')
         host = onion.encode('ascii')
         sock.sendall(b'\x05\x01\x00\x03' + bytes([len(host)]) + host + struct.pack('!H', 80))
-        response = receive(sock, 4)
+        response = receive(sock, 4, deadline)
         if response[:2] != b'\x05\x00':
             raise OSError('SOCKS connect reply ' + str(response[1]))
         length = {1: 4, 4: 16}.get(response[3])
         if response[3] == 3:
-            length = receive(sock, 1)[0]
+            length = receive(sock, 1, deadline)[0]
         if length is None:
             raise OSError('Invalid SOCKS reply address type')
-        receive(sock, length + 2)
+        receive(sock, length + 2, deadline)
         sock.sendall(f'GET /health HTTP/1.1\r\nHost: {onion}\r\nConnection: close\r\n\r\n'.encode('ascii'))
         body = b''
         while len(body) <= 65536:
+            sock.settimeout(remaining(deadline, 45))
             part = sock.recv(4096)
             if not part:
                 break
@@ -56,6 +67,33 @@ def remote_fetch(onion):
         if len(body) > 65536 or not body.startswith(b'HTTP/1.0 200') or not body.endswith(b'ready'):
             raise OSError('Unexpected onion health response')
         return {'remote_hostname_sent': True, 'socks_atyp': 3, 'http_status': 200, 'health_body': 'ready'}
+
+
+def onion_ready(onion, seconds=90):
+    """Tor bootstrap and controlled onion availability are separate observations."""
+    if not 1 <= seconds <= 90:
+        raise ValueError('Controlled onion readiness deadline must be 1..90 seconds')
+    started = time.monotonic()
+    deadline = started + seconds
+    attempts = []
+    ready = False
+    while time.monotonic() < deadline:
+        attempt = {'attempt': len(attempts) + 1}
+        try:
+            health = remote_fetch(onion, deadline=deadline)
+            ready = health.get('http_status') == 200 and health.get('health_body') == 'ready'
+            attempt['health'] = health
+        except OSError as error:
+            attempt['error_type'] = type(error).__name__
+        attempt['elapsed_seconds'] = time.monotonic() - started
+        attempts.append(attempt)
+        if ready:
+            break
+        if time.monotonic() < deadline:
+            time.sleep(min(2, deadline-time.monotonic()))
+    return {'passed': ready, 'ready': ready, 'attempts': attempts,
+            'deadline_seconds': seconds, 'elapsed_seconds': time.monotonic()-started,
+            'policy': 'Actual controlled onion /health via SOCKS ATYP=3; not bootstrap inference'}
 
 
 def run(fixture_ip, onion, outage=False):
@@ -85,10 +123,12 @@ def run(fixture_ip, onion, outage=False):
             checks['public_dns_udp'] = {'response_received': False, 'error_type': type(error).__name__}
     checks['outage'] = outage
     if not outage:
-        try:
-            checks['onion_health'] = remote_fetch(onion)
-        except OSError as error:
-            checks['onion_health'] = {'error_type': type(error).__name__, 'message': str(error)}
+        readiness = onion_ready(onion)
+        checks['onion_readiness'] = readiness
+        if readiness['ready']:
+            checks['onion_health'] = readiness['attempts'][-1]['health']
+        else:
+            checks['onion_health'] = {'error_type': 'OnionReadinessDeadlineExceeded'}
     expected = (checks['local_onion_dns']['completed'] and not checks['local_onion_dns']['resolved'] and not checks['direct_internet']['connected'] and not checks['direct_fixture']['connected']
                 and not checks['public_dns_tcp']['connected'] and not checks['public_dns_udp']['response_received'])
     expected = expected and (not checks['tor_socks']['connected'] if outage else
@@ -99,12 +139,23 @@ def run(fixture_ip, onion, outage=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('fixture_ip')
+    parser.add_argument('fixture_ip', nargs='?')
+    parser.add_argument('--onion-ready', action='store_true')
+    parser.add_argument('--readiness-output', default='onion-readiness.json')
     parser.add_argument('--outage', action='store_true')
     args = parser.parse_args()
     evidence = Path('/evidence')
     host = (evidence / 'onion-hostname.txt').read_text().strip()
-    result = run(args.fixture_ip, host, args.outage)
-    (evidence / ('network-outage.json' if args.outage else 'network.json')).write_text(json.dumps(result, indent=2))
+    if args.onion_ready:
+        if Path(args.readiness_output).name != args.readiness_output or not args.readiness_output.endswith('.json'):
+            parser.error('Readiness output must be a JSON filename')
+        result = onion_ready(host)
+        destination = args.readiness_output
+    else:
+        if not args.fixture_ip:
+            parser.error('fixture_ip is required for network isolation checks')
+        result = run(args.fixture_ip, host, args.outage)
+        destination = 'network-outage.json' if args.outage else 'network.json'
+    (evidence / destination).write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result['passed'] else 1)

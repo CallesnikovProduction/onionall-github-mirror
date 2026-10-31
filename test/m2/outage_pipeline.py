@@ -56,6 +56,14 @@ def run(project,path):
         check(bool(row['metadata'].get('fetch.exception')),'Transport failure diagnostic missing from frontier')
         check('M2_OUTAGE_MARKER' not in (path/'crawl-outage.log').read_text(),'Outage response unexpectedly completed')
         command(['up','-d','--wait','--wait-timeout','360','tor'],'pipeline-tor-return',390)
+        command(['run','--rm','--no-deps','--entrypoint','python3','crawler',
+                 '/workspace/test/m2/network_probe.py','--onion-ready',
+                 '--readiness-output','onion-readiness-pipeline.json'],
+                'pipeline-onion-ready',120)
+        result['evidence'].append('onion-readiness-pipeline.json')
+        readiness=json.loads((path/'onion-readiness-pipeline.json').read_text())
+        check(readiness.get('ready') is True and readiness.get('passed') is True,
+              'Tor returned but controlled onion service is not reachable')
         # Respect the stored retry date; do not reseed or rewrite failure metadata.
         check(row['refetch'] <= time.time()+90,'Outage retry exceeds the test-only one-minute policy')
         while time.time() < row['refetch']:

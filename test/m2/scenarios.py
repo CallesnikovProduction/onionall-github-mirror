@@ -54,14 +54,14 @@ def run(project, path):
         # Fresh Tor state with DisableNetwork prevents bootstrap by construction; confirm
         # actual bootstrap status over its authenticated local Unix socket before probing.
         code=command(compose+['run','-d','--no-deps','--name',unready,'tor','-f','/etc/tor/torrc.gateway',
-                              '--DataDirectory','/tmp/unbootstrapped','--ControlSocket','/tmp/control',
-                              '--CookieAuthFile','/tmp/cookie','--DisableNetwork','1'],'unbootstrapped-start')
+                              '--DataDirectory','/tmp/unbootstrapped','--ControlSocket','/tmp/unbootstrapped/control',
+                              '--CookieAuthFile','/tmp/unbootstrapped/cookie','--DisableNetwork','1'],'unbootstrapped-start')
         if code==0:
-            control="""import socket,time,pathlib,json
+            control="""import socket,time,pathlib,json,re
 for attempt in range(40):
  try:
-  s=socket.socket(socket.AF_UNIX);s.settimeout(2);s.connect('/tmp/control')
-  cookie=pathlib.Path('/tmp/cookie').read_bytes().hex()
+  s=socket.socket(socket.AF_UNIX);s.settimeout(2);s.connect('/tmp/unbootstrapped/control')
+  cookie=pathlib.Path('/tmp/unbootstrapped/cookie').read_bytes().hex()
   reader=s.makefile('rb')
   s.sendall(('AUTHENTICATE '+cookie+'\\r\\n').encode())
   if not reader.readline().startswith(b'250 '): raise SystemExit('Control authentication failed')
@@ -70,7 +70,8 @@ for attempt in range(40):
    lines.append(line.decode())
    if line.startswith(b'250 '):break
   response=''.join(lines);s.close()
-  print(response)
+  observed=re.search(r'PROGRESS=(\\d+)',response)
+  print(json.dumps({'observed_progress_percent':int(observed.group(1)) if observed else None}))
   if 'PROGRESS=100' in response or 'PROGRESS=' not in response:raise SystemExit('Fresh Tor unexpectedly bootstrapped')
   break
  except OSError:
@@ -126,7 +127,15 @@ else: raise SystemExit('Unbootstrapped Tor control unavailable')
         probe('tor_stopped')
         code=command(compose+['up','-d','--wait','--wait-timeout','360','tor'],'tor-return',390)
         if code==0:
-            probe('safe_retry_after_tor_return')
+            ready=command(compose+['run','--rm','--no-deps','--entrypoint','python3','crawler',
+                          '/workspace/test/m2/network_probe.py','--onion-ready',
+                          '--readiness-output','onion-readiness-scenarios.json'],
+                          'scenario-onion-ready',120)
+            if ready==0:
+                probe('safe_retry_after_tor_return')
+                results['safe_retry_after_tor_return']['evidence'] += ['scenario-onion-ready.log','onion-readiness-scenarios.json']
+            else:
+                results['safe_retry_after_tor_return']={'passed':False,'evidence':['scenario-onion-ready.log','onion-readiness-scenarios.json'],'blocker':'Tor bootstrap completed but controlled onion remains unavailable'}
         else:
             results['safe_retry_after_tor_return']={'passed':False,'evidence':['tor-return.log']}
     except (OSError,subprocess.TimeoutExpired) as error:
