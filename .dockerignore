@@ -1,0 +1,10 @@
+.git
+.runtime
+target
+.codex
+.entire
+.env
+.env.*
+*.key
+*.pem
+__pycache__

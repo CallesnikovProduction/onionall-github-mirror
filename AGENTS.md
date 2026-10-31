@@ -22,8 +22,17 @@ Gateway Tor bridges internal crawler/outbound; onion-service Tor bridges separat
 fixture/outbound. Generated keys remain in an ignored Docker volume. Core wire
 regressions use local SOCKS stubs and do not establish real Tor acceptance.
 Docker requires elevated execution in the agent session; an elevated docker info
-succeeded. Image build, real onion crawl and security matrix verification are
-in progress. Keep M2 verification false until corresponding runtime evidence
+succeeded. Pinned Tor image build passed. Fifteen JVM wire/policy tests and thirteen
+Python acceptance-gate tests pass. Full M1 Docker regression on the new JAR
+passed in `.runtime/m1/onionall-brawler-m1-f050361a4b55/` (minimum gap
+2.002163184s, all flags true, retained volume and cleanup). Native Linux runner
+`scripts/m2.sh` retains evidence under .runtime/m2 and includes actual crawler
+network/DNS probes, real Tor failure matrix, and Storm outage/persisted retry.
+M2 evidence writers use host UID/GID with dropped capabilities; M2 mounts only
+necessary inputs rather than the entire repository. Both Tor daemons in the
+first real test have stalled at bootstrap10%; full acceptance remains pending.
+The runner's startup bound is360s. Independent review tightened the gate so
+standalone protocol failure cannot substitute for persisted Storm outage/retry. Keep M2 verification false until corresponding runtime evidence
 passes. Do not change M0/M1 contracts or describe new Tor code as accepted M2.
 
 ## Linux M1 port — 2026-10-31

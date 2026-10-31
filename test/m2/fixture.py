@@ -1,6 +1,8 @@
 """Deterministic onion-only M2 fixture; never serves files or contacts remote hosts."""
 import argparse
 import json
+import socket
+import struct
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import threading
@@ -30,8 +32,10 @@ def response(path):
     if path in PAGES:
         body = '<!doctype html><html><head><title>M2 fixture</title></head><body>' + PAGES[path] + '</body></html>'
         return 200, 'text/html; charset=utf-8', body.encode(), None
-    if path == '/slow':
+    if path in ('/slow', '/outage'):
         time.sleep(15)
+        if path == '/outage':
+            return 200, 'text/html; charset=utf-8', b'<html><body><article>M2_OUTAGE_MARKER</article></body></html>', None
         return 200, 'text/plain', b'M2_SLOW_MARKER', None
     return 404, 'text/plain', b'Synthetic missing page', None
 
@@ -44,7 +48,14 @@ def make_server(address, log_path):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             started = time.monotonic_ns()
+            if self.path in ('/slow', '/outage'):
+                # Publish before sleeping so the outage test stops Tor only after
+                # an actual onion request has entered this controlled handler.
+                marker = log_path.parent / ('slow-started' if self.path == '/slow' else 'outage-started')
+                marker.write_text(json.dumps({'path': self.path, 'started_ns': started}), encoding='utf-8')
             if self.path == '/reset':
+                # Abort the TCP connection (RST), rather than a graceful EOF.
+                self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
                 self.connection.close()
                 status, body = 0, b''
             else:
