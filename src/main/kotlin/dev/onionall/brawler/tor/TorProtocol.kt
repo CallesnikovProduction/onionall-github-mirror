@@ -142,6 +142,11 @@ class TorProtocol : Protocol {
 
         policy = TorPolicy(conf)
 
+        // SimpleFetcherBolt 3.7.0 prefixes response metadata at the merge boundary.
+        // Without this setting its fallback is empty, allowing remote control-key collisions.
+        val metadataPrefix = conf[ProtocolResponse.PROTOCOL_MD_PREFIX_PARAM] as? String
+        require(!metadataPrefix.isNullOrBlank()) { "Require nonempty protocol.md.prefix" }
+
         val timeout =
             if (conf.containsKey("http.timeout"))
                 conf["http.timeout"]
@@ -279,8 +284,8 @@ class TorProtocol : Protocol {
      * 1. Проверяет метаданные запроса через [TorPolicy].
      * 2. Проверяет и нормализует целевой URL.
      * 3. Выполняет запрос через настроенный [OkHttpClient].
-     * 4. Копирует HTTP-заголовки ответа в Metadata.
-     * 5. Проверяет Location у ответов с кодом 3xx.
+     * 4. Копирует HTTP-заголовки ответа, исключая исходные Location.
+     * 5. Для 3xx, кроме 304, экспортирует единственный проверенный canonical Location.
      * 6. Присваивает категорию HTTP-ответу.
      * 7. Читает тело с ограничением по размеру.
      * 8. Возвращает ProtocolResponse.
@@ -299,16 +304,16 @@ class TorProtocol : Protocol {
      * @throws IOException при отклонении адреса,
      * сетевой ошибке или превышении лимита тела.
      *
-     * TODO(TPR-06): Проверить обработку HTTP-редиректов.
-     *  Убедиться, что Location не позволяет выйти за allowlist
-     *  и что downstream-компоненты не обходят эту проверку.
+     * TPR-06: Дубли, пустой или отсутствующий Location отклоняются для redirect.
+     *  Downstream получает только проверенный канонический target; 304 не требует Location.
      *
      * TODO(TPR-07): Проверить классификацию исключений.
      *  Сохранить диагностическую информацию и различать
      *  ошибки политики, таймауты, SOCKS и TLS.
      *
-     * TODO(TPR-08): Проверить обработку заголовков ответа,
-     *  включая дублирующиеся, крупные и управляющие значения.
+     * TPR-08: Непустой protocol.md.prefix обязателен при configure;
+     *  prefix добавляет SimpleFetcherBolt, а не этот протокол.
+     * TODO(TPR-08): Проверить ограничения размера заголовков на уровне OkHttp.
      */
     override fun getProtocolOutput(
         url: String,
@@ -329,19 +334,24 @@ class TorProtocol : Protocol {
                 .execute().use { response ->
                     val md = Metadata()
                     response.headers.forEach { (name,value) ->
-                        md.addValue(
-                            name.lowercase(),
-                            value
-                        )
+                        // OkHttp reads the last Location, StormCrawler reads the first.
+                        // Never export an unchecked representation (including on 304).
+                        if (!name.equals("Location", ignoreCase = true)) {
+                            md.addValue(name.lowercase(), value)
+                        }
                     }
 
-                    val location = response.header("Location")
-                    if (response.code in 300..399 && location != null) {
+                    if (response.code in 300..399 && response.code != 304) {
+                        val locations = response.headers.values("Location")
+                        if (locations.size != 1 || locations.single().isBlank()) {
+                            throw IOException("SCOPE_REJECTED")
+                        }
                         try {
-                            policy.normalize(URI(safe)
-                                .resolve(location)
+                            val target = policy.normalize(URI(safe)
+                                .resolve(locations.single())
                                 .toString()
                             )
+                            md.setValue("location", target)
                         } catch (e: IllegalArgumentException) {
                             throw IOException("SCOPE_REJECTED", e)
                         }
@@ -393,7 +403,7 @@ class TorProtocol : Protocol {
      * 3. Ищет действующие правила в локальном кеше.
      * 4. При отсутствии записи загружает `/robots.txt`.
      * 5. Требует HTTP-статус 200.
-     * 6. Разбирает правила через SimpleRobotRulesParser.
+     * 6. Отклоняет явно HTML-ответ, затем использует SimpleRobotRulesParser.
      * 7. Сохраняет результат в кеше.
      *
      * Применяется fail-closed подход:
@@ -408,12 +418,12 @@ class TorProtocol : Protocol {
      * @throws IOException если загрузка `robots.txt`
      * завершилась ошибкой или статус отличен от 200.
      *
-     * TODO(TPR-09): Проверить соответствие поведения
-     *  HTTP-статусов `robots.txt` требованиям проекта
-     *  и ожидаемой политике обхода.
+     * TPR-09: Строгая политика M2 принимает только HTTP 200.
      *
-     * TODO(TPR-10): Проверить ограничения размера,
-     *  Content-Type, кодировку и ошибки парсинга `robots.txt`.
+     * TPR-10: Размер ограничен транспортом, явно HTML отклоняется до parser.
+     *  Пустой robots и отсутствие подходящей UA-группы допускаются parser.
+     * TODO(TPR-10): Определить политику повреждённых кодировок/прочих ошибок parser.
+     *  crawler-commons 1.6 использует replacement decoding, а не строгий UTF-8.
      */
     @Synchronized
     override fun getRobotRules(url: String): BaseRobotRules {
@@ -433,9 +443,29 @@ class TorProtocol : Protocol {
 
         if (response.statusCode != 200) throw IOException("ROBOTS_UNAVAILABLE")
 
-        // TODO(TPR-15): Проверить выбор правил User-agent по RFC 9309.
-        //  Покрыть тестами точное совпадение, wildcard-группу
-        //  и отсутствие подходящей группы.
+        val content = response.content
+        // Match crawler-commons 1.6 BOM selection for HTML detection only.
+        // String decoding deliberately retains its replacement semantics.
+        val charset = if (content.size >= 2 && (
+                (content[0] == 0xff.toByte() && content[1] == 0xfe.toByte()) ||
+                (content[0] == 0xfe.toByte() && content[1] == 0xff.toByte())))
+            Charsets.UTF_16 else Charsets.UTF_8
+        val text = content.toString(charset).removePrefix("\uFEFF")
+        val htmlType = response.metadata.getValues("content-type")?.any {
+            it.substringBefore(';').trim().lowercase() in setOf("text/html", "application/xhtml+xml")
+        } == true
+        // Skip only document preamble, not robots directives. Iteration avoids a
+        // recursive regex repetition over attacker-controlled comment sequences.
+        val preamble = Regex("(?is)\\s+|<!--.*?-->|<\\?xml\\s.*?\\?>").toPattern().matcher(text)
+        var start = 0
+        while (preamble.region(start, text.length).lookingAt()) start = preamble.end()
+        val htmlDocument = Regex(
+            "(?is)\\A(?:<!doctype\\s+html(?:\\s|>)|<(?:html|head|body)(?:\\s|>))"
+        ).containsMatchIn(text.substring(start))
+        if (htmlType || htmlDocument) throw IOException("ROBOTS_UNAVAILABLE")
+
+        // TPR-15: Exact agent, wildcard and no matching group have local regressions.
+        // RFC-wide compliance remains the dependency's contract.
         val rules = SimpleRobotRulesParser()
             .parseContent(
                 "$base/robots.txt",

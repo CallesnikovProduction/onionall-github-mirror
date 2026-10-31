@@ -2,6 +2,8 @@ package dev.onionall.brawler.tor;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.io.IOException;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.storm.Config;
@@ -40,6 +42,7 @@ public class TorPolicyTest {
         config.put("http.timeout", 1000);
         config.put("http.content.limit", 65536);
         config.put("http.agent.name", "OnionallBrawlerMTwoTest");
+        config.put("protocol.md.prefix", "protocol.");
         return config;
     }
 
@@ -58,9 +61,27 @@ public class TorPolicyTest {
                 "http://[::1]/", "http://example.com/", "file:///etc/passwd", "ftp://" + host + "/",
                 "http://short.onion/", "http://" + "a".repeat(56) + ".onion/",
                 "http://" + onion(2) + "/", "http://user:password@" + host + "/",
-                "http://" + host + ":7071/", "http://" + host + ".evil.invalid/", "not a url")) {
-            assertThrows("URL accepted: " + url, Exception.class, () -> policy.normalize(url));
+                "http://" + host + ":7071/", "http://" + host + ".evil.invalid/", "not a url",
+                "http:" + host, "//" + host + "/", "http://" + host + "/%zz",
+                "http://" + host + "%2Fevil/", "http://" + host + ":080/")) {
+            assertThrows("URL accepted: " + url, IOException.class, () -> policy.normalize(url));
         }
+    }
+
+    @Test public void scopeFilterRejectsInvalidConfigurationAndKeepsScopeWithNullMetadata() throws Exception {
+        String host = onion(1), safe = "http://" + host + "/";
+        TorScopeFilter filter = new TorScopeFilter();
+        Config config = configuration(host, 9050);
+        filter.configure(config, JsonNodeFactory.instance.objectNode(), "TorScope");
+        assertEquals(safe, filter.filter(null, null, safe + "#fragment"));
+        assertNull(filter.filter(null, null, "http://localhost/"));
+        Metadata unsafe = new Metadata(); unsafe.setValue("http.proxy.skip", "true");
+        assertNull(filter.filter(null, unsafe, safe));
+        config.remove("tor.socks.host");
+        assertThrows(IllegalStateException.class, () -> new TorScopeFilter().configure(
+                config, JsonNodeFactory.instance.objectNode(), "TorScope"));
+        assertThrows(kotlin.UninitializedPropertyAccessException.class,
+                () -> new TorScopeFilter().filter(null, null, safe));
     }
 
     @Test public void configurationCannotSelectDirectOrIncompleteProxy() throws Exception {

@@ -8,6 +8,16 @@ Tor v3 has no global registry of onion services. Complete enumeration is not a r
 
 ## M2 implementation in progress — 2026-10-31
 
+M2 contract hardening on 2026-11-01 requires explicit nonblank
+`protocol.md.prefix` (StormCrawler 3.7.0's real key); generated M2 configs pin
+`protocol.` and persist `protocol.tor.category`. TorProtocol exports only a single
+policy-normalized redirect Location, rejects ambiguous/missing targets except
+304, and rejects clearly HTML robots before the existing parser. Empty robots
+and unmatched User-agent groups retain parser semantics; decoding remains
+lenient. JDK17 offline Maven test passes25 tests, Python M2 passes42 tests;
+these loopback/mocked checks do not establish DNS isolation or M2 acceptance.
+See docs/m2-hardening.md for commands and scope. No new commit is authorized.
+
 The user authorized M2 plus intermediate commits/pushes to the existing Entire
 origin. M0/M1 remain accepted and unchanged. M2 is BLOCKED, not accepted.
 The project is a single Maven module; new application code is Kotlin under

@@ -24,8 +24,9 @@ def prepare(run_dir):
     config = config.replace('OnionallBrawlerMOneTest', 'OnionallBrawlerMTwoTest')
     config = config.replace('http://fixture:8080/', f'http://{host}/')
     config = config.replace('urlfilters.config.file: "m1-urlfilters.json"', 'urlfilters.config.file: "m2-urlfilters.json"')
-    config = config.replace('    - fetch.exception', '    - fetch.exception\n    - tor.category')
+    config = config.replace('    - fetch.exception', '    - fetch.exception\n    - protocol.tor.category')
     config += '\n' + '\n'.join([
+        '  protocol.md.prefix: "protocol."',
         '  http.protocol.implementation: "dev.onionall.brawler.tor.TorProtocol"',
         '  https.protocol.implementation: "dev.onionall.brawler.tor.TorProtocol"',
         '  storm.log.dir: "/tmp/storm-logs"', '  storm.local.dir: "/tmp/storm-local"', '  dev.zookeeper.path: "/tmp/storm-zookeeper"',

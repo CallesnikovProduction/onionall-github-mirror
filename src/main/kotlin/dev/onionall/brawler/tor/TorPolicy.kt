@@ -235,9 +235,8 @@ class TorPolicy(
          * @return `true` при корректной структуре onion v3,
          * иначе `false`.
          *
-         * TODO(TP-02): Выделить Base32-декодирование
-         *  в отдельную функцию и проверить алгоритм
-         *  по независимым тестовым векторам.
+         * TODO(TP-02): Проверить алгоритм по независимым тестовым векторам.
+         *  Base32-декодирование уже выделено в decodeBase32.
          */
         @JvmStatic fun validOnion(host: String): Boolean {
             if (!host.matches(Regex("[a-z2-7]{56}\\.onion"))) return false

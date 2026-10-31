@@ -12,6 +12,7 @@ public final class TorPolicyProbe {
     public static void main(String[] args) throws Exception {
         String host = Files.readString(Path.of("/evidence/onion-hostname.txt")).trim();
         Config config = new Config();
+        config.put("protocol.md.prefix", "protocol.");
         config.put("tor.mode", "ONLY");
         config.put("tor.socks.host", "tor");
         config.put("tor.socks.port", 9050);

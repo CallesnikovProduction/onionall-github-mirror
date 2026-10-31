@@ -54,9 +54,163 @@ public class TorProtocolTest {
         try (SocksWire wire = new SocksWire(redirect("/a"))) {
             TorProtocol protocol = protocol(host, wire.port());
             try {
-                assertEquals(302, protocol.getProtocolOutput("http://" + host + "/", new Metadata()).getStatusCode());
+                ProtocolResponse response = protocol.getProtocolOutput("http://" + host + "/dir/start", new Metadata());
+                assertEquals(302, response.getStatusCode());
+                assertArrayEquals(new String[]{"http://" + host + "/a"}, response.getMetadata().getValues("location"));
                 assertEquals(1, wire.await(1).size());
                 wire.assertNoFurtherConnection();
+            } finally { protocol.cleanup(); }
+        }
+    }
+
+    @Test public void ambiguousMissingAndBlankRedirectLocationsArePolicyFailures() throws Exception {
+        String host = TorPolicyTest.onion(5);
+        for (String headers : List.of("Location: /safe\r\nLocation: http://example.com/\r\n",
+                "Location: http://example.com/\r\nlOcAtIoN: /safe\r\n",
+                "Location: /safe\r\nLocation: /safe\r\n", "", "Location:   \r\n")) {
+            try (SocksWire wire = new SocksWire("HTTP/1.1 302 Found\r\n" + headers
+                    + "Content-Length: 0\r\nConnection: close\r\n\r\n")) {
+                TorProtocol protocol = protocol(host, wire.port());
+                try {
+                    IOException error = assertThrows(IOException.class,
+                            () -> protocol.getProtocolOutput("http://" + host + "/", new Metadata()));
+                    assertEquals("SCOPE_REJECTED", error.getMessage());
+                    wire.await(1); wire.assertNoFurtherConnection();
+                } finally { protocol.cleanup(); }
+            }
+        }
+    }
+
+    @Test public void relativeRedirectIsCanonicalizedAndNotModifiedNeedsNoLocation() throws Exception {
+        String host = TorPolicyTest.onion(5);
+        try (SocksWire wire = new SocksWire(redirect("../next#discard"), reply(304, ""),
+                "HTTP/1.1 304 Not Modified\r\nLocation: http://example.com/\r\nConnection: close\r\n\r\n")) {
+            TorProtocol protocol = protocol(host, wire.port());
+            try {
+                ProtocolResponse redirect = protocol.getProtocolOutput("http://" + host + "/dir/start", new Metadata());
+                assertArrayEquals(new String[]{"http://" + host + "/next"}, redirect.getMetadata().getValues("location"));
+                for (int index = 0; index < 2; index++) {
+                    ProtocolResponse unchanged = protocol.getProtocolOutput("http://" + host + "/", new Metadata());
+                    assertEquals(304, unchanged.getStatusCode());
+                    assertNull(unchanged.getMetadata().getFirstValue("location"));
+                }
+                wire.await(3); wire.assertNoFurtherConnection();
+            } finally { protocol.cleanup(); }
+        }
+    }
+
+    @Test public void metadataPrefixIsMandatoryAndRemoteHeadersCannotOverwriteControlKeys() throws Exception {
+        String host = TorPolicyTest.onion(5);
+        for (Object prefix : Arrays.asList(null, "", "  ", 1)) {
+            Config config = TorPolicyTest.configuration(host, 9050);
+            if (prefix == null) config.remove("protocol.md.prefix");
+            else config.put("protocol.md.prefix", prefix);
+            TorProtocol protocol = new TorProtocol();
+            try { assertThrows(IllegalArgumentException.class, () -> protocol.configure(config)); }
+            finally { protocol.cleanup(); }
+        }
+        String[] keys = {"scheduler.delay.mins", "fetch.error.count", "status.store.as.is.with.nextfetchdate", "isSitemap", "isFeed"};
+        StringBuilder headers = new StringBuilder();
+        for (String key : keys) headers.append(key).append(": hostile\r\n");
+        try (SocksWire wire = new SocksWire("HTTP/1.1 200 OK\r\n" + headers
+                + "Content-Length: 0\r\nConnection: close\r\n\r\n")) {
+            TorProtocol protocol = protocol(host, wire.port());
+            try {
+                Metadata response = protocol.getProtocolOutput("http://" + host + "/", new Metadata()).getMetadata();
+                Metadata combined = new Metadata();
+                for (String key : keys) combined.setValue(key, "trusted");
+                // The same Metadata operation used by SimpleFetcherBolt 3.7.0.
+                combined.putAll(response, (String) TorPolicyTest.configuration(host, wire.port()).get("protocol.md.prefix"));
+                for (String key : keys) {
+                    assertEquals("trusted", combined.getFirstValue(key));
+                    assertEquals("hostile", combined.getFirstValue("protocol." + key));
+                    assertNull(response.getFirstValue("protocol." + key));
+                }
+                wire.await(1); wire.assertNoFurtherConnection();
+            } finally { protocol.cleanup(); }
+        }
+    }
+
+    @Test public void htmlRobotsIsRejectedInsteadOfCachedAsAllowAll() throws Exception {
+        String host = TorPolicyTest.onion(9);
+        for (String response : List.of(reply(200, "<!DOCTYPE html><html><body>error</body></html>"),
+                reply(200, "<!-- unavailable -->\n<HTML lang='en'><body>error</body></HTML>"),
+                reply(200, "<?xml version='1.0'?>\n<!-- unavailable --><html><body>error</body></html>"),
+                reply(200, "<!-- preamble -->\n".repeat(2000) + "<html>error</html>"),
+                reply(200, "error").replace("text/plain", "text/html; charset=UTF-8"),
+                reply(200, "error").replace("text/plain", "application/xhtml+xml"))) {
+            try (SocksWire wire = new SocksWire(response, reply(200, "User-agent: *\nDisallow: /blocked\n"))) {
+                TorProtocol protocol = protocol(host, wire.port());
+                try {
+                    assertEquals("ROBOTS_UNAVAILABLE", assertThrows(IOException.class,
+                            () -> protocol.getRobotRules("http://" + host + "/")).getMessage());
+                    assertFalse(protocol.getRobotRules("http://" + host + "/blocked").isAllowed("http://" + host + "/blocked"));
+                    wire.await(2); wire.assertNoFurtherConnection();
+                } finally { protocol.cleanup(); }
+            }
+        }
+    }
+
+    @Test public void emptyUnmatchedWildcardAndSpecificRobotsKeepParserSemantics() throws Exception {
+        String host = TorPolicyTest.onion(9), base = "http://" + host;
+        for (String body : List.of("", "# <html> is a comment, not a document\n", "User-agent: AnotherCrawler\nDisallow: /\n",
+                "User-agent: *\nDisallow: /blocked\nAllow: /blocked/open\n",
+                "User-agent: OnionallBrawlerMTwoTest\nDisallow: /blocked\nAllow: /blocked/open\n")) {
+            try (SocksWire wire = new SocksWire(reply(200, body))) {
+                TorProtocol protocol = protocol(host, wire.port());
+                try {
+                    var rules = protocol.getRobotRules(base + "/");
+                    assertTrue(rules.isAllowed(base + "/blocked/open"));
+                    assertEquals(!body.contains("Allow:"), rules.isAllowed(base + "/blocked"));
+                    assertTrue(rules.isAllowed(base + "/ordinary"));
+                    protocol.getRobotRules(base + "/other"); // accepted rules are cached
+                    wire.await(1); wire.assertNoFurtherConnection();
+                } finally { protocol.cleanup(); }
+            }
+        }
+    }
+
+    @Test public void oversizedAndNon200RobotsAreControlledFailures() throws Exception {
+        String host = TorPolicyTest.onion(9);
+        for (String response : List.of(reply(200, "x".repeat(65537)), reply(404, ""), reply(503, ""),
+                reply(304, ""), redirect("/robots.txt"))) {
+            try (SocksWire wire = new SocksWire(response)) {
+                TorProtocol protocol = protocol(host, wire.port());
+                try {
+                    assertEquals("ROBOTS_UNAVAILABLE", assertThrows(IOException.class,
+                            () -> protocol.getRobotRules("http://" + host + "/")).getMessage());
+                    wire.await(1); wire.assertNoFurtherConnection();
+                } finally { protocol.cleanup(); }
+            }
+        }
+    }
+
+    @Test public void robotsBomAndReplacementDecodingMatchCrawlerCommons16() throws Exception {
+        String host = TorPolicyTest.onion(9), base = "http://" + host;
+        for (var charset : List.of(StandardCharsets.UTF_8, StandardCharsets.UTF_16LE, StandardCharsets.UTF_16BE)) {
+            for (boolean html : List.of(false, true)) {
+                String body = "\uFEFF" + (html ? "<html lang='en'><body>error</body></html>"
+                        : "User-agent: *\nDisallow: /blocked\n");
+                try (SocksWire wire = new SocksWire(new byte[][]{replyBytes(body.getBytes(charset))})) {
+                    TorProtocol protocol = protocol(host, wire.port());
+                    try {
+                        if (html) assertEquals("ROBOTS_UNAVAILABLE", assertThrows(IOException.class,
+                                () -> protocol.getRobotRules(base + "/")).getMessage());
+                        else assertFalse(protocol.getRobotRules(base + "/").isAllowed(base + "/blocked"));
+                        wire.await(1); wire.assertNoFurtherConnection();
+                    } finally { protocol.cleanup(); }
+                }
+            }
+        }
+        byte[] malformed = "# ?\nUser-agent: *\nDisallow: /blocked\n".getBytes(StandardCharsets.UTF_8);
+        malformed[2] = (byte) 0xc3; // incomplete UTF-8 sequence followed by LF
+        assertTrue(new String(malformed, StandardCharsets.UTF_8).contains("\uFFFD"));
+        try (SocksWire wire = new SocksWire(new byte[][]{replyBytes(malformed)})) {
+            TorProtocol protocol = protocol(host, wire.port());
+            try {
+                // The pinned parser replaces malformed input; it does not report a decoding error.
+                assertFalse(protocol.getRobotRules(base + "/").isAllowed(base + "/blocked"));
+                wire.await(1); wire.assertNoFurtherConnection();
             } finally { protocol.cleanup(); }
         }
     }
@@ -236,6 +390,13 @@ public class TorProtocolTest {
     private static String redirect(String location) {
         return "HTTP/1.1 302 Found\r\nLocation: " + location + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     }
+    private static byte[] replyBytes(byte[] body) throws IOException {
+        ByteArrayOutputStream response = new ByteArrayOutputStream();
+        response.write(("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: "
+                + body.length + "\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+        response.write(body);
+        return response.toByteArray();
+    }
     private static final class Attempt {
         int type, port; String host, request;
     }
@@ -246,8 +407,11 @@ public class TorProtocolTest {
         final BlockingQueue<Throwable> failures = new LinkedBlockingQueue<>();
         final List<Attempt> observed = new ArrayList<>();
         volatile boolean closed;
-        final String[] replies;
+        final byte[][] replies;
         SocksWire(String... replies) throws IOException {
+            this(Arrays.stream(replies).map(value -> value.getBytes(StandardCharsets.UTF_8)).toArray(byte[][]::new));
+        }
+        SocksWire(byte[][] replies) throws IOException {
             this.replies = replies;
             server = new ServerSocket(0, 10, InetAddress.getLoopbackAddress());
             server.setSoTimeout(100);
@@ -280,10 +444,10 @@ public class TorProtocolTest {
                     }
                     attempt.request = request.toString(StandardCharsets.US_ASCII); attempts.add(attempt);
                     if (index >= replies.length) throw new IOException("Unexpected extra connection");
-                    String response = replies[index++];
-                    if ("__RESET__".equals(response)) { socket.setSoLinger(true, 0); continue; }
-                    if ("__STALL__".equals(response)) { Thread.sleep(1800); continue; }
-                    out.write(response.getBytes(StandardCharsets.UTF_8)); out.flush();
+                    byte[] response = replies[index++];
+                    if (Arrays.equals("__RESET__".getBytes(StandardCharsets.US_ASCII), response)) { socket.setSoLinger(true, 0); continue; }
+                    if (Arrays.equals("__STALL__".getBytes(StandardCharsets.US_ASCII), response)) { Thread.sleep(1800); continue; }
+                    out.write(response); out.flush();
                 } catch (SocketTimeoutException timeout) {
                     // Poll only to allow bounded teardown.
                 } catch (Throwable failure) { if (!closed) failures.add(failure); }

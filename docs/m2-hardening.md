@@ -3,6 +3,51 @@
 This audit accompanies bridge integration. No new commit is authorized by the
 latest audit request; preserve the working changes for review.
 
+## Contract security patch — 2026-11-01
+
+- TPR-06: OkHttp reads the last Location while StormCrawler reads the first.
+  TorProtocol now removes raw Location headers, requires exactly one nonblank
+  target for 3xx except304, resolves relative targets and exports only the result
+  of TorPolicy.normalize. Rejections remain SCOPE_REJECTED; automatic redirects
+  stay disabled. A 304 requires no Location and exports none.
+- TPR-08: the actual StormCrawler setting is `protocol.md.prefix`, not
+  `protocol.metadata.prefix`. TorProtocol requires a nonblank String; generated
+  normal/outage M2 configurations pin `protocol.`. SimpleFetcherBolt adds the
+  prefix when merging; TorProtocol does not. The persistence selector now uses
+  `protocol.tor.category`. Regression tests exercise Metadata.putAll with hostile
+  service-key headers and verify that existing control values survive.
+- TPR-10: clearly HTML MIME types or HTML document prefixes (including BOM,
+  comments and XML prolog) fail with ROBOTS_UNAVAILABLE before parsing/caching.
+  Empty bodies, exact/wildcard agents and unmatched groups keep crawler-commons
+  1.6 semantics. No replacement robots grammar or strict UTF-8 decoder was added.
+  Tests confirm UTF-8/UTF-16 BOM handling and acceptance of replacement-decoded
+  malformed UTF-8 in a comment. Other malformed-content policy remains open.
+- TorPolicy/TorScopeFilter: expanded negative URI tests assert IOException;
+  filter tests confirm fail-fast missing configuration, rejection with null
+  metadata and propagation of pre-configure initialization errors. No additional
+  proven runtime defect required changes to normalization, Base32 or lifecycle.
+  The stale Base32 extraction TODO was corrected; independent vectors remain open.
+
+Verification actually executed on OpenJDK17:
+
+```sh
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk mvn -o -Dmaven.repo.local=.runtime/maven-linux-repository -Dkotlin.compiler.daemon=false test
+python3 -m unittest discover -s test/m2 -p 'test_*.py'
+git diff --check
+```
+
+Results: Maven BUILD SUCCESS, 25 tests, zero failures/errors/skips; Python42
+tests pass. Both standalone M2 Java probes compile with javac --release17
+against the current classes/dependencies; they were not executed. Before the
+fix, the focused suite reproduced five failures across redirect, prefix and
+HTML contracts. Tests use loopback SOCKS fixtures, not Tor. Sandbox denied local
+sockets; the successful runs used authorized loopback socket access. Kotlin
+daemon was disabled because its user-level marker directory is read-only here.
+Existing compiler warnings (missing src/main/java and an unnecessary safe call)
+remain. No external requests, Docker, Tor or dependency upgrades were performed.
+Full M2 remains BLOCKED; these tests do not prove absence of DNS leaks. No commit
+or push was made.
+
 ## Machine-specific Codex notification command
 
 The tracked .codex/config.toml contained an absolute Windows runtime executable

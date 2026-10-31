@@ -28,6 +28,7 @@ public final class TorScenarioProbe {
         String host=Files.readString(Path.of("/evidence/onion-hostname.txt")).trim();
         String unreachable=randomOnion();
         Config config=new Config();
+        config.put("protocol.md.prefix", "protocol.");
         config.put("tor.mode","ONLY");config.put("tor.socks.host",args.length>1?args[1]:"tor");config.put("tor.socks.port",9050);
         config.put("tor.allowed.hosts",List.of(host,unreachable));config.put("http.timeout",10000);config.put("http.content.limit",65536);
         config.put("http.agent.name","OnionallBrawlerMTwoPolicy");
@@ -53,7 +54,7 @@ public final class TorScenarioProbe {
         try {
             protocol.configure(config);
             var response=protocol.getProtocolOutput("http://"+host+path,new Metadata());
-            boolean passed=successExpected && (scenario.equals("redirect_loop") ? response.getStatusCode()==302 && "/loop-b".equals(response.getMetadata().getFirstValue("location")) : response.getStatusCode()==200 && "ready".equals(new String(response.getContent(),StandardCharsets.UTF_8)));
+            boolean passed=successExpected && (scenario.equals("redirect_loop") ? response.getStatusCode()==302 && ("http://"+host+"/loop-b").equals(response.getMetadata().getFirstValue("location")) : response.getStatusCode()==200 && "ready".equals(new String(response.getContent(),StandardCharsets.UTF_8)));
             result.put("passed",passed);result.put("http_status",response.getStatusCode());
             if(scenario.equals("redirect_loop")) result.put("location",response.getMetadata().getFirstValue("location"));
         } catch(Exception error) {
