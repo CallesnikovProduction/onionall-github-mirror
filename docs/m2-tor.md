@@ -148,3 +148,66 @@ performed. Docker tags and non-Tor Debian packages are not digest/snapshot locke
 Detailed reports stay ignored at `.runtime/m2/dependency-review/`: review.md,
 tree.txt, shaded.json and kotlin-origin.json. New M2 TLS uses the JDK/OkHttp
 standard trust and hostname checks; trust-all configuration is rejected.
+
+## Recovery diagnostics — 2026-10-31
+
+No architecture/Kotlin/dependency changes. Evidence: `.runtime/m2/recovery/`.
+Original M2 relay TLS EOF/timeouts were rechecked against bounded comparisons:
+
+- Pinned Tor0.4.9.11 on a normal Docker outbound bridge: bootstrap0/5/10/14,
+  no100 within95s; relay TLS_ERROR/EOF. No internal crawler network involved.
+- Native host Tor0.4.9.14/OpenSSL3.6.5 with a clean regular torrc and isolated
+  data directory: bootstrap0/5/10, no100 within75s. Initial host attempts reading
+  installed config/default User and /dev/null failed configuration validation;
+  only the clean regular-file run is used for the comparison.
+- Container TCP reaches tested relay endpoints96.9.98.90:443 and128.31.0.39:9201.
+  Standard Python TLS rejects their non-public certificate chains, as expected
+  for Tor relay certificates; separate diagnostic certificate retrieval shows
+  random-name relay-style issuers. This is not proof of Tor link authentication
+  or evidence that certificate validation should be disabled in the crawler.
+- Container HTTPS example.com verifies successfully with default trust.
+- Host NTP active, system clock synchronized; UTC/container timestamps agree.
+- Full host nftables inspection was unavailable: netlink permission denied and
+  sudo requires a password. No firewall/security settings were changed.
+
+Strongest supported diagnosis: incomplete Tor link/bootstrap connectivity affects
+both host and container, across Tor/OpenSSL versions. M2 Compose-only networking,
+blanket TCP denial and obvious clock skew are not supported explanations. A
+protocol-selective host/network restriction is plausible, but the exact censor,
+firewall rule or upstream actor is NOT established. General TCP/TLS success is
+not Tor bootstrap success. M2 remains BLOCKED; no full-stack retry was made.
+
+### Lightweight preflight
+
+The Bash runner now invokes a real Tor-only preflight before Maven and the full
+stack. It uses the existing pinned image, no host mounts or exposed listeners,
+a temporary data directory, a90s default deadline and unique container cleanup.
+Only observed bootstrap100 permits continuation; this remains a necessary rather
+than sufficient M2 gate. Result/logs live under each run's preflight directory.
+The45s diagnostic invocation returned ready=false/progress10 and removed its
+container. Sixteen M2 Python tests and Bash syntax/diff checks pass; Maven was
+not rebuilt because no JVM source changed.
+
+On a fresh host first build the existing image, then run preflight independently:
+
+```sh
+docker build -f docker/m2/Dockerfile -t onionall-brawler-tor:0.4.9.11-deb12u1 .
+python3 -B test/m2/tor_preflight.py .runtime/m2/connectivity-preflight
+```
+
+Only after preflight succeeds run `bash scripts/m2.sh`. Do not repeatedly start
+360s full-stack waits while preflight is failing. Diagnostic logs and temporary
+native Tor data remain ignored; no runtime data is committed.
+
+### Optional bridges
+
+Tor documents bridges as a potential remedy for failed directory TLS handshakes:
+https://support.torproject.org/tor-browser/encountering-issues/reading-tor-logs/
+An obfs4/lyrebird client transport is a reasonable next controlled experiment,
+not a verified fix. The current image does not include that transport. A proper
+opt-in needs a pinned client package and private bridge configuration available
+to BOTH Tor daemons, tested first through the same connectivity gate. Obtain
+bridge lines through Tor's official channels; keep them in ignored restricted
+runtime files/secrets, never source/config examples or command-line logs.
+No bridge endpoint/credential was collected, embedded or enabled in this change;
+no implicit fallback, TLS relaxation or crawler egress change was introduced.

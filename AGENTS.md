@@ -183,3 +183,16 @@ M0 is accepted based on the host-run evidence described above and in docs/m0-bas
 ## Current boundary
 
 M0 and M1 are accepted. M2 is now authorized and in progress; acceptance is pending. Repeat M1 on Linux with `bash scripts/m1.sh` or on Windows with `./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.
+
+## M2 recovery preflight — 2026-10-31
+
+Recovery remains BLOCKED. Bounded clean native Tor75s and outbound-container
+Tor95s both fail to finish bootstrap (host10%, container14%). TCP to sampled
+relay ports succeeds, normal HTTPS verifies, host NTP is synchronized. Exact
+host/upstream filtering cause is unproven; firewall inspection lacked privileges.
+No Kotlin, networking policy or TLS trust changes were made. scripts/m2.sh now
+runs test/m2/tor_preflight.py before Maven/full stack: existing pinned image,
+no ports/mounts, temporary state,90s bound, bootstrap100 gate and JSON cleanup
+result. Build image once if missing. Sixteen Python tests pass; JVM unchanged,
+no Maven rebuild. Evidence remains ignored under .runtime/m2/recovery/.
+See docs/m2-tor.md for findings and the optional private-bridge investigation.

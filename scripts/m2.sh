@@ -60,6 +60,8 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 docker info > "$run_dir/docker-info.log" 2>&1 || { echo 'Docker API unavailable; run bash scripts/m2.sh in a normal host terminal.' >&2; exit 1; }
+# Check actual Tor connectivity before Maven/image work or the full stack.
+"$python" -B test/m2/tor_preflight.py "$run_dir/preflight"
 maven=(mvn -B)
 if [[ -n ${M2_MAVEN_REPOSITORY:-} ]]; then
     maven+=("-Dmaven.repo.local=$M2_MAVEN_REPOSITORY")
