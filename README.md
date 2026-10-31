@@ -18,7 +18,7 @@ Verified on Windows 11 on 2026-10-30:
 
 **M0 is complete for the empty-frontier local baseline.** The agent still cannot access Docker Engine directly; runtime evidence comes from the user's host run and the reviewed logs, not an agent rerun. Container cleanup is user-reported; image digests were not captured. See [the verification record and warning assessment](docs/m0-baseline.md).
 
-**Tor transport is not configured.** Do not inject onion URLs or begin a real crawl yet. DNS, redirects and fail-closed verification remain M2 work. Existing URL filters alone are not a complete network boundary.
+**Tor transport is not configured in the default M0/M1 topology.** Do not inject onion URLs or begin a real crawl yet. DNS, redirects and fail-closed verification remain M2 work. Existing URL filters alone are not a complete network boundary.
 
 ## Build
 
@@ -110,6 +110,17 @@ The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/
 No `seeds.txt` is supplied or needed for M0. Future local seeds belong in ignored `seeds.local.txt`. Do not commit datasets or credentials. Define content handling, retention and deletion policy before persisting crawled documents.
 
 Architecture, limitations and acceptance criteria: [AGENTS.md](AGENTS.md).
+
+## M2: Tor transport work in progress
+
+M2 now has a Kotlin Tor-only protocol adapter and a separate isolated Compose
+stack with a real Tor gateway and controlled onion service. **M2 is BLOCKED:**
+the real Docker attempt stopped at Tor bootstrap 10% with relay TLS handshake
+failures and timed out after 360 seconds. Cleanup passed; m2_verified=false.
+No successful onion crawl or M2 persistence/outage acceptance is claimed. M0/M1 behavior and both Windows/Linux M1 runners remain supported.
+Build with `mvn -B clean verify`, then use `bash scripts/m2.sh` on Linux.
+See [M2 operations and evidence](docs/m2-tor.md) and
+[the transport ADR](docs/adr/0001-tor-only-transport.md).
 
 ## Upstream references
 

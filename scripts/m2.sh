@@ -46,6 +46,7 @@ path, code, line = sys.argv[1:]
 state = dict(exit_code=int(code), failed_line=int(line))
 (pathlib.Path(path)/'runner-state.json').write_text(json.dumps(state), encoding='utf-8')
 PY
+    "$python" -B test/m2/bootstrap_evidence.py "$run_dir"
     "$python" -B test/m2/verify.py "$run_dir" > "$run_dir/verification.log" 2>&1
     local verification_code=$?
     cat "$run_dir/verification.log"

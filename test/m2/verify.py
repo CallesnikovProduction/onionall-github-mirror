@@ -19,6 +19,11 @@ def verify(path):
         result['evidence'].append('runner-state.json')
         if state.get('exit_code'):
             result['blockers'].append('Runner exited nonzero at line ' + str(state.get('failed_line')) + '; inspect docker-info.log and the stage logs')
+    if (path/'tor-readiness.json').exists():
+        readiness=json.loads((path/'tor-readiness.json').read_text())
+        result['evidence'].append('tor-readiness.json')
+        if not readiness.get('bootstrap_complete'):
+            result['blockers'].append('Tor bootstrap incomplete: ' + str(readiness.get('observed_progress_percent')) + '; inspect services.log/startup.log')
     def load(name):
         return json.loads((path / name).read_text(encoding='utf-8-sig'))
     def check(condition, message):

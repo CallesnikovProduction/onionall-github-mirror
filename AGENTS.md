@@ -9,7 +9,7 @@ Tor v3 has no global registry of onion services. Complete enumeration is not a r
 ## M2 implementation in progress — 2026-10-31
 
 The user authorized M2 plus intermediate commits/pushes to the existing Entire
-origin. M0/M1 remain accepted and unchanged. M2 is not accepted yet.
+origin. M0/M1 remain accepted and unchanged. M2 is BLOCKED, not accepted.
 The project is a single Maven module; new application code is Kotlin under
 src/main/kotlin/dev/onionall/brawler/tor. TorPolicy enforces v3 checksum/scope and
 rejects metadata proxy/header overrides; TorProtocol implements StormCrawler's
@@ -29,11 +29,28 @@ passed in `.runtime/m1/onionall-brawler-m1-f050361a4b55/` (minimum gap
 `scripts/m2.sh` retains evidence under .runtime/m2 and includes actual crawler
 network/DNS probes, real Tor failure matrix, and Storm outage/persisted retry.
 M2 evidence writers use host UID/GID with dropped capabilities; M2 mounts only
-necessary inputs rather than the entire repository. Both Tor daemons in the
-first real test have stalled at bootstrap10%; full acceptance remains pending.
-The runner's startup bound is360s. Independent review tightened the gate so
-standalone protocol failure cannot substitute for persisted Storm outage/retry. Keep M2 verification false until corresponding runtime evidence
-passes. Do not change M0/M1 contracts or describe new Tor code as accepted M2.
+necessary inputs rather than the entire repository. Both Tor daemons in real test
+`.runtime/m2/onionall-brawler-m2-cbb947ba4633/` remained at bootstrap 10% until
+the 360-second startup timeout. Logs show relay TLS handshake EOF/timeouts.
+Cleanup removed containers/networks and retained volumes; verification.json is
+m2_verified=false. Real onion crawling and outage/retry remain unverified.
+An actual crawler namespace preflight denied direct internet, fixture DNS and
+local onion DNS while permitting gateway SOCKS; this alone is not M2 acceptance. Independent review tightened the gate so
+standalone protocol failure cannot substitute for persisted Storm outage/retry.
+Keep M2 verification false until corresponding runtime evidence passes. Do not change M0/M1 contracts or describe new Tor code as accepted M2.
+
+## M2 verification and commit checkpoints
+
+- 9b5938d: Kotlin fixed SOCKS transport/policy/ADR, 15 JVM tests pass; pushed.
+- 1b70246: isolated Tor Compose and onion fixture; pinned image build passes; pushed.
+- 0c8fed8: Bash integration harness, actual-network and outage-persistence tests,
+  UID/mount corrections; 13 verifier regressions pass; pushed.
+- Final diagnostic/documentation commit records BLOCKED, never M2 completion.
+
+Dependency review is the final delivery check. Runtime versions and shaded
+classes are inspected separately from Maven's declared graph; preserve the M1
+baseline rather than automatically upgrading transitive dependencies. See
+docs/m2-tor.md for observed dependency risks and current run evidence.
 
 ## Linux M1 port — 2026-10-31
 
@@ -64,7 +81,7 @@ See docs/m1-controlled.md for the verification record.
 
 M1 is accepted on 2026-10-31 from the user-run Docker evidence `.runtime/m1/onionall-brawler-m1-df35366e0994/`, independently rechecked by the agent's offline verifier. All assertions, crawl evidence and both process exits pass; six frontier records persist across graceful recreation, pending work resumes, HTTP 404 is FETCH_ERROR, robots/deduplication/scope pass and minimum document gap is 2.00265402s. Both crawler logs contain zero ERROR/FATAL and 59 WARNs total: 12 unavailable cgroup metrics, two ZooKeeper defaults and 45 shutdown waits, all resolved. Backend logs have no WARN/ERROR. result.json records container removal and retained volume. Docker Engine was not rerun by the agent; evidence is host-run. M0 is unchanged. Tor, search/OpenSearch, crash recovery, distributed deployment and Tika document parsing are not verified. See docs/m1-controlled.md.
 
-This is a bootstrap-stage project generated from the Apache StormCrawler 3.7.0 Maven archetype, not yet an onion search engine. The repository contains a Flux topology and configuration, not application-specific Java or Kotlin source code. The topology declares URLFrontier input and status updates, fetching, sitemap/feed and HTML parsing, optional Tika parsing, and `StdOutIndexer` output. On 2026-10-30, Java 17.0.12 / Maven 3.9.16 built the shaded JAR successfully offline; Flux dry-run constructed one spout, nine bolts and 15 streams. The user then ran scripts/m0.ps1 on the Windows host. Reviewed service/console logs confirm all nine bolts prepared (including Tika configuration loading), the spout opened/activated, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on orchestrated SIGTERM (143); Compose container/network removal is user-reported. M0 is accepted for this empty-frontier local baseline. Actual fetching, document parsing, status writes, durable recovery and search remain unverified. `StdOutIndexer` is not a searchable index. See `docs/m0-baseline.md` for evidence, hashes, warning assessment and limits.
+This is a bootstrap-stage project generated from the Apache StormCrawler 3.7.0 Maven archetype, not yet an onion search engine. The repository contains a Flux topology and configuration, plus a new Kotlin M2 transport adapter; it has no search/domain application implementation. The topology declares URLFrontier input and status updates, fetching, sitemap/feed and HTML parsing, optional Tika parsing, and `StdOutIndexer` output. On 2026-10-30, Java 17.0.12 / Maven 3.9.16 built the shaded JAR successfully offline; Flux dry-run constructed one spout, nine bolts and 15 streams. The user then ran scripts/m0.ps1 on the Windows host. Reviewed service/console logs confirm all nine bolts prepared (including Tika configuration loading), the spout opened/activated, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on orchestrated SIGTERM (143); Compose container/network removal is user-reported. M0 is accepted for this empty-frontier local baseline. Actual fetching, document parsing, status writes, durable recovery and search remain unverified. `StdOutIndexer` is not a searchable index. See `docs/m0-baseline.md` for evidence, hashes, warning assessment and limits.
 
 There is no configured Tor transport or fail-closed guarantee, onion v3 validation or autonomous cross-service discovery, search API, desktop interface, graph storage or AI integration. A standalone M1 test harness now exists under test/m1, with Python verifier/fixture tests and Java gRPC/filter probes; it is not wired into Maven test. Full controlled Docker runs are accepted on Windows and Omarchy Linux; this establishes only the synthetic M1 crawl and graceful recreation contract.
 
@@ -77,7 +94,7 @@ The user reports that the initial Maven build succeeded, Entire is enabled, Code
 - `pom.xml` — Maven project `dev.onionall.brawler:onionall-brawler:0.1.0-SNAPSHOT`, Java source/target 17 and shaded JAR configuration.
 - `crawler.flux` — Storm Flux topology, component parallelism and stream wiring; loads StormCrawler defaults and `crawler-conf.yaml`.
 - `crawler-conf.yaml` — fetcher, URLFrontier, parser, scheduling and metrics settings.
-- `src/main/resources/` — URL, regex, parse and JSoup filter configuration. No application source files are currently present.
+- `src/main/resources/` — URL, regex, parse and JSoup filter configuration. M2 Kotlin transport lives under src/main/kotlin; these resource files remain shared.
 - `README.md` - project status, build and empty-frontier runtime instructions.
 - `compose.m0.yaml` - host-verified two-container empty-frontier M0 runtime; ephemeral RocksDB, internal network, no published ports.
 - `scripts/build.ps1` - verified Windows build helper; supports JDK selection, IntelliJ Maven discovery and offline cache.
