@@ -6,6 +6,26 @@ Onionall Brawler is an open-source-oriented, JVM-first project to build an indep
 
 Tor v3 has no global registry of onion services. Complete enumeration is not a realistic guarantee. Measure discovery and coverage of known, permitted sources instead of claiming comprehensive coverage.
 
+## M2 implementation in progress — 2026-10-31
+
+The user authorized M2 plus intermediate commits/pushes to the existing Entire
+origin. M0/M1 remain accepted and unchanged. M2 is not accepted yet.
+The project is a single Maven module; new application code is Kotlin under
+src/main/kotlin/dev/onionall/brawler/tor. TorPolicy enforces v3 checksum/scope and
+rejects metadata proxy/header overrides; TorProtocol implements StormCrawler's
+Protocol interface with fixed SOCKS5, strict TLS, no automatic redirects/retries,
+bounded bodies/deadlines and fail-closed robots. TorScopeFilter uses the same
+policy before discovery scheduling. See docs/adr/0001-tor-only-transport.md.
+
+compose.m2.yaml isolates crawler/frontier from fixture and direct outbound access.
+Gateway Tor bridges internal crawler/outbound; onion-service Tor bridges separate
+fixture/outbound. Generated keys remain in an ignored Docker volume. Core wire
+regressions use local SOCKS stubs and do not establish real Tor acceptance.
+Docker requires elevated execution in the agent session; an elevated docker info
+succeeded. Image build, real onion crawl and security matrix verification are
+in progress. Keep M2 verification false until corresponding runtime evidence
+passes. Do not change M0/M1 contracts or describe new Tor code as accepted M2.
+
 ## Linux M1 port — 2026-10-31
 
 Run `bash scripts/m1.sh` from the repository root after building. Requires Bash,
@@ -136,4 +156,4 @@ M0 is accepted based on the host-run evidence described above and in docs/m0-bas
 
 ## Current boundary
 
-M0 and M1 are accepted. Do not begin M2 without a new request. Repeat M1 on Linux with `bash scripts/m1.sh` or on Windows with `./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.
+M0 and M1 are accepted. M2 is now authorized and in progress; acceptance is pending. Repeat M1 on Linux with `bash scripts/m1.sh` or on Windows with `./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.

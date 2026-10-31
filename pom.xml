@@ -34,10 +34,23 @@ under the License.
         <stormcrawler.version>3.7.0</stormcrawler.version>
         <storm.version>2.8.9</storm.version>
         <urlfrontier.version>2.4</urlfrontier.version>
+        <kotlin.version>2.3.21</kotlin.version>
     </properties>
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.10.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId>
+                <version>${kotlin.version}</version>
+                <executions><execution><id>kotlin-compile</id><phase>process-sources</phase><goals><goal>compile</goal></goals></execution></executions>
+                <configuration><jvmTarget>17</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
+            </plugin>
             <!-- Pin lifecycle plugins: Maven distributions use different defaults. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -139,6 +152,8 @@ under the License.
     </build>
 
     <dependencies>
+        <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin.version}</version></dependency>
+        <dependency><groupId>junit</groupId><artifactId>junit</artifactId><version>4.13.2</version><scope>test</scope></dependency>
         <dependency>
             <groupId>org.apache.stormcrawler</groupId>
             <artifactId>stormcrawler-core</artifactId>
