@@ -6,6 +6,23 @@ Onionall Brawler is an open-source-oriented, JVM-first project to build an indep
 
 Tor v3 has no global registry of onion services. Complete enumeration is not a realistic guarantee. Measure discovery and coverage of known, permitted sources instead of claiming comprehensive coverage.
 
+## Linux M1 port — 2026-10-31
+
+Run `bash scripts/m1.sh` from the repository root after building. Requires Bash,
+Python 3.12+, JDK 17+ and Docker Compose; optional JAVA_HOME / PYTHON select tools.
+It preserves the Windows sequence and verifier, unique `.runtime/m1/<project>/`
+evidence, two crawl exit records, snapshots and retained RocksDB volume. Cleanup
+must never use `down -v` or remove the frontier volume. Compose invokes normalized
+copies of M1 shell helpers explicitly, so CRLF and missing executable bits work.
+
+Linux local checks: both Compose files validate, Bash syntax passes, 31 Python
+tests pass (one optional HTTP smoke skipped). Offline Maven clean verify passes
+with JDK 21.0.13 / Maven 3.10.0 using a copied writable cache; default ~/.m2 locks
+are unwritable in this session. Maven has no managed tests. Full Linux integration
+is pending because Docker socket access is denied. Do not claim Linux persistence
+or true evidence flags until a real host run passes. Prior Windows acceptance
+remains valid. See docs/m1-controlled.md for the port verification record.
+
 ## Evidence and current state
 
 M1 is accepted on 2026-10-31 from the user-run Docker evidence `.runtime/m1/onionall-brawler-m1-df35366e0994/`, independently rechecked by the agent's offline verifier. All assertions, crawl evidence and both process exits pass; six frontier records persist across graceful recreation, pending work resumes, HTTP 404 is FETCH_ERROR, robots/deduplication/scope pass and minimum document gap is 2.00265402s. Both crawler logs contain zero ERROR/FATAL and 59 WARNs total: 12 unavailable cgroup metrics, two ZooKeeper defaults and 45 shutdown waits, all resolved. Backend logs have no WARN/ERROR. result.json records container removal and retained volume. Docker Engine was not rerun by the agent; evidence is host-run. M0 is unchanged. Tor, search/OpenSearch, crash recovery, distributed deployment and Tika document parsing are not verified. See docs/m1-controlled.md.

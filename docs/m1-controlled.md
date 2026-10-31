@@ -35,7 +35,7 @@ and Java probe/check classes. The original JAR is not modified.
 
 ## Host run
 
-Prerequisites: Docker Engine with Linux containers, Docker Compose, PowerShell,
+Prerequisites: Docker Engine with Linux containers, Docker Compose, Bash (Linux) or PowerShell (Windows),
 Python 3.12 or newer, a JDK 17 or newer (compiling with `--release 17`), and the
 current built main JAR. The Python fixture image is `python:3.12-slim`; the
 first host attempt pulled and started it. The runner records image inspection data.
@@ -471,3 +471,50 @@ parsing, Linux reproduction, Tor, OpenSearch/search or distributed Storm. Image
 tags are recorded rather than digest-pinned. No agent-side Docker rerun is claimed.
 Raw logs, image inspections, runtime output and volume data stay outside Git;
 only code, configuration and this sanitized record are committed.
+
+
+## Linux port verification — 2026-10-31
+
+From the repository root after building, the native Linux entry point is
+`bash scripts/m1.sh`. Optional `JAVA_HOME` and `PYTHON` select the JDK and Python.
+No PowerShell is required. Windows continues using the existing `scripts/m1.ps1`.
+
+The Bash runner mirrors the accepted PowerShell order, including Java filter and
+pacing regressions, inspected readiness probes, empty-volume check, first crawl,
+pending seed, graceful frontier stop/removal/recreation, second crawl and the
+unchanged Python verifier. `set -Eeuo pipefail` preserves failures through logged
+pipelines; EXIT/INT/TERM handling collects diagnostics and removes the project
+without deleting its volume. result.json is written only after verification,
+container removal and inspection of the retained named volume succeed.
+verification.json retains assertions_passed, crawl_evidence_passed and
+runtime_verified; no passing flags are fabricated when Docker is unavailable.
+Additional Linux files: docker-info.log and retained-volume.json.
+
+Both M1 shell helpers are invoked via explicit interpreters from temporary copies
+with carriage returns removed; neither executable mode nor checkout line endings
+are relied upon. Sources and database files are not rewritten. Compose mounts,
+network policy, assertions, Windows runner and verifier remain compatible.
+
+Observed on Omarchy / Arch Linux (kernel 7.2.8-9-omarchy):
+
+- PASS: Bash syntax; both Compose configurations, including M1 tools profile.
+- PASS: 31 standalone Python tests; one optional localhost HTTP smoke skipped.
+- PASS: Maven offline clean verify, 7.393 seconds, JDK 21.0.13 / Maven 3.10.0.
+  Default local-cache locking was denied; a separate copy under
+  .runtime/maven-linux-repository was used. Log: .runtime/maven-linux-verify.log.
+  Maven reported no managed tests; the standalone harness is checked separately.
+- PASS: all Java harness sources compile with --release 17; actual URLFilters,
+  bounded connectivity checks and SimpleFetcherBolt delay regression pass.
+  Delay regression needed provided Storm runtime jars on the local classpath;
+  observed document gaps: 2.006998948s and 2.001203651s. Local checks report
+  missing SLF4J providers; these are not Docker runtime log results.
+- PASS: both resolved M1 helper entrypoints execute non-executable CRLF input.
+- PASS: git diff --check; only the runner, M1 Compose and requested docs changed.
+- BLOCKED: full Linux Docker integration. Docker CLI 29.9.2 / Compose 5.6.1
+  are installed, but Engine socket access is denied. Actual runner invocation
+  exited nonzero and saved docker-info.log under the unique evidence directory.
+  No containers or volumes were created by that invocation.
+
+Linux RocksDB restoration and all three true verification flags therefore remain
+pending a host run; earlier Windows acceptance does not substitute for this run.
+No M2, Tor, OpenSearch, history rewrite or push is part of this port.

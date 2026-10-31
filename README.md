@@ -79,7 +79,25 @@ M1 introduces a deliberately permitted test target, conservative limits and a pe
 
 M1 now has a separate controlled test harness: `compose.m1.yaml`, a synthetic site, a named RocksDB volume, gRPC snapshots, two bounded crawler runs and assertions for links, robots, HTTP outcomes, request spacing and graceful container-recreation recovery. **M1 passed the full user-run Docker test on 2026-10-31.** Reviewed evidence confirms six records, robots denial, deduplication, HTTP 404 as FETCH_ERROR, resumed pending work and preserved state across graceful container recreation. Minimum observed document gap: 2.00265402 seconds. Both crawler exits and cleanup passed; the synthetic RocksDB volume is retained. This does not prove crash recovery. Tor, OpenSearch and distributed Storm remain unprovisioned/unverified.
 
-Run from normal host PowerShell (Docker API access is denied in the agent session):
+Linux / Omarchy (from the repository root, after building):
+
+```sh
+bash scripts/m1.sh
+```
+
+Requires Bash, Python 3.12+, JDK 17+ (`javac` and `jar`), and Docker Engine / Compose.
+`JAVA_HOME` optionally selects the JDK; `PYTHON` optionally selects Python.
+The runner uses the same assertions and evidence layout as Windows, retains the
+RocksDB volume, and checks cleanup even on failure or interruption.
+
+Linux checks on 2026-10-31: both Compose configurations validated; Maven offline
+`clean verify` passed using a writable copy of the local cache (JDK 21.0.13,
+Maven 3.10.0); 31 standalone Python tests passed, one optional HTTP smoke skipped.
+Maven reports no Maven-managed tests. Full Linux Docker verification is pending:
+this agent session cannot access `/var/run/docker.sock`. The Windows acceptance
+above does not establish a Linux integration pass.
+
+Windows PowerShell:
 
 ```powershell
 ./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
