@@ -8,6 +8,41 @@ Tor v3 has no global registry of onion services. Complete enumeration is not a r
 
 ## M2 implementation in progress — 2026-10-31
 
+Checkpoint authorization (2026-11-01): the user requests one reviewed Git commit
+and ordinary push to the existing Entire origin, then continued M2 recovery.
+Do not commit/push subsequent recovery changes without a separate instruction.
+Keep VPN and host networking untouched; only isolated M1/M2 projects are allowed.
+
+Restart diagnosis on 2026-11-01 with the host VPN active: host routes/policy
+rules and resolver hash matched before/after every isolated experiment. Do not
+change VPN, host routing/DNS/firewall/proxy settings or restart network services.
+Read docs/m2-hardening.md's restart diagnosis before another live run. Failure
+is now localized to SOCKS CONNECT, before HTTP, with fresh TCP sockets and stable
+hostname/hs_ed25519 key hashes. Old HS_CLIENT_REND reuse and delayed descriptor/
+introduction readiness were observed; a single exclusive cause is not proven.
+No Tor configuration, TorPolicy or TorScopeFilter changes are justified yet.
+The harness now records phases/UTC timestamps, preserves distinct restart logs
+and stops dependent scenarios after failed controlled-service recovery. Python46
+tests pass. Targeted restart remains red; a new full M2 gate was not launched.
+
+Latest runtime verification (2026-11-01): bounded Tor-only diagnostic
+`.runtime/m2/onionall-brawler-m2-cf110581a7e7/` passed against our own onion
+fixture, including real TorProtocol /health under a JDK17 InetAddress guard,
+zero target-onion resolver calls, actual crawler egress/DNS isolation and
+proxy outage denial. This is scoped evidence, not system-wide DNS leak proof.
+Offline JDK17 Maven package/verify passes26 tests; Python M2 passes43 tests.
+Full controlled run `.runtime/m2/onionall-brawler-m2-fa44d93cba6b/` confirmed
+crawling, eight-record frontier restoration, pending recovery and persisted
+Storm outage/retry. Its failure matrix did not pass: after restarting our own
+onion daemon, health timed out for90s although SOCKS/bootstrap were ready;
+after gateway restart, health returned in6.326s. Cause remains unconfirmed.
+M2 remains BLOCKED. The unreachable-onion scenario now stops our own service
+instead of contacting a random generated hostname. See docs/m2-hardening.md.
+M1 regression807ed6ad51e2 passed; full-run cleanup removed containers/networks
+and retained all three volumes. The gate keeps controlled_onion_fetch/robots/
+spacing/persistence false because its combined crawl check requires the failed
+loop probe; raw crawl/persistence observations do not override that result.
+
 M2 contract hardening on 2026-11-01 requires explicit nonblank
 `protocol.md.prefix` (StormCrawler 3.7.0's real key); generated M2 configs pin
 `protocol.` and persist `protocol.tor.category`. TorProtocol exports only a single

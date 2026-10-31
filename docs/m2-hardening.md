@@ -3,6 +3,169 @@
 This audit accompanies bridge integration. No new commit is authorized by the
 latest audit request; preserve the working changes for review.
 
+## Restart diagnosis with active host VPN — 2026-11-01
+
+Read-only preflight confirmed tun0 UP, policy routing through table2022 and an
+active VPN default route; host SOCKS ports9050/9150/19050 refused connections.
+Existing Docker networks were inventoried before any test container was created.
+No host/VPN route, DNS, firewall, kill switch, global proxy setting or daemon was
+changed. All live actions were restricted to unique M2 Compose projects, with
+existing bridge configuration, no host networking and no privileged containers.
+Each project saved host-before.json/host-after.json: VPN/default routes, policy
+rules and resolver-file SHA256 matched. All test containers/networks were removed;
+Tor/onion volumes and key material were retained. Existing volumes were untouched.
+
+Previous failed run fa44d93cba6b, approximate file-write timeline in Istanbul
+(UTC+03; mtimes are not exact event timestamps):
+
+| Time | Observation |
+| --- | --- |
+| 01:23:46.593 | Own onion stopped; gateway SOCKS greeting succeeds |
+| 01:23:57.516 | Offline protocol probe ends REQUEST_TIMEOUT after10.132s |
+| 01:24:04.130 | Service bootstrap healthcheck succeeds |
+| 01:25:34.667 | Actual health fails after90s, two bounded timeouts |
+| 01:26:53.275 | Active probe already timed out, handler marker absent |
+| 01:27:01.477 | Gateway restart completes |
+| 01:27:08.280 | Same onion health succeeds in6.326s |
+
+The old evidence could not locate the timeout: it discarded the failing phase.
+New network_probe telemetry separates proxy_tcp_connect, socks_greeting,
+socks_connect_reply and http_response and records SOCKS reply codes/phase times.
+onion_ready records UTC start times without changing existing timeout/retry bounds.
+
+Focused diagnostic directories under .runtime/m2/:
+
+- onionall-brawler-m2-d327e55b84bc: baseline200, offline CONNECT timeout10s;
+  after restart CONNECT returns reply1 after26.537s, before HTTP was sent.
+  The service publishes descriptors while this connection waits. An initial
+  diagnostic HSFETCH used the wrong address form and returned513; it proves
+  nothing about descriptor refresh. Original results/source are preserved.
+- onionall-brawler-m2-77b26fe4c188: baseline200; after restart a fresh SOCKS
+  socket reuses gateway circuit16 in HS_CLIENT_REND/HSCR_JOINED. Stream75 remains
+  SENTCONNECT, then circuit16 is DESTROYED at01:52:37.294; stream fails and SOCKS
+  reply1 arrives after17.434s. Correct HSFETCH (bare56-character identity) is
+  accepted351ms later; HS_DESC RECEIVED follows, a different circuit19 is given
+  rendezvous purpose and health succeeds in6.283s. Circuit19 previously existed
+  as HS_VANGUARDS; it was not built from scratch. Destruction/time/descriptor
+  fetch changed together: HSFETCH alone is not a proven fix.
+- onionall-brawler-m2-f05fbc6abf98: old rendezvous was already destroyed before
+  recovery; descriptor receipt after HSFETCH still led to CONNECT timeout10s.
+  The new service had descriptor CREATED and one established introduction
+  circuit, but no UPLOADED acknowledgement was observed before cleanup.
+  No rendezvous circuit was forcibly closed. This does not support a universal
+  "clear the cached circuit" or "fetch the descriptor" correction.
+- onionall-brawler-m2-6c4c71b345ee: passive test aborted before restart because
+  its initial health CONNECT returned reply4 after6.293s despite bootstrap100.
+  It is not evidence of a passing or failing restart transition.
+
+In every completed restart experiment, hostname and SHA256 of both
+hs_ed25519_* files matched before/after. Keys were hashed inside the service;
+private bytes were never output. TCP SOCKS connections were new each time;
+Kotlin/OkHttp connection pooling is not involved in the Python reproducer.
+Control snapshots hs/client/desc returned552 even during successful baseline:
+their descriptor_present=false field must NOT be interpreted as an absent
+descriptor. Descriptor byte-level freshness is unconfirmed. Sanitized HS_DESC,
+STREAM, CIRC and CIRC_MINOR JSONL events retain status/purpose/reason/IDs, excluding
+relay paths, bridge addresses, cookies and descriptor contents.
+
+Supported diagnosis: the failed readiness is inside Tor's hidden-service CONNECT
+path, before HTTP. A stale joined rendezvous and service introduction/descriptor
+publication timing are observed mechanisms; one exclusive root cause and VPN
+causality are not established. Bootstrap readiness does not prove publication,
+client descriptor freshness, introduction/rendezvous success or HTTP availability.
+No evidence-backed torrc change is proposed; timeouts were not increased and
+no descriptor refresh, circuit reset or extra retry was added to acceptance.
+
+Confirmed harness defects fixed:
+
+- scenario-tor-return.log no longer overwrites the runner's tor-return.log;
+- scenario commands record UTC start/end/exit in scenario-timeline.jsonl;
+- failed own-service recovery immediately blocks dependent network scenarios,
+  rather than producing a cascade of misleading redirect/reset/timeout failures;
+- phase/UTC telemetry and negative unit coverage distinguish CONNECT from HTTP.
+
+Verification:46 Python M2 tests pass, including both timeout phases and fail-fast
+on failed recovery; git diff --check passes. JVM source was unchanged, so Maven
+was not rebuilt/rerun; the earlier26 Maven results are historical. Targeted
+recovery remains unverified/red and no new full M2 gate was launched after these
+diagnostic fixes. Last complete gate remains fa44d93cba6b with m2_verified=false.
+The user permits isolated M1 regression for a future full run, with the same
+host/VPN protections. No commit/push, volume removal or network bypass occurred.
+
+## Tor-only runtime verification — 2026-11-01
+
+Host SOCKS ports19050/9050/9150 refused connections. The host reference torrc
+still selects loopback19050 and bridges; host firewall/DNS/daemon configuration
+was not changed. Docker29.9.2 was available with authorized elevated access.
+Both checks used only the Compose-owned controlled onion fixture. The existing
+full-run preflight additionally used its fixed HTTPS Tor Project endpoint.
+
+Bounded diagnostic evidence:
+`.runtime/m2/onionall-brawler-m2-cf110581a7e7/`.
+
+- `tor-only-result.json`: bounded_tor_only_passed=true, cleanup_passed=true;
+  m2_verified=false because this diagnostic does not run the full acceptance gate.
+- `network.json`: actual crawler service attached only to its internal network;
+  direct internet, fixture and public DNS TCP/UDP were inaccessible. Local onion
+  resolution failed; actual SOCKS ATYP3 /health returned200/ready in4.549s.
+- `real-dns-guard.json`: real TorProtocol /health succeeded while a fresh JDK17
+  process intercepted InetAddress name-service calls. Positive control was
+  detected; application target-onion lookup attempts were zero. This is not
+  packet-level observation or proof for the entire system or every runtime path.
+- Proxy outage: actual network-outage.json and scenario-tor_stopped.json pass;
+  no response is substituted for failed transport. All three persistent volumes
+  were retained and containers/networks were removed.
+
+`test/m2/TorDnsGuardProbe.java` is test-process-only and requires JDK17 plus
+`--add-opens java.base/java.net=ALL-UNNAMED`. Default mode runs the local protocol
+and policy JUnit suites. Optional `controlled-health` mode runs only the existing
+TorScenarioProbe /health against the hostname in the mounted evidence directory.
+Neither mode changes production DNS settings. The new initial-out-of-scope test
+asserts SCOPE_REJECTED with no SOCKS or direct-target connection.
+
+Fresh full-run evidence:
+`.runtime/m2/onionall-brawler-m2-fa44d93cba6b/`.
+The host ran the existing Bash runner with JAVA_HOME selecting OpenJDK17,
+M2_MAVEN_REPOSITORY selecting the writable local cache and
+`MAVEN_ARGS='-o -Dkotlin.compiler.daemon=false'`; an outer1200s limit bounded
+the attempt. Offline Maven package/verify passed26 tests. Python43 tests pass.
+The separate resolver-guard rerun also passed all26 tests with zero onion lookup
+attempts (`dns-guard-local.json`). No production dependency versions changed.
+
+Actual controlled HTML/robots/404/redirect/discovery completed. Eight frontier
+records were identical across graceful container recreation; pending work was
+then processed. The Storm outage pipeline passed: the failed fetch persisted and
+its scheduled retry recovered without reseed (`pipeline_exit_code=0`).
+
+The full security matrix failed (`scenario_exit_code=1`). Its unreachable-onion
+case now stops our own onion daemon and checks a live gateway SOCKS greeting,
+avoiding random generated onion targets. After service restart, actual /health
+timed out twice over90s despite bootstrap readiness. Dependent redirect/timeout/
+reset/active-crawl scenarios consequently failed their required assertions.
+After gateway restart, the same controlled onion returned200/ready in6.326s.
+This correlates with gateway lifecycle; descriptor/circuit state or external
+network behavior is not established as the cause. No assertions were weakened,
+failed evidence was not overwritten and the full test was not repeatedly rerun.
+The blocker is a complete passing failure matrix with reliable controlled onion
+availability after lifecycle transitions. M2 remains BLOCKED.
+
+Final gate: m2_verified=false, real_tor_transport=true,
+remote_onion_resolution=true, no_direct_egress=true, proxy_bypass_blocked=true,
+m1_regression_passed=true, fail_closed_verified=false. Its combined crawl stage
+also keeps controlled_onion_fetch, robots_verified, crawl_delay_verified and
+frontier_persistence_verified false because the required /loop-a probe never
+reached the fixture after the outage. Raw successful crawl/snapshot observations
+above do not override the gate. M1 regression807ed6ad51e2 passed with exit0.
+Cleanup removed all containers/networks and retained frontier-data, tor-state
+and onion-state; no persistent volume or key was deleted.
+
+The original verifier misleadingly described zero /loop-a requests as a repeated
+request. Its assertion remains exactly one request; only the diagnostic text
+was corrected. A negative regression covers both zero and duplicate requests.
+Original verification.json is preserved; verification-diagnostic.json records
+the same failing gate with the corrected message. No fresh Tor run was launched
+for that message-only change. No commit or push was performed by this task.
+
 ## Contract security patch — 2026-11-01
 
 - TPR-06: OkHttp reads the last Location while StormCrawler reads the first.

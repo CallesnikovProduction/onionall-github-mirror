@@ -119,6 +119,15 @@ Tor check pass. A real controlled onion crawl and graceful frontier persistence
 also passed stages, but the complete security/outage/recovery gate has not yet
 passed. **M2 remains BLOCKED.** Historical failed evidence is preserved.
 
+On 2026-11-01 the bounded real Tor-only check passed, including a JDK17
+InetAddress guard with zero target-onion resolver calls and denial of direct
+egress/proxy fallback in the tested crawler namespace. The fresh full run passed
+controlled crawling, frontier recreation and persisted Storm outage/retry, but
+its failure matrix failed after the controlled onion daemon restart: bootstrap
+and SOCKS were ready while onion health timed out for90s. Gateway restart later
+restored health; the underlying cause is unconfirmed. This does not establish
+system-wide absence of DNS leaks. Details and evidence are in the hardening doc.
+
 See [private bridge setup and Linux/Windows commands](docs/m2-bridges.md),
 [hardening audit results](docs/m2-hardening.md), and
 [the transport decision](docs/adr/0001-tor-only-transport.md).

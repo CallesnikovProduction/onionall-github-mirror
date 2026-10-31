@@ -89,7 +89,8 @@ def verify(path):
         all_requests = [json.loads(line) for line in (path/'requests.jsonl').read_text().splitlines() if line]
         policy_requests = [row for row in all_requests if row['user_agent'] == 'OnionallBrawlerMTwoPolicy']
         check(all(row['path'] in {'/escape','/loop-a','/slow','/reset'} for row in policy_requests), 'Negative probe escaped its controlled paths')
-        check(sum(row['path'] == '/loop-a' for row in policy_requests) == 1, 'Redirect loop probe repeated a request')
+        check(sum(row['path'] == '/loop-a' for row in policy_requests) == 1,
+              'Redirect loop probe must produce exactly one /loop-a request')
         requests = [row for row in all_requests if row['user_agent'] not in {'OnionallBrawlerMTwoPolicy', 'OnionallBrawlerMTwoOutage'}]
         counts = Counter(row['path'] for row in requests)
         check(counts == Counter({'/robots.txt': 2, '/': 1, '/a': 1, '/b': 1, '/missing': 1, '/redirect': 1, '/escape': 1, '/pending': 1}), 'Missing, duplicate or out-of-scope fixture requests')

@@ -7,6 +7,7 @@ import struct
 import time
 import threading
 import queue
+from datetime import datetime, timezone
 
 
 def connect(host, port):
@@ -38,16 +39,25 @@ def receive(sock, size, deadline=None):
     return result
 
 
-def remote_fetch(onion, deadline=None):
+def remote_fetch(onion, deadline=None, observation=None):
+    observation = observation if observation is not None else {}
+    started = time.monotonic()
+    def phase(name):
+        observation['phase'] = name
+        observation.setdefault('phase_started_seconds', {})[name] = time.monotonic() - started
     # ATYP=3 sends the hostname directly to Tor; no getaddrinfo(onion) occurs.
+    phase('proxy_tcp_connect')
     with socket.create_connection(('tor', 9050), timeout=remaining(deadline, 5)) as sock:
         sock.settimeout(remaining(deadline, 45))
+        phase('socks_greeting')
         sock.sendall(b'\x05\x01\x00')
         if receive(sock, 2, deadline) != b'\x05\x00':
             raise OSError('SOCKS authentication negotiation failed')
         host = onion.encode('ascii')
+        phase('socks_connect_reply')
         sock.sendall(b'\x05\x01\x00\x03' + bytes([len(host)]) + host + struct.pack('!H', 80))
         response = receive(sock, 4, deadline)
+        observation['socks_reply_code'] = response[1]
         if response[:2] != b'\x05\x00':
             raise OSError('SOCKS connect reply ' + str(response[1]))
         length = {1: 4, 4: 16}.get(response[3])
@@ -56,6 +66,7 @@ def remote_fetch(onion, deadline=None):
         if length is None:
             raise OSError('Invalid SOCKS reply address type')
         receive(sock, length + 2, deadline)
+        phase('http_response')
         sock.sendall(f'GET /health HTTP/1.1\r\nHost: {onion}\r\nConnection: close\r\n\r\n'.encode('ascii'))
         body = b''
         while len(body) <= 65536:
@@ -66,6 +77,7 @@ def remote_fetch(onion, deadline=None):
             body += part
         if len(body) > 65536 or not body.startswith(b'HTTP/1.0 200') or not body.endswith(b'ready'):
             raise OSError('Unexpected onion health response')
+        phase('complete')
         return {'remote_hostname_sent': True, 'socks_atyp': 3, 'http_status': 200, 'health_body': 'ready'}
 
 
@@ -75,12 +87,13 @@ def onion_ready(onion, seconds=90):
         raise ValueError('Controlled onion readiness deadline must be 1..90 seconds')
     started = time.monotonic()
     deadline = started + seconds
+    started_at_utc = datetime.now(timezone.utc).isoformat()
     attempts = []
     ready = False
     while time.monotonic() < deadline:
-        attempt = {'attempt': len(attempts) + 1}
+        attempt = {'attempt': len(attempts) + 1, 'started_at_utc': datetime.now(timezone.utc).isoformat()}
         try:
-            health = remote_fetch(onion, deadline=deadline)
+            health = remote_fetch(onion, deadline=deadline, observation=attempt)
             ready = health.get('http_status') == 200 and health.get('health_body') == 'ready'
             attempt['health'] = health
         except OSError as error:
@@ -92,6 +105,7 @@ def onion_ready(onion, seconds=90):
         if time.monotonic() < deadline:
             time.sleep(min(2, deadline-time.monotonic()))
     return {'passed': ready, 'ready': ready, 'attempts': attempts,
+            'started_at_utc': started_at_utc,
             'deadline_seconds': seconds, 'elapsed_seconds': time.monotonic()-started,
             'policy': 'Actual controlled onion /health via SOCKS ATYP=3; not bootstrap inference'}
 

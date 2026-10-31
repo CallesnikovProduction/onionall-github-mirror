@@ -4,6 +4,31 @@ import network_probe
 
 
 class OnionReadinessTest(unittest.TestCase):
+    def test_timeout_before_socks_connect_reply_is_not_reported_as_http(self):
+        from unittest.mock import MagicMock
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        sock.recv.side_effect = [b'\x05\x00', TimeoutError()]
+        observation = {}
+        with patch.object(network_probe.socket, 'create_connection', return_value=sock):
+            with self.assertRaises(TimeoutError):
+                network_probe.remote_fetch('controlled.onion', observation=observation)
+        self.assertEqual(observation['phase'], 'socks_connect_reply')
+        self.assertNotIn('socks_reply_code', observation)
+        self.assertFalse(any(call.args[0].startswith(b'GET ') for call in sock.sendall.call_args_list))
+
+    def test_http_timeout_is_separate_from_successful_socks_connect(self):
+        from unittest.mock import MagicMock
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        sock.recv.side_effect = [b'\x05\x00', b'\x05\x00\x00\x01', b'\x7f\x00\x00\x01\x00\x50', TimeoutError()]
+        observation = {}
+        with patch.object(network_probe.socket, 'create_connection', return_value=sock):
+            with self.assertRaises(TimeoutError):
+                network_probe.remote_fetch('controlled.onion', observation=observation)
+        self.assertEqual(observation['phase'], 'http_response')
+        self.assertEqual(observation['socks_reply_code'], 0)
+
     def test_observed_health_is_required_after_initial_failure(self):
         healthy={'http_status':200,'health_body':'ready','socks_atyp':3,'remote_hostname_sent':True}
         with patch.object(network_probe,'remote_fetch',side_effect=[OSError('unavailable'),healthy]) as fetch:

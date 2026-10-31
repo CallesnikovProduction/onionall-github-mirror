@@ -49,6 +49,16 @@ class VerificationTest(unittest.TestCase):
     def write_requests(self):
         (self.path / 'requests.jsonl').write_text('\n'.join(json.dumps(row) for row in self.requests))
 
+    def test_missing_and_duplicate_loop_probe_both_fail_without_claiming_a_repeat(self):
+        baseline = [row for row in self.requests if row['path'] != '/loop-a']
+        for count in (0, 2):
+            with self.subTest(count=count):
+                self.requests = baseline + [dict(path='/loop-a', user_agent='OnionallBrawlerMTwoPolicy')] * count
+                self.write_requests()
+                result = self.result()
+                self.assertFalse(result['controlled_onion_fetch'])
+                self.assertIn('Redirect loop probe must produce exactly one /loop-a request', result['blockers'])
+
     def result(self):
         return verifier.verify(self.path)
 

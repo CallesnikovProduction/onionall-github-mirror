@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
+from datetime import datetime, timezone
 
 REQUIRED = ['socks_port_unavailable','invalid_socks_endpoint','bootstrap_incomplete',
             'onion_unreachable','malformed_onion','out_of_scope_redirect','redirect_loop',
@@ -16,8 +17,16 @@ def run(project, path):
     compose=['docker','compose','-p',project,'-f','compose.m2.yaml']
     results={}
     def command(args, name, timeout=120):
-        with (path/(name+'.log')).open('w') as log:
-            return subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=timeout).returncode
+        started = datetime.now(timezone.utc).isoformat()
+        code = None
+        try:
+            with (path/(name+'.log')).open('w') as log:
+                code = subprocess.run(args, stdout=log, stderr=subprocess.STDOUT, timeout=timeout).returncode
+            return code
+        finally:
+            with (path/'scenario-timeline.jsonl').open('a') as timeline:
+                timeline.write(json.dumps(dict(stage=name, started_at_utc=started,
+                    finished_at_utc=datetime.now(timezone.utc).isoformat(), exit_code=code))+'\n')
     def probe(name, host=None, background=False):
         args=compose+['run','--rm','--no-deps','--entrypoint','java','probe','-cp',
                      '/apache-storm/lib/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.TorScenarioProbe',name]
@@ -89,7 +98,32 @@ else: raise SystemExit('Unbootstrapped Tor control unavailable')
             if name == 'timeout':
                 (path/'slow-started').unlink(missing_ok=True)
             before=(path/'requests.jsonl').read_text().splitlines()
+            if name == 'onion_unreachable':
+                stopped=command(compose+['stop','--timeout','5','onion'],'controlled-onion-stop',30)
+                if stopped:
+                    results[name]={'passed':False,'evidence':['controlled-onion-stop.log'],
+                                   'blocker':'Controlled onion daemon could not be stopped'}
+                    continue
+                gateway=command(compose+['exec','-T','tor','python3','-c',
+                    "import socket; s=socket.create_connection(('127.0.0.1',9050),timeout=2); "
+                    "s.settimeout(2); s.sendall(b'\\x05\\x01\\x00'); "
+                    "assert s.recv(2)==b'\\x05\\x00'; s.close()"], 'controlled-onion-gateway-live',10)
             probe(name)
+            if name == 'onion_unreachable':
+                # Require a live SOCKS greeting while our own service is stopped.
+                # This is endpoint liveness, not proof of Tor circuit health.
+                restarted=command(compose+['up','-d','--wait','--wait-timeout','90','onion'],
+                                  'controlled-onion-return',110)
+                ready=command(compose+['run','--rm','--no-deps','--entrypoint','python3','crawler',
+                              '/workspace/test/m2/network_probe.py','--onion-ready',
+                              '--readiness-output','onion-readiness-controlled-return.json'],
+                              'controlled-onion-ready',110) if restarted==0 else 1
+                results[name]['passed'] &= gateway==0 and restarted==0 and ready==0
+                results[name]['evidence'] += ['controlled-onion-stop.log','controlled-onion-return.log',
+                                              'controlled-onion-gateway-live.log','controlled-onion-ready.log',
+                                              'onion-readiness-controlled-return.json']
+                if restarted != 0 or ready != 0:
+                    raise OSError('Controlled onion unavailable after restart; dependent scenarios not executed')
             # Correlate protocol errors with actual network policy and fixture traffic.
             after=(path/'requests.jsonl').read_text().splitlines()
             rows=[json.loads(line) for line in after[len(before):]]
@@ -125,7 +159,7 @@ else: raise SystemExit('Unbootstrapped Tor control unavailable')
                 process.wait(timeout=10)
             log.close()
         probe('tor_stopped')
-        code=command(compose+['up','-d','--wait','--wait-timeout','360','tor'],'tor-return',390)
+        code=command(compose+['up','-d','--wait','--wait-timeout','360','tor'],'scenario-tor-return',390)
         if code==0:
             ready=command(compose+['run','--rm','--no-deps','--entrypoint','python3','crawler',
                           '/workspace/test/m2/network_probe.py','--onion-ready',
@@ -137,7 +171,7 @@ else: raise SystemExit('Unbootstrapped Tor control unavailable')
             else:
                 results['safe_retry_after_tor_return']={'passed':False,'evidence':['scenario-onion-ready.log','onion-readiness-scenarios.json'],'blocker':'Tor bootstrap completed but controlled onion remains unavailable'}
         else:
-            results['safe_retry_after_tor_return']={'passed':False,'evidence':['tor-return.log']}
+            results['safe_retry_after_tor_return']={'passed':False,'evidence':['scenario-tor-return.log']}
     except (OSError,subprocess.TimeoutExpired) as error:
         results['driver_failure']={'passed':False,'evidence':[],'blocker':str(error)}
     finally:

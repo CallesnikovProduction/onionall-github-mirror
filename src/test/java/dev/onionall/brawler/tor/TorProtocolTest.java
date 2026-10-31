@@ -230,6 +230,25 @@ public class TorProtocolTest {
         }
     }
 
+    @Test public void outOfScopeInitialUrlFailsBeforeAnySocketConnect() throws Exception {
+        String host = TorPolicyTest.onion(6);
+        try (ServerSocket directTarget = new ServerSocket(0, 1, InetAddress.getLoopbackAddress());
+             SocksWire wire = new SocksWire()) {
+            TorProtocol protocol = protocol(host, wire.port());
+            try {
+                for (String url : List.of("http://127.0.0.1:" + directTarget.getLocalPort() + "/",
+                        "http://" + TorPolicyTest.onion(16) + "/", "http://outside.invalid/",
+                        "http://" + host + ":7071/", "file:///etc/passwd")) {
+                    assertEquals("SCOPE_REJECTED", assertThrows(IOException.class,
+                            () -> protocol.getProtocolOutput(url, new Metadata())).getMessage());
+                }
+                directTarget.setSoTimeout(250);
+                assertThrows(SocketTimeoutException.class, directTarget::accept);
+                wire.assertNoFurtherConnection();
+            } finally { protocol.cleanup(); }
+        }
+    }
+
     @Test public void malformedRedirectHasControlledScopeFailureAndNoFollow() throws Exception {
         String host = TorPolicyTest.onion(13);
         try (SocksWire wire = new SocksWire(redirect("http://[malformed"))) {
