@@ -1,6 +1,6 @@
 # M1 controlled crawl вЂ” implementation and verification status
 
-**Status on 2026-10-31: M1 accepted from the complete user-run Docker test df35366e0994; offline verifier recheck passed.**
+**Status on 2026-10-31: M1 accepted on Windows (df35366e0994) and Omarchy Linux (e55203e97536); both user-run Docker tests passed offline verifier rechecks.**
 M0 remains accepted in commit `164c2ba`. Nothing here establishes Tor transport,
 onion discovery, a search index, crash recovery or a distributed Storm cluster.
 
@@ -515,6 +515,45 @@ Observed on Omarchy / Arch Linux (kernel 7.2.8-9-omarchy):
   exited nonzero and saved docker-info.log under the unique evidence directory.
   No containers or volumes were created by that invocation.
 
-Linux RocksDB restoration and all three true verification flags therefore remain
-pending a host run; earlier Windows acceptance does not substitute for this run.
-No M2, Tor, OpenSearch, history rewrite or push is part of this port.
+The initial agent-side Docker access failure above is superseded for Linux
+acceptance by the successful host run below; agent socket access is still denied.
+No M2, Tor, OpenSearch or history rewrite is part of this port.
+
+## Omarchy Linux M1 acceptance — 2026-10-31
+
+Evidence: `.runtime/m1/onionall-brawler-m1-e55203e97536/`. The user ran the full
+Bash runner on Omarchy. The agent inspected saved evidence and reran the unchanged
+Python verifier offline successfully; no agent-side Docker rerun is claimed.
+
+- assertions_passed=true, crawl_evidence_passed=true, runtime_verified=true.
+- Six final frontier records; before/after entries are identical across graceful
+  container recreation. Pending work resumes and previously processed state stays
+  unchanged. HTTP 404 is FETCH_ERROR; robots, link discovery, scope and dedup pass.
+- Minimum same-process document gap: 2.003614258 seconds.
+- crawl-runtime.json records two zero exits. Both LocalClusters complete shutdown.
+- cleanup.log confirms all project containers and the controlled network removed.
+  result.json confirms cleanup; retained-volumes.txt and retained-volume.json
+  record the retained named frontier-data volume. No volume deletion occurred.
+
+Both crawler logs contain zero ERROR/FATAL and 38 WARNs each: 12 unavailable
+cgroup metric warnings, two ZooKeeper connection-limit defaults and 62 shutdown
+waits in total. The waits resolve; cgroup monitoring remains unavailable.
+Backend logs contain no WARN/ERROR and show graceful RocksDB close, reopening
+and recovery of one queue. No blocking runtime failure was found.
+
+The separate delay-check.log contains one expected ERROR from the deliberately
+injected IOException for /transport; the regression verifies FETCH_ERROR and
+fetch.exception, then reports PASS. filter-check.log contains one expected WARN
+for the deliberately malformed fixture-host lookalike URL; URLFilters reject it
+and the check passes. These are negative-test diagnostics, not crawl failures.
+
+Both `bash scripts/m1.sh` (Linux) and `./scripts/m1.ps1 -JdkHome <JDK>` (Windows)
+remain supported, using the same verifier and evidence contract. The Linux port
+itself is already in f77d789; this acceptance records the successful host run.
+Raw runtime logs, generated JARs/classes, Docker inspection data and RocksDB
+contents remain ignored and outside commits; only sanitized summaries are saved.
+
+M0 and M1 are complete for their stated scopes. M2 has not started. Acceptance
+covers synthetic HTML and graceful recreation; it does not establish crash
+recovery, Tor, OpenSearch/search, distributed Storm, Tika parsing or production
+isolation/throughput. Image tags are not digest-pinned.

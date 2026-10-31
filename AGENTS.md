@@ -18,10 +18,18 @@ copies of M1 shell helpers explicitly, so CRLF and missing executable bits work.
 Linux local checks: both Compose files validate, Bash syntax passes, 31 Python
 tests pass (one optional HTTP smoke skipped). Offline Maven clean verify passes
 with JDK 21.0.13 / Maven 3.10.0 using a copied writable cache; default ~/.m2 locks
-are unwritable in this session. Maven has no managed tests. Full Linux integration
-is pending because Docker socket access is denied. Do not claim Linux persistence
-or true evidence flags until a real host run passes. Prior Windows acceptance
-remains valid. See docs/m1-controlled.md for the port verification record.
+are unwritable in this session. Maven has no managed tests. Full Linux integration is accepted from user-run
+Omarchy evidence `.runtime/m1/onionall-brawler-m1-e55203e97536/`, rechecked offline:
+assertions_passed=true, crawl_evidence_passed=true, runtime_verified=true,
+six frontier records, identical before/after state, resumed pending work and
+minimum document gap 2.003614258s. Both crawl exits are zero; cleanup logs confirm
+container/network removal and retained-volume inspection confirms RocksDB retention.
+Crawler logs have no ERROR/FATAL and 76 WARNs: 12 unavailable cgroup metrics,
+two ZooKeeper defaults and 62 resolved shutdown waits. Regression probe ERROR/WARN
+records are intentional transport-failure/invalid-URL tests; both checks pass.
+No blocking failure was found. Agent Docker access remains denied; this is saved
+host evidence, not an agent Docker rerun. Windows acceptance remains valid.
+See docs/m1-controlled.md for the verification record.
 
 ## Evidence and current state
 
@@ -29,7 +37,7 @@ M1 is accepted on 2026-10-31 from the user-run Docker evidence `.runtime/m1/onio
 
 This is a bootstrap-stage project generated from the Apache StormCrawler 3.7.0 Maven archetype, not yet an onion search engine. The repository contains a Flux topology and configuration, not application-specific Java or Kotlin source code. The topology declares URLFrontier input and status updates, fetching, sitemap/feed and HTML parsing, optional Tika parsing, and `StdOutIndexer` output. On 2026-10-30, Java 17.0.12 / Maven 3.9.16 built the shaded JAR successfully offline; Flux dry-run constructed one spout, nine bolts and 15 streams. The user then ran scripts/m0.ps1 on the Windows host. Reviewed service/console logs confirm all nine bolts prepared (including Tika configuration loading), the spout opened/activated, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on orchestrated SIGTERM (143); Compose container/network removal is user-reported. M0 is accepted for this empty-frontier local baseline. Actual fetching, document parsing, status writes, durable recovery and search remain unverified. `StdOutIndexer` is not a searchable index. See `docs/m0-baseline.md` for evidence, hashes, warning assessment and limits.
 
-There is no configured Tor transport or fail-closed guarantee, onion v3 validation or autonomous cross-service discovery, search API, desktop interface, graph storage or AI integration. A standalone M1 test harness now exists under test/m1, with Python verifier/fixture tests and Java gRPC/filter probes; it is not wired into Maven test and has not completed a Docker end-to-end run. Do not describe locally checked harness code as a verified crawl.
+There is no configured Tor transport or fail-closed guarantee, onion v3 validation or autonomous cross-service discovery, search API, desktop interface, graph storage or AI integration. A standalone M1 test harness now exists under test/m1, with Python verifier/fixture tests and Java gRPC/filter probes; it is not wired into Maven test. Full controlled Docker runs are accepted on Windows and Omarchy Linux; this establishes only the synthetic M1 crawl and graceful recreation contract.
 
 M0 is committed as `164c2ba`. M1 uses a separate internal Compose network, synthetic fixture, named RocksDB volume and generated Flux with the stock SimpleFetcherBolt. Test-only Java/Python checks remain outside Maven test.
 
@@ -46,7 +54,7 @@ The user reports that the initial Maven build succeeded, Entire is enabled, Code
 - `scripts/build.ps1` - verified Windows build helper; supports JDK selection, IntelliJ Maven discovery and offline cache.
 - `scripts/m0.ps1`, `scripts/m0-container.sh` - host-run baseline orchestration, readiness wait, bounded local run and cleanup; agent reviewed logs, not an agent runtime rerun.
 - `docs/m0-baseline.md` - 2026-10-30 M0 acceptance evidence, warning assessment, limits and M1 checklist.
-- `compose.m1.yaml`, `scripts/m1.ps1`, `scripts/m1-container.sh`, `scripts/frontier-volume-init.sh` - controlled M1 orchestration; host verified; M1 accepted after volume ownership, pacing and verifier corrections.
+- `compose.m1.yaml`, `scripts/m1.sh`, `scripts/m1.ps1`, `scripts/m1-container.sh`, `scripts/frontier-volume-init.sh` - controlled M1 orchestration; host verified; M1 accepted after volume ownership, pacing and verifier corrections.
 - `test/m1/` - synthetic Python HTTP fixture, M1-only settings/resources, Java frontier/filter checks and Python evidence verifier/tests. Test Java sources are not application code and are compiled by the M1 helper, not Maven.
 - `docs/m1-controlled.md` - M1 run command, evidence contract, observed local checks, retention and limits.
 - `.gitignore` — ignores Maven output, IDE files, common secrets and local crawl data.
@@ -128,4 +136,4 @@ M0 is accepted based on the host-run evidence described above and in docs/m0-bas
 
 ## Current boundary
 
-M0 and M1 are accepted. Do not begin M2 without a new request. Repeat M1 with `./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.
+M0 and M1 are accepted. Do not begin M2 without a new request. Repeat M1 on Linux with `bash scripts/m1.sh` or on Windows with `./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.
