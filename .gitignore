@@ -59,3 +59,6 @@ compose.override.yaml
 compose.override.yml
 docker-compose.override.yml
 docker-compose.override.yaml
+
+# Private operational bridge configuration
+.secrets/

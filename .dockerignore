@@ -8,3 +8,6 @@ target
 *.key
 *.pem
 __pycache__
+
+# Private operational bridge configuration
+.secrets/

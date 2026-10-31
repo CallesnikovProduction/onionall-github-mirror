@@ -196,3 +196,23 @@ no ports/mounts, temporary state,90s bound, bootstrap100 gate and JSON cleanup
 result. Build image once if missing. Sixteen Python tests pass; JVM unchanged,
 no Maven rebuild. Evidence remains ignored under .runtime/m2/recovery/.
 See docs/m2-tor.md for findings and the optional private-bridge investigation.
+
+
+## Git & Entire Continuous Checkpoint Policy
+
+- This repository uses Entire to preserve agent development context and checkpoints.
+- Agents are authorized to create and push meaningful, cohesive Git commits to
+  this repository's existing configured origin remote during normal development.
+- Commit and push after verified, reviewable implementation phases rather than
+  waiting for the final milestone. Run relevant checks before each commit.
+- Clearly label partial or incomplete functionality; never claim verification
+  that was not actually performed. Do not create empty or meaningless checkpoints.
+- Maintain AGENTS.md when architecture, environment, milestone state or operating
+  procedures materially change, preserving existing architectural instructions.
+- Preserve Entire hooks and configuration. Never disable Entire to bypass an issue.
+- Never commit secrets, private bridge lines, onion private keys, runtime evidence,
+  Docker volumes or credentials.
+- Never use force-push or destructive history rewriting, or overwrite unrelated
+  user modifications. If push fails, investigate/report the cause rather than force.
+- This standing authorization does not permit pushing to unrelated remotes or
+  repositories.
