@@ -15,8 +15,18 @@ public class DiscoveryTest {
         var m=TorPolicyTest.class.getDeclaredMethod("onion",int.class);m.setAccessible(true);return (String)m.invoke(null,n);
     }
     private static Config config(String... hosts) {
-        Config c=new Config();c.put("tor.mode","ONLY");c.put("tor.socks.host","tor");c.put("tor.socks.port",9050);c.put("tor.allowed.hosts",List.of(hosts));
+        Config c=new Config();c.put("discovery.budget.mode","local-test");c.put("discovery.crawl.session.id","unit");c.put("tor.mode","ONLY");c.put("tor.socks.host","tor");c.put("tor.socks.port",9050);c.put("tor.allowed.hosts",List.of(hosts));
         c.put("discovery.max.pages",3);c.put("discovery.max.depth",2);c.put("discovery.max.links",20);return c;
+    }
+    @Test public void rejectedScopeIsCountedWithoutPersistingRawCredentials()throws Exception {
+        DiscoveryScopeFilter f=new DiscoveryScopeFilter();f.configure(config(host(1)),new ObjectMapper().createObjectNode(),"audit");
+        Metadata parent=new Metadata();assertNull(f.filter(null,parent,"http://user:password@outside.invalid/"));
+        assertEquals("1",parent.getFirstValue("discovery.scope.rejected"));
+        assertFalse(parent.toString().contains("password"));assertFalse(parent.toString().contains("outside.invalid"));
+    }
+    @Test public void durableBudgetModeFailsClosed()throws Exception {
+        Config c=config(host(1));c.remove("discovery.budget.mode");
+        assertThrows(IllegalArgumentException.class,()->new DiscoveryParseFilter().configure(c,new ObjectMapper().createObjectNode(),"M3"));
     }
     @Test public void htmlChainCyclesDuplicateAndMetadataOnly()throws Exception {
         String a="http://"+host(1)+"/",b="http://"+host(2)+"/",c="https://"+host(3)+"/";

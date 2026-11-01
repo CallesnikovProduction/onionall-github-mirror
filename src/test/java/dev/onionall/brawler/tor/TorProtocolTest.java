@@ -99,6 +99,43 @@ public class TorProtocolTest {
         }
     }
 
+    @Test public void discoveryMimeRejectsHeadersBeforeWaitingForBody()throws Exception {
+        String host=TorPolicyTest.onion(4);
+        for(String headers:List.of("Content-Type: application/zip\r\n","Content-Type: text/html; broken\r\n","Content-Type: text/html\r\nContent-Encoding: gzip\r\n","","Content-Type: text/html\r\nContent-Type: application/zip\r\n")) {
+            try(SocksWire wire=new SocksWire("HTTP/1.1 200 OK\r\n"+headers+"Content-Length: 999999999\r\nConnection: close\r\n\r\n")) {
+                TorProtocol p=new TorProtocol();Config c=TorPolicyTest.configuration(host,wire.port());c.put("tor.discovery.html.only",true);p.configure(c);
+                try {assertEquals("METADATA_ONLY",assertThrows(IOException.class,()->p.getProtocolOutput("http://"+host+"/download",new Metadata())).getMessage());}
+                finally {p.cleanup();}
+                wire.await(1);
+            }
+        }
+    }
+    @Test public void discoveryMimeBoundsChunkedAndSkipsRedirectPayload()throws Exception {
+        String host=TorPolicyTest.onion(4),body="<html>"+"x".repeat(128)+"</html>";
+        String chunked="HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"+Integer.toHexString(body.length())+"\r\n"+body+"\r\n0\r\n\r\n";
+        String redirect="HTTP/1.1 302 Found\r\nLocation: /next\r\nContent-Type: application/zip\r\nContent-Length: 999999999\r\nConnection: close\r\n\r\n";
+        try(SocksWire wire=new SocksWire(chunked,redirect)) {
+            TorProtocol p=new TorProtocol();Config c=TorPolicyTest.configuration(host,wire.port());c.put("tor.discovery.html.only",true);c.put("http.content.limit",32);p.configure(c);
+            try {
+                assertEquals("BODY_LIMIT_EXCEEDED",assertThrows(IOException.class,()->p.getProtocolOutput("http://"+host+"/large",new Metadata())).getMessage());
+                var r=p.getProtocolOutput("http://"+host+"/redirect",new Metadata());assertEquals(302,r.getStatusCode());assertEquals(0,r.getContent().length);assertEquals("http://"+host+"/next",r.getMetadata().getFirstValue("location"));
+                wire.await(2);wire.assertNoFurtherConnection();
+            } finally {p.cleanup();}
+        }
+    }
+
+    @Test public void discoveryMimeHtmlRobotsAndLyingTypeAreBounded()throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try(SocksWire wire=new SocksWire(reply(200,"<html><body>ok</body></html>").replace("text/plain","text/html"),reply(200,"PK-binary").replace("text/plain","text/html"),"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 14\r\nConnection: close\r\n\r\nUser-agent: *\n")) {
+            TorProtocol p=new TorProtocol();Config c=TorPolicyTest.configuration(host,wire.port());c.put("tor.discovery.html.only",true);p.configure(c);
+            try {
+                assertEquals(200,p.getProtocolOutput("http://"+host+"/",new Metadata()).getStatusCode());
+                assertEquals("METADATA_ONLY",assertThrows(IOException.class,()->p.getProtocolOutput("http://"+host+"/lying",new Metadata())).getMessage());
+                assertNotNull(p.getRobotRules("http://"+host+"/"));
+            } finally {p.cleanup();}
+        }
+    }
+
     @Test public void unsafeHttpConfigurationFailsBeforeStartingTransport() throws Exception {
         String host = TorPolicyTest.onion(3);
         for (String key : List.of("http.robots.file.skip", "http.allow.redirects", "http.trust.everything")) {

@@ -13,6 +13,12 @@ class DiscoveryParseFilter : ParseFilter() {
     private val json = ObjectMapper()
     override fun configure(conf: MutableMap<String, Any>, params: JsonNode, name: String) {
         super.configure(conf, params, name)
+        require(conf["discovery.budget.mode"] == "local-test") {
+            "Durable global discovery reservations are unavailable; only explicit local-test mode is supported"
+        }
+        require((conf["discovery.crawl.session.id"] as? String)?.matches(Regex("[A-Za-z0-9_-]{1,64}")) == true) {
+            "Require explicit discovery.crawl.session.id"
+        }
         fun required(key: String): Int = conf[key]?.toString()?.toIntOrNull()
             ?: error("Missing M3 integer setting: $key")
         planner = DiscoveryPlanner(conf, required("discovery.max.pages"),

@@ -6,7 +6,7 @@ from pathlib import Path
 import threading
 
 
-def response(hosts, host, path, attempts):
+def response(hosts, host, path, attempts, extended=False):
     if host not in hosts:
         return 403, 'text/plain', b'Unknown fixture host'
     if path == '/robots.txt':
@@ -22,18 +22,19 @@ def response(hosts, host, path, attempts):
     a,b,c=hosts
     links={a:[f'http://{b}/',f'http://{b}/#duplicate','/dump.zip'],
            b:[f'http://{c}/',f'http://{a}/'],c:[f'http://{a}/']}[host]
+    if extended and host==a:links += ['/temporary','/blocked','http://outside.invalid/']
     page='<article>M3_'+str(hosts.index(host))+'_MARKER'+''.join('<a href="'+url+'">link</a>' for url in links)+'</article>'
     return 200, 'text/html', page.encode()
 
 
-def server(hosts, address, log):
+def server(hosts, address, log, extended=False):
     lock=threading.Lock(); counts={}
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             host=self.headers.get('Host','').split(':')[0]
             with lock:
                 key=(host,self.path);counts[key]=counts.get(key,0)+1
-                status,mime,body=response(hosts,host,self.path,counts[key])
+                status,mime,body=response(hosts,host,self.path,counts[key],extended)
                 with Path(log).open('a') as output:
                     output.write(json.dumps(dict(host=host,path=self.path,status=status))+'\n')
             self.send_response(status);self.send_header('Content-Type',mime)
@@ -43,5 +44,5 @@ def server(hosts, address, log):
 
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('hosts',nargs=3);p.add_argument('--log',required=True);a=p.parse_args()
-    server(a.hosts,('0.0.0.0',8080),a.log).serve_forever()
+    p=argparse.ArgumentParser();p.add_argument('hosts',nargs=3);p.add_argument('--extended',action='store_true');p.add_argument('--port',type=int,default=8080);p.add_argument('--log',required=True);a=p.parse_args()
+    server(a.hosts,('0.0.0.0',a.port),a.log,a.extended).serve_forever()

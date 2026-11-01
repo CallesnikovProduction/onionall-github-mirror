@@ -18,11 +18,12 @@ def prepare(directory,hosts):
         'protocol.md.prefix':'protocol.','http.timeout':20000,'http.content.limit':65536,
         'http.agent.name':'OnionallBrawlerMThreeTest','http.robots.file.skip':False,
         'http.allow.redirects':False,'http.trust.everything':False,
-        'discovery.max.pages':10,'discovery.max.depth':3,'discovery.max.links':100,
+        'discovery.budget.mode':'local-test','discovery.crawl.session.id':directory.name,
+        'tor.discovery.html.only':True,'discovery.max.pages':10,'discovery.max.depth':3,'discovery.max.links':100,
         'metadata.persist':['discovery.*','fetch.exception','fetch.statusCode','protocol.tor.category'],
         'metadata.transfer':[], 'parser.emitOutlinks.max.per.page':100,
         'jsoup.treat.non.html.as.error':True,'parser.mimetype.whitelist':[],
-        'sitemap.discovery':False,'fetchInterval.default':-1,'fetchInterval.fetch.error':120,
+        'sitemap.discovery':False,'fetchInterval.default':1440,'fetchInterval.fetch.error':120,
         'fetchInterval.error':-1,'max.fetch.errors':3,'topology.max.spout.pending':10,
         'urlfrontier.host':'frontier','urlfrontier.crawlid':'m3',
         'urlfrontier.max.buckets':3,'urlfrontier.max.urls.per.bucket':2,
@@ -32,9 +33,9 @@ def prepare(directory,hosts):
     (directory/'m3-parsefilters.json').write_text(json.dumps({'org.apache.stormcrawler.parse.ParseFilters':[
         {'class':'dev.onionall.brawler.discovery.DiscoveryParseFilter','name':'M3Discovery','params':{}}]},indent=2))
     (directory/'m3-urlfilters.json').write_text(json.dumps({'org.apache.stormcrawler.filtering.URLFilters':[
-        {'class':'dev.onionall.brawler.tor.TorScopeFilter','name':'TorScope','params':{}}]},indent=2))
+        {'class':'dev.onionall.brawler.discovery.DiscoveryScopeFilter','name':'TorScope','params':{}}]},indent=2))
     topology=(ROOT/'crawler.flux').read_text().replace('name: "crawler"','name: "crawler-m3"',1)
-    topology=topology.replace('file: "crawler-conf.yaml"','file: '+json.dumps(str(directory/'crawler-conf.yaml')),1)
+    topology=topology.replace('file: "crawler-conf.yaml"','file: '+json.dumps((directory/'crawler-conf.yaml').relative_to(ROOT).as_posix()),1)
     (directory/'topology.flux').write_text(topology)
     (directory/'manifest.json').write_text(json.dumps({'m3_verified':False,'seed':'http://'+hosts[0]+'/',
         'owned_hosts':hosts,'blocker':'M2 gate, durable global budget, pre-body MIME gate and live topology delivery unverified'},indent=2))

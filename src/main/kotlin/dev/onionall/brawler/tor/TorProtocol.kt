@@ -2,6 +2,7 @@ package dev.onionall.brawler.tor
 
 import crawlercommons.robots.BaseRobotRules
 import crawlercommons.robots.SimpleRobotRulesParser
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.Call
 import okhttp3.ConnectionPool
 import okhttp3.Dns
@@ -97,6 +98,7 @@ class TorProtocol : Protocol {
      * Превышение лимита приводит к [IOException].
      */
     private var limit = 65536
+    private var htmlOnly = false
 
     /**
      * Локальный кеш правил `robots.txt`.
@@ -149,6 +151,7 @@ class TorProtocol : Protocol {
         }
 
         policy = TorPolicy(conf)
+        htmlOnly = conf["tor.discovery.html.only"] == true
 
         // SimpleFetcherBolt 3.7.0 prefixes response metadata at the merge boundary.
         // Without this setting its fallback is empty, allowing remote control-key collisions.
@@ -338,6 +341,7 @@ class TorProtocol : Protocol {
                         name  = "User-Agent",
                         value = agent
                     )
+                    .apply { if (htmlOnly) header("Accept-Encoding", "identity") }
                     .build()
                 ).also { calls.add(it) }
         }
@@ -377,13 +381,31 @@ class TorProtocol : Protocol {
                         else "HTTP_OK"
                     )
 
-                    val content = response
+                    if (htmlOnly && response.code !in 300..399) {
+                        val types = response.headers.values("Content-Type")
+                        val media = types.singleOrNull()?.toMediaTypeOrNull()
+                        val mime = media?.let { "${it.type}/${it.subtype}" }
+                        val encodings = response.headers.values("Content-Encoding")
+                        val identity = encodings.isEmpty() || (encodings.size == 1 && encodings.single().equals("identity", ignoreCase = true))
+                        val robotsRequest = URI(safe).rawPath == "/robots.txt"
+                        val allowed = if (robotsRequest) mime == "text/plain" else mime == "text/html"
+                        if (!allowed || !identity) { call.cancel(); throw IOException("METADATA_ONLY") }
+                    }
+
+                    if (htmlOnly && response.code in 300..399) call.cancel()
+                    val content = if (htmlOnly && response.code in 300..399) byteArrayOf() else response
                         .body
                         ?.byteStream()
                         ?.readNBytes(limit+1)
                         ?: byteArrayOf()
 
-                    if (content.size > limit) throw IOException("BODY_LIMIT_EXCEEDED")
+                    if (content.size > limit) { if (htmlOnly) call.cancel(); throw IOException("BODY_LIMIT_EXCEEDED") }
+                    if (htmlOnly && URI(safe).rawPath != "/robots.txt" && response.code !in 300..399) {
+                        val prefix = content.toString(Charsets.UTF_8).removePrefix("\uFEFF").trimStart().lowercase()
+                        if (!(prefix.startsWith("<!doctype html") || prefix.startsWith("<html") ||
+                              prefix.startsWith("<head") || prefix.startsWith("<body") || prefix.startsWith("<article")))
+                            throw IOException("METADATA_ONLY")
+                    }
                     return ProtocolResponse(
                         content,
                         response.code,
@@ -403,7 +425,8 @@ class TorProtocol : Protocol {
             if (closed) throw IOException("PROTOCOL_CLOSED", e)
             if (e.message in setOf(
                     "SCOPE_REJECTED",
-                    "BODY_LIMIT_EXCEEDED"
+                    "BODY_LIMIT_EXCEEDED",
+                    "METADATA_ONLY"
             )) throw e
             throw IOException("ONION_UNREACHABLE", e)
         } finally {
