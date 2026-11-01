@@ -8,10 +8,44 @@ Tor v3 has no global registry of onion services. Complete enumeration is not a r
 
 ## M2 implementation in progress — 2026-10-31
 
+Final integration review: TorPolicy rejects paths rewritten by URI.normalize
+and percent-encoded dot segments: robots checks the original URL while OkHttp
+could otherwise fetch /blocked. New scope/no-socket regressions pass. Supervisor
+now recognizes exception records rather than category words in document content.
+Recovery target rejects stale JARs and verifies actual ROOT/A/B Storm fetches.
+Offline JDK17 verify38/Python M2 66/security4 pass; fresh resolver guard32 passes
+with zero onion lookups (not system-wide proof). Target5c07d50d5d36 passes owned
+restart, real protocol series, pending resume, eight-record state and cleanup.
+Full dc2e99288d55 failed Docker Hub metadata access before startup; explicit
+--cached-images now records/uses existing M2 images without build/pull. Full
+ba732bdd136c failed: Python canary passed but the first Java robots series
+request timed out in JDK SOCKS negotiation, before HTTP/Storm. No resume; dependent
+outage/matrix stopped. m2_verified=false. Independent M1 abb26c8d207b passes
+(six records, gap2.003326975s). All new containers/networks removed, volumes
+retained, VPN/default routes/rules/DNS unchanged. No identical full retry.
+Tor remains0.4.9.11; candidate0.4.9.15 undelivered. Production recovery still
+requires M2 fixture/probes and is not independently deployed.
+The user now authorizes a reviewed checkpoint commit and ordinary origin push;
+this checkpoint records BLOCKED M2, not production readiness.
+TODO disposition, known limits and evidence: docs/m2-hardening.md.
+
 Checkpoint authorization (2026-11-01): the user requests one reviewed Git commit
 and ordinary push to the existing Entire origin, then continued M2 recovery.
 Do not commit/push subsequent recovery changes without a separate instruction.
 Keep VPN and host networking untouched; only isolated M1/M2 projects are allowed.
+That checkpoint is now1180512086bdd7b3f48c37fbe2d7dbcca17bffee on main,
+pushed normally to origin; Entire doctor confirmed installed/approved hooks.
+
+Post-checkpoint comparison isolates Tor hidden-service client state: after all
+descriptor uploads, cold Tor fetched the new revision and answered while warm
+Tor retained the old revision and CONNECT timed out. New rendezvous circuits
+also stalled; closing a waiting circuit or fetching the new descriptor alone
+did not restore warm connectivity. Do not call assisted reset spontaneous
+production recovery. See docs/m2-hardening.md for A/B evidence and limitations.
+Pinned Bookworm Tor0.4.9.11 has open Debian security issues. An isolated0.4.9.15
+compatibility image attempt was blocked by BuildKit DNS for deb.torproject.org;
+do not alter host/VPN DNS, routes, proxy or daemon settings to bypass this.
+M2 remains BLOCKED; subsequent changes stay uncommitted. Python47 tests pass.
 
 Restart diagnosis on 2026-11-01 with the host VPN active: host routes/policy
 rules and resolver hash matched before/after every isolated experiment. Do not

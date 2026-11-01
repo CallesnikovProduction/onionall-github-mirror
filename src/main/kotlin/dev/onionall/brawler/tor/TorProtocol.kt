@@ -2,6 +2,7 @@ package dev.onionall.brawler.tor
 
 import crawlercommons.robots.BaseRobotRules
 import crawlercommons.robots.SimpleRobotRulesParser
+import okhttp3.Call
 import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
@@ -60,6 +61,11 @@ class TorProtocol : Protocol {
      * Используется перед выполнением HTTP-запросов.
      */
     private lateinit var policy: TorPolicy
+
+    private val lifecycle = Any()
+    @Volatile private var closed = false
+    private val calls = mutableSetOf<Call>()
+
 
     /**
      * HTTP-клиент `OkHttp` с фиксированным SOCKS-прокси.
@@ -128,14 +134,16 @@ class TorProtocol : Protocol {
      *
      * @param conf конфигурация Apache Storm.
      *
-     * TODO(TPR-03): Проверить жизненный цикл configure/cleanup
-     *  и поведение при частичной ошибке инициализации.
+     * TPR-03: configure и cleanup сериализованы отдельным lifecycle lock.
+     * После cleanup экземпляр терминален; для restart нужен новый экземпляр.
+     * TODO(TPR-03): Проверить контракт Storm при частичной ошибке инициализации.
      *
      * TODO(TPR-04): Проверить, что запрет небезопасных
      *  настроек нельзя обойти альтернативными конфигурациями
      *  StormCrawler или сетевых компонентов.
      */
-    override fun configure(conf: Config) {
+    override fun configure(conf: Config): Unit = synchronized(lifecycle) {
+        check(!closed) { "Protocol closed" }
         check(!this::client.isInitialized) {
             "Protocol already configured"
         }
@@ -319,19 +327,22 @@ class TorProtocol : Protocol {
         url: String,
         metadata: Metadata
     ): ProtocolResponse {
+        if (closed) throw IOException("PROTOCOL_CLOSED")
         policy.checkMetadata(metadata)
         val safe = policy.normalize(url)
-        try {
-            client
-                .newCall(Request.Builder()
+        val call = synchronized(lifecycle) {
+            if (closed) throw IOException("PROTOCOL_CLOSED")
+            client.newCall(Request.Builder()
                     .url(safe)
                     .header(
                         name  = "User-Agent",
                         value = agent
                     )
                     .build()
-                )
-                .execute().use { response ->
+                ).also { calls.add(it) }
+        }
+        try {
+            call.execute().use { response ->
                     val md = Metadata()
                     response.headers.forEach { (name,value) ->
                         // OkHttp reads the last Location, StormCrawler reads the first.
@@ -380,17 +391,23 @@ class TorProtocol : Protocol {
                     )
                 }
         } catch (e: SocketTimeoutException) {
+            if (closed) throw IOException("PROTOCOL_CLOSED", e)
             throw IOException("REQUEST_TIMEOUT", e)
         } catch (e: java.io.InterruptedIOException) {
+            if (closed) throw IOException("PROTOCOL_CLOSED", e)
             throw IOException("REQUEST_TIMEOUT", e)
         } catch (e: ConnectException) {
+            if (closed) throw IOException("PROTOCOL_CLOSED", e)
             throw IOException("SOCKS_FAILURE", e)
         } catch (e: IOException) {
+            if (closed) throw IOException("PROTOCOL_CLOSED", e)
             if (e.message in setOf(
                     "SCOPE_REJECTED",
                     "BODY_LIMIT_EXCEEDED"
             )) throw e
             throw IOException("ONION_UNREACHABLE", e)
+        } finally {
+            synchronized(lifecycle) { calls.remove(call) }
         }
     }
 
@@ -427,6 +444,7 @@ class TorProtocol : Protocol {
      */
     @Synchronized
     override fun getRobotRules(url: String): BaseRobotRules {
+        if (closed) throw IOException("PROTOCOL_CLOSED")
         val safe = URI(policy.normalize(url))
         val base = "${safe.scheme}://${safe.rawAuthority}"
 
@@ -438,6 +456,7 @@ class TorProtocol : Protocol {
         val response = try {
             getProtocolOutput("$base/robots.txt",Metadata())
         } catch (e: IOException) {
+            if (closed) throw IOException("PROTOCOL_CLOSED", e)
             throw IOException("ROBOTS_UNAVAILABLE",e)
         }
 
@@ -474,6 +493,7 @@ class TorProtocol : Protocol {
                 listOf(agent.lowercase())
             )
 
+        if (closed) throw IOException("PROTOCOL_CLOSED")
         if (robots.size >= 16) robots.remove(robots.keys.first())
 
         robots[base] = Pair(
@@ -494,15 +514,20 @@ class TorProtocol : Protocol {
      *
      * Затем очищает локальный кеш `robots.txt`.
      *
-     * TODO(TPR-11): Проверить повторные вызовы cleanup,
-     *  завершение активных запросов и отсутствие утечек
-     *  ресурсов при остановке Storm topology.
+     * TPR-11: Локально проверены повторный cleanup, запрет новых вызовов
+     * и отмена заблокированного SOCKS вызова. Call учитывается до execute,
+     * поэтому cleanup отменяет и ещё не зарегистрированный в dispatcher Call.
+     * TODO(TPR-11): Подтвердить владение lifecycle при остановке Storm topology.
      */
     override fun cleanup() {
-        if (this::client.isInitialized) {
-            client.dispatcher.cancelAll()
-            client.connectionPool.evictAll()
-            client.dispatcher.executorService.shutdownNow()
+        synchronized(lifecycle) {
+            closed = true
+            calls.forEach { it.cancel() }
+            if (this::client.isInitialized) {
+                client.dispatcher.cancelAll()
+                client.connectionPool.evictAll()
+                client.dispatcher.executorService.shutdownNow()
+            }
         }
         synchronized(this) {
             robots.clear()

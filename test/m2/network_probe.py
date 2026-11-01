@@ -39,7 +39,8 @@ def receive(sock, size, deadline=None):
     return result
 
 
-def remote_fetch(onion, deadline=None, observation=None):
+def remote_fetch(onion, deadline=None, observation=None, proxy_host='tor'):
+    # Diagnostics may compare another isolated Tor gateway; acceptance uses 'tor'.
     observation = observation if observation is not None else {}
     started = time.monotonic()
     def phase(name):
@@ -47,7 +48,7 @@ def remote_fetch(onion, deadline=None, observation=None):
         observation.setdefault('phase_started_seconds', {})[name] = time.monotonic() - started
     # ATYP=3 sends the hostname directly to Tor; no getaddrinfo(onion) occurs.
     phase('proxy_tcp_connect')
-    with socket.create_connection(('tor', 9050), timeout=remaining(deadline, 5)) as sock:
+    with socket.create_connection((proxy_host, 9050), timeout=remaining(deadline, 5)) as sock:
         sock.settimeout(remaining(deadline, 45))
         phase('socks_greeting')
         sock.sendall(b'\x05\x01\x00')
@@ -110,6 +111,22 @@ def onion_ready(onion, seconds=90):
             'policy': 'Actual controlled onion /health via SOCKS ATYP=3; not bootstrap inference'}
 
 
+def single_health(onion, seconds=30):
+    """One bounded observation for the recovery controller; never retries."""
+    if not 1 <= seconds <= 30:
+        raise ValueError('Single health deadline must be 1..30 seconds')
+    started = time.monotonic()
+    result = {'passed': False, 'started_at_utc': datetime.now(timezone.utc).isoformat(),
+              'deadline_seconds': seconds}
+    try:
+        result['health'] = remote_fetch(onion, deadline=started + seconds, observation=result)
+        result['passed'] = True
+    except OSError as error:
+        result['error_type'] = type(error).__name__
+    result['elapsed_seconds'] = time.monotonic() - started
+    return result
+
+
 def run(fixture_ip, onion, outage=False):
     resolution=queue.Queue()
     def resolve():
@@ -155,15 +172,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('fixture_ip', nargs='?')
     parser.add_argument('--onion-ready', action='store_true')
+    parser.add_argument('--single-health', action='store_true')
+    parser.add_argument('--health-seconds', type=int, default=30)
     parser.add_argument('--readiness-output', default='onion-readiness.json')
     parser.add_argument('--outage', action='store_true')
     args = parser.parse_args()
     evidence = Path('/evidence')
     host = (evidence / 'onion-hostname.txt').read_text().strip()
-    if args.onion_ready:
+    if args.onion_ready or args.single_health:
         if Path(args.readiness_output).name != args.readiness_output or not args.readiness_output.endswith('.json'):
             parser.error('Readiness output must be a JSON filename')
-        result = onion_ready(host)
+        result = single_health(host, args.health_seconds) if args.single_health else onion_ready(host)
         destination = args.readiness_output
     else:
         if not args.fixture_ip:

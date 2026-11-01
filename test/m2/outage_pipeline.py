@@ -29,6 +29,11 @@ def run(project,path):
     process=None
     log=None
     try:
+        recovery = path / 'gateway-recovery.json'
+        if recovery.exists():
+            state = json.loads(recovery.read_text())
+            check(state.get('passed') is True and state.get('state') == 'recovered',
+                  'Gateway quarantine is active; outage pipeline must not start')
         marker.unlink(missing_ok=True)
         command(['up','-d','--wait','--wait-timeout','360','tor'],'pipeline-tor-ready',390)
         command(['run','--rm','--no-deps','probe','seed','outage'],'outage-seed')

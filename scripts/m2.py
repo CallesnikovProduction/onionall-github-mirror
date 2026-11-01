@@ -25,6 +25,7 @@ class Runner:
         self.environment.update(M2_RUN_DIR=str(self.path), M2_RUN_REL=self.relative,
             M2_RUNTIME_USER=f'{os.getuid()}:{os.getgid()}' if os.name != 'nt' else '1000:1000')
         self.compose = ['docker', 'compose', '-p', self.project, '-f', 'compose.m2.yaml']
+        self.cached_images = False
         self.started = False
         self.failed_stage = None
         self.exit_code = 1
@@ -129,10 +130,17 @@ class Runner:
         shutil.copy2(ROOT/'target/onionall-brawler-0.1.0-SNAPSHOT.jar', self.path/'crawler-m2.jar')
         self.dc(['--profile', 'tools', 'config', '--quiet'], 'config.log')
         self.save('compose.json', json.loads(self.dc(['--profile','tools','config','--format','json'], capture=True).stdout))
-        self.dc(['build'], 'build-images.log')
-        self.dc(['--profile','tools','pull','--ignore-buildable'], 'pull.log')
+        if self.cached_images:
+            self.inspect_to(['docker','image','inspect',IMAGE,'crawlercommons/url-frontier:2.4',
+                'storm:2.8.9-jre17','python:3.12-slim'], 'cached-images.json')
+            self.save('image-policy.json', dict(mode='existing-local-images', build=False, pull=False))
+        else:
+            self.dc(['build'], 'build-images.log')
+            self.dc(['--profile','tools','pull','--ignore-buildable'], 'pull.log')
         self.started = True
-        self.dc(['up','-d','--wait','--wait-timeout','360','fixture','onion','tor','frontier'], 'startup.log')
+        startup=['up','-d','--wait','--wait-timeout','360']
+        if self.cached_images: startup += ['--no-build','--pull','never']
+        self.dc(startup+['fixture','onion','tor','frontier'], 'startup.log')
         hostname = self.dc(['exec','-T','onion','cat','/var/lib/tor/hidden_service/hostname'], capture=True).stdout
         (self.path/'onion-hostname.txt').write_text(hostname, encoding='utf-8')
         self.command([sys.executable, '-B', 'test/m2/prepare.py', self.path], 'prepare.log')
@@ -169,8 +177,14 @@ class Runner:
         self.network('outage', fixture_ip, True)
         self.dc(['up','-d','--wait','--wait-timeout','360','tor'], 'tor-return.log')
         scenario = self.command([sys.executable,'-B','test/m2/scenarios.py',self.project,self.path], 'scenario-driver.log', allow_failure=True)
-        outage = self.command([sys.executable,'-B','test/m2/outage_pipeline.py',self.project,self.path], 'outage-driver.log', allow_failure=True)
-        self.save('scenario-exits.json', dict(scenario_exit_code=scenario.returncode,pipeline_exit_code=outage.returncode))
+        if scenario.returncode == 0:
+            outage_code = self.command([sys.executable,'-B','test/m2/outage_pipeline.py',self.project,self.path],
+                'outage-driver.log', allow_failure=True).returncode
+        else:
+            outage_code = 1
+            self.save('outage-pipeline.json', dict(passed=False, evidence=[],
+                blocker='Not executed after failed security scenarios; quarantine must not be bypassed'))
+        self.save('scenario-exits.json', dict(scenario_exit_code=scenario.returncode,pipeline_exit_code=outage_code))
         m1_started = time.time()
         if os.name == 'nt':
             shell = shutil.which('pwsh') or shutil.which('powershell')
@@ -208,8 +222,10 @@ class Runner:
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.parse_args()
+    parser.add_argument('--cached-images', action='store_true', help='Use and record prebuilt local images; never build/pull')
+    args=parser.parse_args()
     runner=Runner()
+    runner.cached_images=args.cached_images
     def interrupted(signum, frame):
         raise KeyboardInterrupt()
     signal.signal(signal.SIGTERM, interrupted)

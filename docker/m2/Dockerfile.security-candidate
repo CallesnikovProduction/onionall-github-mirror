@@ -1,0 +1,12 @@
+# Isolated amd64 compatibility candidate. Never retag as the accepted baseline.
+# Package URL/version/SHA256 verified in Tor Project's Bookworm amd64 Packages.
+FROM onionall-brawler-tor@sha256:88f3dce6e6b581317bce2ee3c5614297a0757b9d374b874c34f1bfdd97bba11e
+USER 0:0
+# Stage only after scripts/verify_tor_candidate.py verifies signed APT metadata.
+COPY tor-update.deb /tmp/tor-update.deb
+RUN echo 'eca04d5ab2c6285601526419b3d9ca1a25bec477abb25360f4c97da92d79c88e  /tmp/tor-update.deb' | sha256sum -c - \
+    && test "$(dpkg --print-architecture)" = amd64 \
+    && dpkg -i /tmp/tor-update.deb \
+    && test "$(dpkg-query -W -f='${Version}' tor)" = '0.4.9.15-1~d12.bookworm+1' \
+    && rm /tmp/tor-update.deb
+USER 1000:1000

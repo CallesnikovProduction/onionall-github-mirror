@@ -3,6 +3,604 @@
 This audit accompanies bridge integration. No new commit is authorized by the
 latest audit request; preserve the working changes for review.
 
+## Final integration review — 2026-11-01
+
+Checkpoint is1180512086bdd7b3f48c37fbe2d7dbcca17bffee. The cumulative uncommitted
+patch adds one local batch supervisor and one shared recovery controller (not
+multiple competing watchdogs), gateway readiness/series probes, fail-fast harness
+stages, stronger acceptance evidence checks, a signed offline Tor candidate
+path, terminal/cancellable TorProtocol lifecycle, scheduler/filter regressions,
+and operational documentation. No default dependency pin or TorPolicy allowlist
+expansion, DIRECT path, auto-redirect/retry or volume deletion was introduced.
+
+Independent second review inspected source and installed dependency contracts.
+Corrections in this integration pass:
+
+1. Supervisor matched category words in arbitrary fetched content, not just
+   exceptions. It now recognizes anchored IOException records; regression proves
+   a normal content line containing all category words does not trigger recovery.
+   This remains heuristic diagnostic log parsing, not an authenticated event bus;
+   adversarial log-line injection and service-wide failure attribution are not
+   solved by this small correction. Do not promote it to a general production
+   watchdog without a structured signal/ownership contract.
+2. Target used a previously packaged JAR while claiming no JVM changes. It now
+   compares packaged Tor classes with nonempty target/classes, records artifact
+   SHA256 and rejects a stale JAR. Maven verify precedes runtime verification.
+3. Confirmed robots path bypass: installed crawler-commons1.6 allows original
+   `/safe/%2e%2e/blocked` and `/safe/../blocked`; OkHttp sends `/blocked`.
+   SimpleFetcherBolt checks rules against the original URL. URI.normalize also
+   collapses duplicate separators, changing `//blocked` to `/blocked` after that
+   check. A residual encoded-dot-only fix was independently reviewed and found
+   incomplete, then strengthened. Policy now rejects paths changed by URI
+   normalization or containing encoded dot segments, before robots/transport.
+   Normal encoded filename characters, query escaping, root slash and fragments
+   retain their prior semantics. This is intentionally stricter for ambiguous
+   paths, not a replacement robots grammar. Scope/wire regressions prove no socket
+   opens for rejected forms. Differential reproduction is retained under ignored
+   .runtime/m2/final-integration/PathContract.java.
+
+Available unit checks: final offline Java17 Maven verify38pass and rebuilt JAR;
+Python M2 66pass, security verifier4pass, M1 31pass/1optional skip. Fresh JDK17
+resolver guard runs32 protocol/policy tests: positive control true, zero onion
+InetAddress lookups. Scope is this fresh JVM with loopback SOCKS fixtures,
+not system-wide DNS leak absence. An initial filter-test compilation error was
+corrected before running successful tests; no failed setup is counted as PASS.
+
+Target5c07d50d5d36 passes: post-service-restart CONNECT times out30s, one same-
+container gateway restart, authenticated readiness plus real robots/health
+series, paused consumer resumes, pending state is unchanged then consumed, and
+separate actual Storm crawl yields ROOT/A/B and eight frontier records. Keys,
+three volumes and host VPN routes/rules/DNS are unchanged; cleanup passes.
+The target copied the intermediate encoded-dot-rejection artifact; the later
+strict literal-dot correction changes only rejected URL forms unused by the
+canonical owned fixture. Full dc2e99288d55 uses the final Maven-packaged policy;
+its results are required for final acceptance, never inferred from this target.
+
+Full-run infrastructure note: dc2e99288d55 passed real bridge/SOCKS/HTTPS
+preflight and Maven verify, then failed BuildKit metadata HEAD for
+registry-1.docker.io/debian:12.12-slim with network-unreachable. Stack startup,
+scenarios and M1 were not executed; its verifier remains false. A single
+justified rerun ba732bdd136c uses new explicit --cached-images: inspect all four
+required local image tags/IDs before startup, record cached-images.json and
+image-policy.json, skip M2 build/pull and start with --no-build --pull never.
+This tests the existing approved artifacts, not remote rebuild reproducibility.
+It does not alter host routes/DNS/VPN or silently upgrade pins. M1's existing
+runner retains its own image preparation policy. Default M2 build mode remains.
+Both failed evidence directories are preserved; results follow.
+
+Cached full-run result: ba732bdd136c reaches the real crawl and graceful frontier
+recreation with eight records. After the owned onion restart, original readiness
+fails; the controller restarts the same gateway and Python health succeeds.
+The first actual Java robots request then times out20s, series completed=[];
+stack: REQUEST_TIMEOUT -> InterruptedIOException(timeout) -> SocketException
+(Socket closed) in SocksSocketImpl.readSocksReply/connect. This is before HTTP
+and before a Storm worker. The stack does not distinguish greeting versus
+CONNECT-reply read. This independently excludes Storm topology lifecycle as a
+necessary cause for this particular failure; Tor client/path/isolation behavior
+remains unproven. No additional circuit/descriptor experiment was launched.
+Recovery state=blocked, gateway stopped, no resume; subsequent matrix cases and
+outage pipeline not executed. scenario_exit=1, pipeline_exit=1. Mandatory gate
+is failed; successful target/canary/unit tests cannot substitute for it. The
+independent M1 regression abb26c8d207b passes exit0, all three evidence flags true,
+six records and minimum gap2.003326975s. Final verifier m2_verified=false,
+fail_closed_verified=false; real_tor_transport/remote_onion_resolution/
+no_direct_egress/proxy_bypass_blocked/m1_regression_passed are true. The combined
+crawl stage also stays false because the mandatory /loop-a probe was skipped
+following failed recovery; raw ROOT/A/B/pending markers and eight identical
+before/after records do not override that acceptance result.
+
+Final cleanup and independent inspection confirm target, both full attempts and
+M1 have no remaining containers/networks. The target and cached full run retain
+frontier-data/tor-state/onion-state; M1 retains its frontier. Protected VPN/default
+routes, routing rules and resolver hash match the pre-target snapshot. Evidence:
+.runtime/m2/final-integration/host-cleanup-final.json. git diff --check and scans
+of all changed tracked/untracked paths for private bridge tokens, private keys
+and accidentally included .runtime/.secrets/target files pass. Nothing is staged;
+HEAD remains1180512086bdd7b3f48c37fbe2d7dbcca17bffee, no commit/push.
+
+Installed dependency assessment: Java17 target/runtime, Kotlin2.3.21,
+StormCrawler3.7.0, Storm2.8.9, URLFrontier2.4, crawler-commons1.6, OkHttp5.4.0.
+No version upgraded. Tor0.4.9.11 remains vulnerable baseline;0.4.9.15 candidate
+is unbuilt. M2 is **not VERIFIED**, and production-ready is **false** independently
+because signed security update and independent runtime recovery remain blocked.
+Safe continuation: deliver the authenticated package bundle using the documented
+approved transfer procedure, build/test it offline in an isolated candidate,
+then repeat bounded owned-fixture recovery with stable endpoint and preserved
+keys/state. This is a new version-compatibility hypothesis, not a claim that it
+will cure connectivity. Do not alter host networking, increase deadlines or
+repeat identical current-version full gates to search for a lucky PASS.
+
+### TODO disposition (bounded evidence, not blanket closure)
+
+| Area / TODO | Classification | Evidence / remaining scope |
+| --- | --- | --- |
+| Filter configure misuse, bad config, null metadata | VERIFIED | New local tests: fail-fast or target scope still enforced; no network |
+| Filter source | DEFERRED | Source is not authorization; target allowlist remains required. Parent-domain restrictions need an explicit product requirement |
+| Filter normalize / IOException refusals | VERIFIED | Negative URL/metadata matrix returns null; initialization defects still escape |
+| TP-01/03 ambiguous path | FIX_REQUIRED → fixed/VERIFIED cases | Literal/encoded dots and duplicate separators rejected; encoded filename/query cases retained. Not universal URI equivalence proof |
+| TP-02 independent published onion vectors | DEFERRED | Existing generator/checksum tests do not replace a separately published vector; no algorithm rewrite justified |
+| TP-04 metadata consumers | VERIFIED critical boundary / DEFERRED future consumers | Fixed SOCKS/headers and protocol.md.prefix regressions; conservative key false positives not changed |
+| TPR-01 SOCKS/DNS | VERIFIED local / TEST_REQUIRED real final gate | Actual DOMAIN SOCKS and fresh JDK guard; full namespace result below |
+| TPR-02 cache TTL/concurrency | DEFERRED | Current single-host acceptance; cross-host load/TTL eviction performance contract is not established |
+| TPR-03/11 configure/cleanup | VERIFIED local / TEST_REQUIRED live ownership | Terminal/idempotent cleanup, blocked call/robots cancellation and new instance tests; active Storm pause still unproved |
+| TPR-04 unsafe config | VERIFIED tested settings | Redirect/trust/robots bypass settings rejected; no universal guarantee for arbitrary future components |
+| TPR-05 gateway DNS | VERIFIED current scope | Proxy resolved once; same-container restart. External replacement needs fresh JVM |
+| TPR-06 Location | VERIFIED local | Exactly one canonical target, relative resolution, duplicate-order rejection,304 preserved |
+| TPR-07 taxonomy | VERIFIED mappings / DEFERRED richer persisted taxonomy | Cancellation is PROTOCOL_CLOSED; robots cause retained; stock fetcher metadata loses category details |
+| TPR-08 metadata prefix | VERIFIED | Real setting protocol.md.prefix and control-key collision tests |
+| TPR-08 header size | DEFERRED | No proven new defect; explicit header/load resource contract still needed before broad production claims |
+| TPR-09/10 robots errors | VERIFIED tested cases / DEFERRED encoding policy | EOF never caches ALLOW_ALL; empty/wildcard/unmatched/HTML/status/size covered; decoding remains replacement-based |
+| TPR-12 connection reuse | VERIFIED zero idle streams / DEFERRED circuit isolation | HTTP1.0 regressions; fresh TCP is not fresh Tor circuit |
+| TPR-13 timeout tuning | DEFERRED | Existing bounded deadlines preserved; no data justifies raising them |
+| TPR-14 followups | VERIFIED redirects / DEFERRED TLS/auth/HTTP2 breadth | No automatic redirects/retry; not every optional protocol variant exercised |
+| TPR-15 UA parser | VERIFIED tested semantics | Exact agent, wildcard, unmatched groups retained |
+
+Remaining production boundary is a blocker: supervisor/controller still require
+M2 fixture, network_probe.py and a probe-equipped JAR; there is no independent
+production deployment integration. Host operator owns local tooling; no Docker
+socket is exposed to crawler. One journal cycle prevents repeated recovery, but
+is not a crash-transactional/resumable controller or shared interprocess launch
+lock. The minimal future design is reuse this one owner with a shared launch/
+recovery lock and a deployment-owned structured signal/canary contract. Do not
+add another supervisor or force-reset arbitrary Tor circuits.
+
+Security blocker remains separate: actual baseline Tor0.4.9.11, candidate0.4.9.15
+not delivered/built/installed, signed-bundle real verification and candidate
+bootstrap not executed. Do not redownload through another route or promote a
+hash-only/unsigned package. The prior manual signed-bundle procedure remains.
+
+Latest Storm/frontier reliability review: see [m2-reliability.md](m2-reliability.md)
+for installed scheduler/ACK contracts, cancellation taxonomy fix, local tests and
+limits of source isolation/crash durability. No full gate was run.
+
+## Gateway/runtime lifecycle review — 2026-11-01
+
+No Tor/container/network experiment or full M2 gate in this pass. Existing
+74a877a0af27 remains the latest failed recovery prerequisite; m2_verified=false.
+
+Runtime boundary: TorPolicy/TorProtocol/TorScopeFilter are application transport
+components used by the actual Storm fetcher. OkHttp has an explicit SOCKS proxy,
+no automatic retries/redirects and no idle pooled connections. Proxy address is
+resolved once at configure. Restart of the same gateway container preserves that
+address; force-recreation requires a new protocol/JVM. This is process lifecycle
+compatibility, not proof that Tor circuits/streams recover after restart.
+
+The host-side recovery controller detects from test/m2/network_probe.py and
+requires the owned hostname, probe Compose service and RecoverySeriesProbe in
+crawler-m2.jar. Its consumers are paused, gateway restarted once, HTTP and real
+protocol series verified before resume. Its exclusive journal refuses another
+cycle, including after failure; it is a one-shot budget/lock, not a resumable or
+crash-transactional state machine. Supervisor owns at most two bounded local
+crawler batches and invokes that same controller; exit0/log classification is
+not content success. Neither script is wired into an independent production
+service; both remain local M2 tooling dependent on test artifacts. They do not
+modify frontier URLs, retries, RocksDB or onion keys. Existing persisted retry
+semantics remain authoritative.
+
+Confirmed fixes:
+
+- OkHttp synchronous execute is not prohibited by shutting down its dispatcher
+  executor. TorProtocol cleanup previously allowed new network calls afterwards.
+  Added terminal state, serialized configure/cleanup and rejection of new fetch
+  and robots calls with IOException(PROTOCOL_CLOSED). Reconfigure after cleanup
+  is rejected; restart creates a new instance.
+- Dispatcher cancelAll alone has an admission race between newCall and execute.
+  Calls are now tracked under the lifecycle lock before execute; cleanup cancels
+  those calls directly too. Network I/O is outside the lock. Finally removes
+  completed calls. Robots cache locking remains separate; cleanup cancels first,
+  then clears cache, avoiding waiting on a blocked robots fetch before cancellation.
+- Malformed JSON array/null health/series used to escape via AttributeError,
+  bypassing the recovery exception/stop path. Shape validation now turns these
+  cases into a recorded blocked result with gateway stop and no unpause.
+  Malformed supervisor quarantine state is likewise rejected.
+- First SIGTERM now disables another SIGTERM before raising KeyboardInterrupt,
+  allowing bounded cleanup rather than interrupting it with repeated termination.
+  This remains cooperative shutdown: SIGKILL/host crash cannot run cleanup.
+
+Checks executed: offline JDK17 TorProtocolTest24pass (three new tests), Python
+M2 65pass (malformed evidence and interrupted supervisor regressions included),
+git diff --check. JVM tests use local SOCKS sockets only: terminal/idempotent
+cleanup, cleanup-before-configure, fresh-instance reuse, and blocked SOCKS call
+cancellation within2s versus configured120s timeout. No real Tor or DNS leak
+claim follows. The admission-window fix is established by lock/Call ownership;
+the test exercises cancellation after a socket is accepted, not every possible
+thread schedule. Raw targeted Maven output: .runtime/m2/lifecycle-targeted.log.
+
+Remaining design limits: no shared interprocess launch lock between manual
+controller and supervisor; an operator must retain one owner and prohibit
+concurrent launchers. Pause cannot reset JVM robots state or a pinned endpoint;
+recreate cannot safely resume an old JVM. Do not add another supervisor. Before
+independent production deployment, minimally separate the verified canary/probe
+contract from fixture-specific M2 packaging and make the existing owner serialize
+launch/recovery using one shared lock. Tradeoff: restart a consumer to discard
+IP/cache state versus pause to retain in-memory work; persisted frontier must
+remain authoritative in either case. This design is recorded, not implemented as
+a new orchestration layer. Persisted-journal crash recovery and live Storm
+shutdown ownership remain open TPR-03/11 integration questions. No broad TODO
+closure, commit or push. Production recovery remains BLOCKED.
+
+## Tor security update only: signed offline bundle — 2026-11-01
+
+Latest security-only pass: installed image reports **Tor0.4.9.11** via an actual
+network-disabled `tor --version`. Candidate0.4.9.15 is **NOT built/installed**.
+One ordinary HTTPS request for Bookworm InRelease failed with curl28,
+`Resolving timed out after5000 milliseconds`. No further download attempts,
+resolver/proxy/VPN changes or alternate network path were used. Browser-accessible
+metadata is reference evidence, not a substitute package delivery channel.
+
+Official [Bookworm amd64 index](https://deb.torproject.org/torproject.org/dists/bookworm/main/binary-amd64/Packages)
+confirms version0.4.9.15-1~d12.bookworm+1 and SHA256
+`eca04d5ab2c6285601526419b3d9ca1a25bec477abb25360f4c97da92d79c88e`.
+The [official repository instructions](https://support.torproject.org/little-t-tor/getting-started/installing/)
+publish repository key fingerprint `A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89`.
+Previous checksum-only remote ADD did not authenticate the APT metadata chain.
+It is superseded by `scripts/verify_tor_candidate.py` and a local COPY candidate
+Dockerfile. Production Compose/default version remains unchanged.
+
+### Manual transfer, without changing this host's network policy
+
+On a workstation **already authorized** to reach the official repository, use
+ordinary verified HTTPS. Do not bypass a restriction on this host or workstation.
+If that access is unavailable, stop and retain the blocker. Download these four
+files (commands require Bash/curl and do not install anything):
+
+```sh
+set -Eeuo pipefail
+mkdir -p tor-candidate-bundle
+cd tor-candidate-bundle
+curl --fail --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 60 -o tor-signing-key.asc https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc
+curl --fail --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 60 -o InRelease https://deb.torproject.org/torproject.org/dists/bookworm/InRelease
+curl --fail --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 60 -o Packages https://deb.torproject.org/torproject.org/dists/bookworm/main/binary-amd64/Packages
+curl --fail --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 5 --max-time 60 -o 'tor_0.4.9.15-1~d12.bookworm+1_amd64.deb' 'https://deb.torproject.org/torproject.org/pool/main/t/tor/tor_0.4.9.15-1~d12.bookworm+1_amd64.deb'
+```
+
+Transfer exactly these four files via an approved file-transfer channel into
+`.runtime/m2/tor-security/incoming/` on this host. Do not transfer private keys,
+bridges or Tor state. From the repository root:
+
+```sh
+python3 -B scripts/verify_tor_candidate.py .runtime/m2/tor-security/incoming .runtime/m2/tor-security/verified-build
+docker build --network=none --pull=false -t onionall-brawler-tor:0.4.9.15-compat .runtime/m2/tor-security/verified-build
+docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --entrypoint /usr/bin/tor onionall-brawler-tor:0.4.9.15-compat --version
+```
+
+Stop on **any** failure. The verifier accepts only a new ignored destination,
+an isolated temporary GPG home and the expected primary fingerprint. It requires
+a valid signed InRelease for bookworm, Date within7days (and honors Valid-Until),
+the exact signed hash/size of Packages, and the pinned package/version/path/size/
+SHA256. No keyserver or network access is used by the verifier. A stale index or
+retired package requires a fresh approved bundle/review, not disabling checks.
+Debian .deb authentication here is through signed APT metadata, not a claimed
+embedded per-package signature. Signature verification has **not** executed
+against a real upstream bundle in this pass because the bundle is unavailable.
+
+Build inputs now pin the baseline image's observed RepoDigest
+`sha256:88f3dce6e6b581317bce2ee3c5614297a0757b9d374b874c34f1bfdd97bba11e`
+and package content. dpkg resolves no network dependencies; missing dependencies
+fail the offline build. This is locked input/provenance reproduction, not a claim
+of bit-identical Docker output or a fresh full Debian security baseline. The
+baseline digest must already be available locally (confirmed on this host).
+
+After successful build/version check, a separate temporary candidate-only
+preflight can use the unchanged existing helper with a process-local image
+selection; it does not promote the production pin:
+
+```sh
+PYTHONPATH=test/m2 python3 -B -c 'import json,sys; from pathlib import Path; import tor_preflight as p; p.IMAGE="onionall-brawler-tor:0.4.9.15-compat"; r=p.run(Path(".runtime/m2/tor-security/candidate-preflight"), seconds=90); print(json.dumps(r,indent=2)); sys.exit(0 if r.get("ready") is True else 1)'
+```
+
+Requires the existing private bridge file; never paste it into the bundle or
+build context. This preflight has its existing90s bound, authenticated bootstrap
+observation and SOCKS/HTTPS test, temporary state and cleanup; no persistent
+onion keys/volumes are mounted. It was **not run** without the candidate image.
+Full M2 compatibility/acceptance would still be a subsequent authorized task.
+
+Executed checks: four offline negative verifier tests (unexpected signing key,
+invalid signature, corrupt index, unsafe destination), script help and git diff
+--check. Mocks validate rejection paths, not upstream signature authenticity.
+No Maven, Kotlin, Storm/frontier/recovery edits or integration gates in this pass.
+No commit/push. DNS timeout is the exact current blocker.
+
+## Latest bounded hardening iteration — 2026-11-01
+
+**M2 remains BLOCKED.** No commit/push or host networking change.
+
+Confirmed orchestration/lifecycle defect: `TorProtocol.configure()` creates a
+resolved InetSocketAddress once; an existing JVM does not rediscover a changed
+Docker gateway IP after force-recreation. Pause/unpause cannot repair that.
+Recovery now restarts the existing Tor container and uses --no-recreate while
+waiting for bootstrap. It checks container identity before/after, retains the
+same endpoint and all disk state. This fixes a real recovery compatibility risk,
+but does **not** explain the previous failure of a newly launched Storm process.
+
+Resume additionally requires `RecoverySeriesProbe`: three sequential real
+TorProtocol robots/health pairs with the same protocol instance and a subsequent
+getRobotRules parse. Each call keeps the existing20s bound, no automatic retry;
+parser/body/status checks must pass. Four successful logged robots GETs are
+required by the verifier; missing/extra/malformed traffic fails. Recovery-agent
+traffic is checked separately from the unchanged main-crawl counts and security
+scenario requests. Raw failed detection is never rewritten as success.
+
+`scripts/m2_supervise.py` is an opt-in actual local Compose process owner, not
+just a test result generator: one bounded crawler batch; detect persisted log
+categories REQUEST_TIMEOUT/SOCKS_FAILURE/ONION_UNREACHABLE/ROBOTS_UNAVAILABLE;
+one recovery and one new JVM at most. It refuses existing quarantine, never
+reseeds or rewrites frontier scheduling, and stops its named consumer on
+SIGTERM/timeout/failure. Unit tests prove no second batch after failed recovery
+and no restart loop after recurring failure. A normal process completion does
+not prove content fetched. Prerequisites are an already prepared isolated M2
+project, evidence JAR containing the probes, and the owned canary fixture:
+
+```sh
+python3 -B scripts/m2_supervise.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+```
+
+This is **not yet independently deployable general production runtime**: it
+still depends on M2 fixture/probes and its live recovery integration has not
+passed. No Docker socket is mounted into crawler; controller authority remains
+on the operator host and is restricted in code to the exact named M2 project.
+Do not enable another concurrent crawler launcher. Distributed Storm recovery
+and continuous monitoring remain outside this bounded local mechanism.
+
+Bounded experiment results:
+
+- 22364bb42dda and e3e2790e81d7 stopped before restart at new-probe compilation
+  errors (Storm provided classpath/API). These are failed setup runs, not Tor
+  recovery evidence. Corrected probe then compiled locally with JDK17.
+- 74a877a0af27: baseline HTTP20018.375s; stop-own-onion CONNECT timeout10.010s;
+  same hostname/key hashes after return; post-return CONNECT timeout30.030s.
+  One IP-preserving gateway restart; live greeting passes but CONNECT again
+  times out30.030s. This is a fresh Python socket, before Storm lifecycle or
+  the new Java series. Controller stays blocked, does not unpause, closes the
+  gateway (exit0). Series and post-recovery crawler fetches were **not executed**.
+- This independently bounds the failure before HTTP and before a new Storm JVM.
+  Tor hidden-service/network state remains unresolved; the experiment does not
+  distinguish exact Tor internals from path availability with the active VPN.
+  No blind timeout increase, extra recovery cycle or full gate retry followed.
+- Target cleanup originally left the paused one-off consumer and its network:
+  Compose down did not remove it. Exact observed helper was explicitly removed;
+  independent-cleanup.json confirms containers/networks gone and all3 volumes
+  retained. Target cleanup now force-removes only its named test helper before
+  down. Original failed cleanup/result JSON remains preserved.
+
+Security candidate: a fresh build of the **tracked** Dockerfile.security-candidate
+again fails DNS for deb.torproject.org before download. Package pin/SHA256 remain
+unchanged from the official source; no candidate installed. Tor before/after
+remains0.4.9.11. This is an independent security blocker, not proof of the cause
+of the connectivity failures. No resolver/proxy/VPN/firewall/daemon workaround.
+
+Verification: offline JDK17 Maven verify26pass; Python M2 63pass; Python M1
+31pass/1optional skip. First Maven attempt could not write Kotlin's per-user
+marker in the restricted session; the authorized normal-user execution passed
+with the existing cache and offline resolution. No JVM production changes.
+Independent Docker M1 regression aada9657f24a passed exit0: assertions,
+crawl evidence and runtime flags true; six records, minimum gap2.000966576s,
+container/network cleanup passed and its volume retained. Final read-only
+host check confirms protected VPN/default routes, policy rules and resolver
+hash unchanged; all three new M2 projects have no containers/networks left.
+Evidence: .runtime/m2/hardening-iteration-host-check.json and ignored M1 directory.
+Final git diff --check and private-bridge/key/runtime-file scans pass. Changes
+remain uncommitted; HEAD is still1180512086bdd7b3f48c37fbe2d7dbcca17bffee.
+
+Remaining work is gated, not silently closed: acquire/build and assess the
+trusted fixed Tor package under the existing network policy, run the strengthened
+target, exercise supervisor live with several successful actual crawler fetches,
+then full M2/outage/M1. No remaining Kotlin TODO is closed while the mandatory
+recovery prerequisite is red. No claim of production readiness or universal DNS
+leak absence follows from unit tests or a single successful stream.
+
+## Managed recovery and security candidate — 2026-11-01
+
+The Tor Project Bookworm amd64 index was rechecked: the actual candidate is
+`0.4.9.15-1~d12.bookworm+1`, not an invented Debian-security version. Its package
+URL and SHA256 are pinned in `docker/m2/Dockerfile.security-candidate`. This
+isolated candidate inherits the existing Debian12/obfs4 image and replaces only
+Tor. `dpkg` checks dependencies, architecture and installed version. The package
+is reproducible by hash; the inherited base tag and its other packages are not
+a fully locked security baseline. Primary sources: [Tor package index](https://deb.torproject.org/torproject.org/dists/bookworm/main/binary-amd64/Packages),
+[Debian tracker](https://security-tracker.debian.org/tracker/source-package/tor).
+The latter still lists open vulnerabilities in the installed Bookworm0.4.9.11.
+
+One renewed isolated build attempt using the preceding ignored candidate
+Dockerfile with the identical package URL/checksum failed before download with
+`lookup deb.torproject.org: no such host`. No candidate image was built or
+selected by Compose. No DNS/VPN/route/proxy/daemon workaround was attempted.
+Reproduce later, with the same host protections intact:
+
+```sh
+docker build --pull=false -t onionall-brawler-tor:0.4.9.15-compat -f docker/m2/Dockerfile.security-candidate .
+```
+
+Candidate compatibility requires at least installed-version/config checks,
+bridge bootstrap, controlled onion/recovery and full M2/M1; none is claimed for
+0.4.9.15 yet. Actual runtime remains0.4.9.11. Security remediation is BLOCKED.
+
+### Single-cycle recovery contract
+
+`scripts/m2_recovery.py` is a local Compose operator/controller, not a production
+watchdog or a fix to Tor's internal cache. It accepts only an isolated M2 project
+and its exact local evidence directory. Run it only while the owning harness
+or operator has exclusive control of crawler launches for that project:
+
+```sh
+python3 -B scripts/m2_recovery.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+```
+
+1. Detect a failed own-fixture SOCKS CONNECT after successful greeting. A fresh
+   standalone check makes one30s attempt; scenarios retain their original90s
+   failure document. HTTP/robots/policy errors do not trigger replacement.
+2. Pause all running crawler containers selected by this exact Compose project's
+   labels, including one-off consumers. Frontier remains running and unchanged.
+   The journal is created exclusively; another recovery in this run is refused.
+3. Stop the configured Tor gateway and recreate it once, retaining tor-state,
+   the same service endpoint/networks/config/private bridges and all onion keys.
+   No image pull/build, arbitrary proxy, controller HSFETCH or circuit reset.
+   Bootstrap is bounded90s; it only gates the next real-health probe.
+4. Make one30s `/health` request to the owned fixture via fixed `tor:9050`,
+   requiring ATYP3, HTTP200 and body `ready`. Only then unpause the same consumers.
+5. After quarantine, on any failure leave consumers paused and stop the gateway. Record failures
+   closing it as well; never claim successful quarantine if cleanup is unknown.
+   Manual diagnosis is required; no restart loop or timeout escalation.
+
+This confines recovery to gateway process state; disk state is never deleted.
+The controller cannot distinguish a stale gateway from a service/network outage
+using a single canary. Its bound means at most one attempted replacement, not a
+guaranteed Tor recovery time. It does not authorize bypassing host VPN protection.
+Pausing is scoped to the current local-cluster M2 deployment; multi-host Storm
+heartbeats and distributed recovery are outside this mechanism's tested contract.
+External/manual concurrent crawler launches are not covered by its local lock.
+
+Scenarios invoke the controller only after failed post-restart controlled health.
+The failed detection evidence stays failed; recovered availability is recorded
+separately. The original unreachable negative probe and all failure-matrix
+assertions remain mandatory. The verifier separately checks recovery state
+transitions and actual health, rather than trusting an aggregate passed flag.
+The full harness skips outage crawling after failed scenarios; the outage driver
+also refuses an existing blocked quarantine. No reseed/retry-date rewrite.
+
+### Targeted result
+
+`JAVA_HOME=/usr/lib/jvm/java-17-openjdk python3 -B test/m2/restart_recovery.py`
+passed in `.runtime/m2/onionall-brawler-m2-ad6b9cf93c0d/`:
+
+- Baseline health2006.120s; service-down CONNECT timed out10.011s.
+- After service restart, same hostname/key hashes, greeting succeeded but
+  CONNECT timed out30.029s. This is retained as failed detection.
+- One gateway replacement: quarantine08:02:01.547Z, verified health2005.365s,
+  resume08:02:13.345Z. No increase in probe timeouts or retry loop.
+- One idle local consumer paused/resumed; this demonstrates the mechanism,
+  not active Storm in-flight pause behavior. Subsequently the real Storm crawler
+  processed the retained pending URL without reseeding; frontier snapshots
+  before/after replacement were identical and the successful refetch was stored.
+- All three volumes retained; containers/networks removed. VPN/default routes,
+  routing rules and resolver hash unchanged. No host network setting changed.
+
+The target's `m2_verified=false` is deliberate: it is not the complete acceptance
+gate. Python57 tests pass, including failed health/replacement/pause handling,
+single-cycle refusal, no policy-error-triggered replacement, quarantine bypass
+denial and negative verification of incomplete recovery evidence.
+Full M2/M1 gate launched only after this targeted pass. In
+`.runtime/m2/onionall-brawler-m2-21def5f8ab61/`, all13 security scenarios passed,
+including the new managed recovery. The original post-restart readiness remains
+false, replacement health passes8.098s; no negative probe was overwritten.
+Eight frontier records survive recreation identically and pending work resumes.
+Offline Maven verify completes26 tests with JDK17; Python M1:31pass/1optional skip.
+
+The subsequent actual Storm outage pipeline fails: robots fetch returns
+ROBOTS_UNAVAILABLE caused by REQUEST_TIMEOUT. The JDK cause stack is in
+SocksSocketImpl.readSocksReply/connect (socket closed at deadline), before HTTP;
+there are no outage-user-agent fixture requests and /outage never starts.
+The stack alone does not distinguish greeting from CONNECT reply in this
+particular request. The earlier health and Java recovery probes passed, so
+bootstrap and one successful stream are insufficient to guarantee the next
+Storm stream's availability. Different isolation/circuit state and transient
+network availability remain hypotheses, not a proven new Kotlin defect.
+scenario_exit_code=0/pipeline_exit_code=1; full gate stays failed. Do not increase
+timeouts, retry the whole gate identically, bypass VPN or call this PASS.
+Final verification reports `m2_verified=false`, `fail_closed_verified=false`;
+controlled_onion_fetch, robots_verified, crawl_delay_verified,
+frontier_persistence_verified, real_tor_transport, remote_onion_resolution,
+no_direct_egress and proxy_bypass_blocked are true. Minimum main-crawl gap is
+3.504578008s with eight frontier records. The single outage exit failure remains
+an acceptance blocker despite these successful independent stages.
+
+M1 regression `.runtime/m1/onionall-brawler-m1-09a6ef35c065/` passes exit0,
+assertions/crawl/runtime flags all true, six frontier records, minimum document
+gap2.001555577s. Cleanup retains frontier-data/tor-state/onion-state and removes
+all M2 containers/networks; independent inspection also confirms target and M1
+projects removed. The protected VPN/default routes, policy rules and resolver
+hash match. For the full run, host-before.json reuses the immediately preceding
+target cleanup observation (provenance recorded in host-before-source.json);
+host-after.json is a fresh post-full-run read-only measurement. This is a
+snapshot comparison, not a continuous packet/VPN monitor.
+
+Execution: JDK17, MAVEN_ARGS=-o, M2_MAVEN_REPOSITORY set to the existing writable
+`.runtime/maven-linux-repository`, `bash scripts/m2.sh`. Maven verify26pass;
+Python M2:57pass; Python M1:31pass/1optional skip. git diff --check passes.
+No host/VPN settings, Kotlin source, dependency defaults, volumes or keys changed.
+No commit/push after checkpoint1180512. No identical full retry was launched.
+TODO work remains deferred per the requested gate order: the P1 new-stream
+reliability problem and P0 security-upgrade/DNS blocker remain open. Existing
+TPR-06/08/10 hardening is retained; no unrelated P2 is declared fixed.
+No production Kotlin/TorPolicy/ScopeFilter changes or speculative TODO closures.
+
+## Checkpoint and discriminating recovery experiments — 2026-11-01
+
+Explicitly requested checkpoint1180512086bdd7b3f48c37fbe2d7dbcca17bffee
+was created on main and pushed normally to the configured Entire origin.
+Entire status/doctor confirmed hooks and approvals. Twelve staged source/test/
+documentation files were reviewed; runtime/private-key/bridge-token/credential
+checks found no accidental material. The checkpoint worktree was clean.
+No gate ran during checkpoint; subsequent recovery changes are not committed.
+
+The next experiment kept one persistent crawler-side client namespace and
+compared warm and never-used cold Tor gateways concurrently. Both used the
+same isolated networks, pinned image and bridge configuration. No host settings
+changed, no host ports were exposed and cold Tor state used private tmpfs.
+
+| Evidence suffix under .runtime/m2/onionall-brawler-m2-* | Discriminating result |
+| --- | --- |
+| 7bbcf3d1085b | Warm CONNECT times out30s while cold health succeeds5.660s. Baseline rendezvous12 was already destroyed; new16 waits for rendezvous. Closing16 creates20 but another30s CONNECT fails. Old joined-circuit reuse alone does not explain the failure. |
+| 6e177d8ebf1f | Both fail30s after first publication ACK. Cold fetched the same revision as the warm baseline; RECEIVED is not proof of a newer revision. Raw public descriptor contents were not saved. |
+| a842915a910f | Service-side whitelisted INFO proves revision counters increase across restart. Cold still obtained the previous published revision. Saved consensus validity covers the test time, so stale-consensus/clock speculation is unsupported. |
+| d3e5527174b0 | After ACKs for all current/next uploads, cold fetches new revision2782947095 and passes6.846s; warm retains2781841741 and times out30s. A single HSFETCH replaces warm's revision with2782947095, but warm still times out30s while cold passes1.639s. Descriptor refresh alone is insufficient. |
+| 235cd59d81a7 | Planned combined descriptor/circuit reset experiment aborted before baseline: warm gateway and service were healthy, but the extra cold observer did not become healthy within120s. The reset was NOT executed, so it is not evidence of successful assisted recovery. |
+
+This materially narrows the failure to Tor hidden-service descriptor/
+introduction/rendezvous state. Warm/cold path differences remain a confound;
+the exact internal Tor defect and a guaranteed unassisted recovery bound have
+not been proven. A different descriptor hash alone does not establish freshness:
+the revision counter must be evaluated in its blinded-key/time-period context.
+Tor's [revision-counter specification](https://spec.torproject.org/rend-spec/revision-counter-mgt.html)
+requires monotonic revisions for each blinded public key. Current0.5.0-alpha
+source documentation was consulted only for background; it is not proof about
+the pinned0.4.9.11 implementation. Attempts to access the exact upstream tag
+through the browser were unavailable; no version-specific code claim is made.
+
+Production dependency blocker: Debian's
+[Tor security tracker](https://security-tracker.debian.org/tracker/source-package/tor)
+lists the installed bookworm0.4.9.11-0+deb12u1 with open vulnerabilities.
+The [official Bookworm package index](https://deb.torproject.org/torproject.org/dists/bookworm/main/binary-amd64/Packages)
+offers0.4.9.15-1~d12.bookworm+1 with compatible Debian12 dependency families.
+A candidate image retained the existing Debian12/obfs4 base and pinned that .deb
+by the index SHA256, without changing repository production pins. BuildKit
+failed resolving deb.torproject.org before downloading or installing it.
+Dockerfile retained under .runtime/m2/tor-0.4.9.15-compat/. Runtime compatibility
+and security-upgrade acceptance are unverified. Do not bypass the VPN/DNS policy
+or claim that an unbuilt candidate remediates anything.
+
+Safe manual reproduction with the VPN unchanged, from the repository root:
+
+```sh
+docker build --pull=false -t onionall-brawler-tor:0.4.9.15-compat -f .runtime/m2/tor-0.4.9.15-compat/Dockerfile .runtime/m2/tor-0.4.9.15-compat
+```
+
+This builds only a candidate image; it does not switch production pins or change
+host DNS/network configuration. If DNS resolution still fails, retain the blocker
+instead of changing resolvers, routes, VPN, proxy settings or networking modes.
+
+Repository changes after checkpoint are limited to selecting another isolated
+SOCKS gateway in the diagnostic remote_fetch helper (acceptance default remains
+tor), its DOMAIN-request regression and documentation. Python47 tests pass;
+no new Maven build is needed for unchanged JVM source. No new full M2/M1 run
+is counted until targeted autonomous recovery is proven. Production readiness
+remains blocked, independently of any assisted diagnostic result.
+
+Remaining TODO triage (no speculative behavior changes or cosmetic rewrites):
+
+- P0: pinned Tor security baseline; compatibility build blocked by DNS above.
+- P1: autonomous recovery; TPR-01/04/12/14 integration/isolation/follow-up scope
+  remains open because the mandatory failure gate is red. TCP freshness is not
+  circuit isolation; no per-request Tor-circuit guarantee is claimed.
+- P2: TPR-02/03/05/07/11 cache/lifecycle/gateway-resolution/error contracts;
+  remaining TPR-08 header limits and TPR-10 malformed-input policy require
+  focused contract tests or an explicit policy decision, not inferred fixes.
+- P2: TP-01/03 URI equivalence, TP-02 independent v3 vectors, TP-04 metadata
+  consumers and remaining TorScopeFilter lifecycle/null/source questions stay
+  open. Existing negative tests are evidence for their cases, not universal
+  closure. TPR-06 and the completed portions of TPR-08/10 remain fixed from the
+  earlier hardening; no additional production TODO was declared closed here.
+
 ## Restart diagnosis with active host VPN — 2026-11-01
 
 Read-only preflight confirmed tun0 UP, policy routing through table2022 and an

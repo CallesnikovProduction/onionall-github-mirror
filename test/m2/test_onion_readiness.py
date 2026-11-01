@@ -4,6 +4,28 @@ import network_probe
 
 
 class OnionReadinessTest(unittest.TestCase):
+    def test_single_health_never_retries_or_infers_success(self):
+        with patch.object(network_probe, 'remote_fetch', side_effect=TimeoutError()) as fetch:
+            outcome = network_probe.single_health('controlled.onion', 10)
+        self.assertFalse(outcome['passed'])
+        self.assertEqual('TimeoutError', outcome['error_type'])
+        fetch.assert_called_once()
+        for budget in (0, 31):
+            with self.assertRaises(ValueError):
+                network_probe.single_health('controlled.onion', budget)
+
+    def test_cold_gateway_observer_keeps_domain_socks_request(self):
+        from unittest.mock import MagicMock
+        sock = MagicMock()
+        sock.__enter__.return_value = sock
+        sock.recv.side_effect = [b'\x05\x00', b'\x05\x00\x00\x01', b'\x7f\x00\x00\x01\x00\x50',
+                                b'HTTP/1.0 200 OK\r\n\r\nready', b'']
+        with patch.object(network_probe.socket, 'create_connection', return_value=sock) as connect:
+            result = network_probe.remote_fetch('controlled.onion', proxy_host='cold')
+        self.assertEqual(('cold', 9050), connect.call_args.args[0])
+        self.assertEqual(b'\x05\x01\x00\x03', sock.sendall.call_args_list[1].args[0][:4])
+        self.assertTrue(result['remote_hostname_sent'])
+
     def test_timeout_before_socks_connect_reply_is_not_reported_as_http(self):
         from unittest.mock import MagicMock
         sock = MagicMock()

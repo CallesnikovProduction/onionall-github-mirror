@@ -91,7 +91,10 @@ def verify(path):
         check(all(row['path'] in {'/escape','/loop-a','/slow','/reset'} for row in policy_requests), 'Negative probe escaped its controlled paths')
         check(sum(row['path'] == '/loop-a' for row in policy_requests) == 1,
               'Redirect loop probe must produce exactly one /loop-a request')
-        requests = [row for row in all_requests if row['user_agent'] not in {'OnionallBrawlerMTwoPolicy', 'OnionallBrawlerMTwoOutage'}]
+        requests = [row for row in all_requests if row['user_agent'] not in {'OnionallBrawlerMTwoPolicy', 'OnionallBrawlerMTwoOutage', 'OnionallBrawlerMTwoRecovery'}]
+        recovery_requests = [row for row in all_requests if row['user_agent'] == 'OnionallBrawlerMTwoRecovery']
+        check(all(row['path'] == '/robots.txt' and row.get('method') == 'GET' and row.get('status') == 200
+                  for row in recovery_requests), 'Recovery probe escaped robots scope or failed HTTP')
         counts = Counter(row['path'] for row in requests)
         check(counts == Counter({'/robots.txt': 2, '/': 1, '/a': 1, '/b': 1, '/missing': 1, '/redirect': 1, '/escape': 1, '/pending': 1}), 'Missing, duplicate or out-of-scope fixture requests')
         phase = 0
@@ -145,6 +148,28 @@ def verify(path):
             if key != 'metadata_bypass':
                 raw = load('scenario-' + key + '.json')
                 check(raw.get('scenario') == key and raw.get('passed') is True, 'Scenario aggregate differs from raw result: ' + key)
+        if (path / 'gateway-recovery.json').exists() or 'gateway_recovery' in scenarios['onion_unreachable']:
+            traffic = [json.loads(line) for line in (path/'requests.jsonl').read_text().splitlines() if line]
+            recovery_rows = [row for row in traffic if row.get('user_agent') == 'OnionallBrawlerMTwoRecovery']
+            check(len(recovery_rows) == 4 and all(row.get('path') == '/robots.txt' and
+                row.get('status') == 200 and row.get('method') == 'GET' for row in recovery_rows),
+                'Recovery robots traffic missing, duplicated or invalid')
+            series = load('recovery-series.json')
+            check(series.get('passed') is True and series.get('completed') == ['/robots.txt', '/health'] * 3,
+                  'Gateway real protocol series missing or failed')
+            recovery = load('gateway-recovery.json')
+            health = load('recovery-health.json')
+            target = health.get('health', {})
+            check(recovery.get('passed') is True and recovery.get('state') == 'recovered'
+                  and recovery.get('replacement_limit') == 1
+                  and recovery.get('automatic_direct_fallback') is False
+                  and [event.get('state') for event in recovery.get('events', [])] ==
+                    ['quarantining', 'quarantined', 'replacing', 'verifying', 'resuming', 'recovered'],
+                  'Gateway recovery incomplete or quarantine bypassed')
+            check(health.get('passed') is True and target.get('http_status') == 200
+                  and target.get('health_body') == 'ready' and target.get('socks_atyp') == 3
+                  and target.get('remote_hostname_sent') is True,
+                  'Gateway replacement lacks real controlled onion HTTP evidence')
         pipeline = load('outage-pipeline.json')
         check(all(pipeline.get(key) is True for key in ('passed', 'failed_fetch_persisted', 'scheduled_retry_recovered')), 'Actual crawler outage/retry pipeline incomplete')
         check(pipeline.get('outage_exit_code') == 0 and pipeline.get('recovered_exit_code') == 0, 'Outage/recovery crawler process exits unavailable/nonzero')

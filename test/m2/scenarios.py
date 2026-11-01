@@ -6,6 +6,10 @@ from pathlib import Path
 import subprocess
 import time
 from datetime import datetime, timezone
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
+from m2_recovery import recover
 
 REQUIRED = ['socks_port_unavailable','invalid_socks_endpoint','bootstrap_incomplete',
             'onion_unreachable','malformed_onion','out_of_scope_redirect','redirect_loop',
@@ -118,10 +122,17 @@ else: raise SystemExit('Unbootstrapped Tor control unavailable')
                               '/workspace/test/m2/network_probe.py','--onion-ready',
                               '--readiness-output','onion-readiness-controlled-return.json'],
                               'controlled-onion-ready',110) if restarted==0 else 1
-                results[name]['passed'] &= gateway==0 and restarted==0 and ready==0
                 results[name]['evidence'] += ['controlled-onion-stop.log','controlled-onion-return.log',
                                               'controlled-onion-gateway-live.log','controlled-onion-ready.log',
                                               'onion-readiness-controlled-return.json']
+                if restarted == 0 and ready != 0:
+                    recovery = recover(project, path, 'onion-readiness-controlled-return.json')
+                    results[name]['gateway_recovery'] = recovery
+                    results[name]['evidence'].append('gateway-recovery.json')
+                    if recovery['passed']:
+                        ready = 0
+                        results[name]['evidence'].append('recovery-health.json')
+                results[name]['passed'] &= gateway == 0 and restarted == 0 and ready == 0
                 if restarted != 0 or ready != 0:
                     raise OSError('Controlled onion unavailable after restart; dependent scenarios not executed')
             # Correlate protocol errors with actual network policy and fixture traffic.

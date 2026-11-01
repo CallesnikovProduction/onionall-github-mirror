@@ -19,6 +19,86 @@ public class TorProtocolTest {
         return protocol;
     }
 
+    @Test public void cleanupIsTerminalAndIdempotentWithoutNewSockets() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try (SocksWire wire=new SocksWire(reply(200,"ok"))) {
+            TorProtocol protocol=protocol(host,wire.port());
+            protocol.cleanup(); protocol.cleanup();
+            assertEquals("PROTOCOL_CLOSED",assertThrows(IOException.class,()->protocol.getProtocolOutput("http://"+host+"/",new Metadata())).getMessage());
+            assertEquals("PROTOCOL_CLOSED",assertThrows(IOException.class,()->protocol.getRobotRules("http://"+host+"/")).getMessage());
+            assertThrows(IllegalStateException.class,()->protocol.configure(TorPolicyTest.configuration(host,wire.port())));
+            wire.assertNoFurtherConnection();
+            TorProtocol fresh=protocol(host,wire.port());
+            try { assertEquals(200,fresh.getProtocolOutput("http://"+host+"/",new Metadata()).getStatusCode()); }
+            finally { fresh.cleanup(); }
+        }
+    }
+
+    @Test public void cleanupBeforeConfigureIsTerminal() {
+        TorProtocol protocol=new TorProtocol(); protocol.cleanup(); protocol.cleanup();
+        assertThrows(IllegalStateException.class,()->protocol.configure(TorPolicyTest.configuration(TorPolicyTest.onion(4),9050)));
+    }
+
+    @Test public void cleanupCancelsBlockedSocksCall() throws Exception { checkCleanupCancellation(false); }
+    @Test public void cleanupCancelsBlockedRobotsWithoutReportingNetworkOutage() throws Exception { checkCleanupCancellation(true); }
+    private void checkCleanupCancellation(boolean robots) throws Exception {
+        ExecutorService executor=Executors.newFixedThreadPool(2);
+        CountDownLatch accepted=new CountDownLatch(1);
+        String host=TorPolicyTest.onion(4);
+        try (ServerSocket server=new ServerSocket(0,10,InetAddress.getLoopbackAddress())) {
+            TorProtocol protocol=new TorProtocol();
+            Config config=TorPolicyTest.configuration(host,server.getLocalPort());config.put("http.timeout",120000);
+            protocol.configure(config);
+            Future<?> peer=executor.submit(()->{
+                try(Socket socket=server.accept()) {
+                    socket.setSoTimeout(3000); accepted.countDown();
+                    while(socket.getInputStream().read()!=-1) { }
+                } catch(IOException ignored) { }
+            });
+            try {
+                Future<IOException> request=executor.submit(()->assertThrows(IOException.class,()->{
+                    if(robots) protocol.getRobotRules("http://"+host+"/");
+                    else protocol.getProtocolOutput("http://"+host+"/",new Metadata());
+                }));
+                assertTrue(accepted.await(2,TimeUnit.SECONDS));
+                protocol.cleanup();
+                assertEquals("PROTOCOL_CLOSED",request.get(2,TimeUnit.SECONDS).getMessage());
+                peer.get(4,TimeUnit.SECONDS);
+            } finally { protocol.cleanup(); }
+        } finally { executor.shutdownNow(); }
+    }
+
+    @Test public void robotsTransportFailureRetainsCauseAndNeverCachesAllowAll() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try(SocksWire wire=new SocksWire("",reply(200,"User-agent: *\nDisallow: /blocked\n"))) {
+            TorProtocol protocol=protocol(host,wire.port());
+            try {
+                IOException error=assertThrows(IOException.class,()->protocol.getRobotRules("http://"+host+"/"));
+                assertEquals("ROBOTS_UNAVAILABLE",error.getMessage());
+                assertTrue(error.getCause() instanceof IOException);
+                assertEquals("ONION_UNREACHABLE",error.getCause().getMessage());
+                var recovered=protocol.getRobotRules("http://"+host+"/");
+                assertTrue(recovered.isAllowed("http://"+host+"/a"));
+                assertFalse(recovered.isAllowed("http://"+host+"/blocked"));
+                assertEquals(2,wire.await(2).size());
+            } finally {protocol.cleanup();}
+        }
+    }
+
+    @Test public void encodedDotPathIsRejectedBeforeRobotsOrTransport() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try(SocksWire wire=new SocksWire(reply(200,"unexpected"))) {
+            TorProtocol protocol=protocol(host,wire.port());
+            try {
+                for(String path:List.of("/safe/%2e%2e/blocked","/safe/.%2E/blocked","/../blocked","/safe/../blocked","//blocked","/./blocked")) {
+                    assertEquals("SCOPE_REJECTED",assertThrows(IOException.class,()->protocol.getProtocolOutput("http://"+host+path,new Metadata())).getMessage());
+                    assertEquals("SCOPE_REJECTED",assertThrows(IOException.class,()->protocol.getRobotRules("http://"+host+path)).getMessage());
+                }
+                wire.assertNoFurtherConnection();
+            } finally {protocol.cleanup();}
+        }
+    }
+
     @Test public void unsafeHttpConfigurationFailsBeforeStartingTransport() throws Exception {
         String host = TorPolicyTest.onion(3);
         for (String key : List.of("http.robots.file.skip", "http.allow.redirects", "http.trust.everything")) {

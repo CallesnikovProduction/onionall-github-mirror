@@ -181,6 +181,40 @@ class VerificationTest(unittest.TestCase):
         (self.path / 'scenario-exits.json').unlink()
         self.assertFalse(self.result()['fail_closed_verified'])
 
+    def test_replacement_requires_complete_journal_and_real_http(self):
+        self.outage_evidence()
+        journal = dict(passed=True, state='recovered', replacement_limit=1, automatic_direct_fallback=False,
+            events=[{'state': state} for state in ['quarantining', 'quarantined', 'replacing',
+                'verifying', 'resuming', 'recovered']])
+        health = dict(passed=True, health=dict(http_status=200, health_body='ready', socks_atyp=3,
+            remote_hostname_sent=True))
+        self.write('recovery-series.json', dict(passed=True, completed=['/robots.txt','/health']*3))
+        self.write('gateway-recovery.json', journal)
+        self.write('recovery-health.json', health)
+        self.requests += [dict(path='/robots.txt', method='GET', status=200, user_agent='OnionallBrawlerMTwoRecovery')] * 4
+        self.write_requests()
+        self.assertTrue(self.result()['fail_closed_verified'])
+        valid_requests = list(self.requests)
+        for count in (0, 3, 5):
+            self.requests = [row for row in valid_requests if row['user_agent'] != 'OnionallBrawlerMTwoRecovery'] + [dict(path='/robots.txt', method='GET', status=200, user_agent='OnionallBrawlerMTwoRecovery')] * count
+            self.write_requests()
+            self.assertFalse(self.result()['fail_closed_verified'])
+        self.requests = valid_requests
+        self.write_requests()
+        for key, value in [('passed', False), ('socks_atyp', 1), ('health_body', 'wrong')]:
+            bad = copy.deepcopy(health)
+            if key == 'passed':
+                bad[key] = value
+            else:
+                bad['health'][key] = value
+            self.write('recovery-health.json', bad)
+            self.assertFalse(self.result()['fail_closed_verified'])
+        self.write('recovery-health.json', health)
+        journal['state'] = 'blocked'
+        self.write('recovery-series.json', dict(passed=True, completed=['/robots.txt','/health']*3))
+        self.write('gateway-recovery.json', journal)
+        self.assertFalse(self.result()['fail_closed_verified'])
+
     def test_each_missing_nonzero_or_boolean_driver_exit_is_rejected(self):
         self.outage_evidence()
         for key in ('scenario_exit_code', 'pipeline_exit_code'):

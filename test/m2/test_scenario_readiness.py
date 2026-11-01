@@ -24,10 +24,12 @@ class ScenarioReadinessTest(unittest.TestCase):
                     (path / ('scenario-' + name + '.json')).write_text('{"passed":true}')
                 code = int('onion-readiness-controlled-return.json' in args)
                 return subprocess.CompletedProcess(args, code)
-            with patch.object(scenarios.subprocess, 'run', side_effect=execute):
+            with patch.object(scenarios.subprocess, 'run', side_effect=execute), \
+                    patch.object(scenarios, 'recover', return_value={'passed': False}) as recovery:
                 with patch.object(scenarios.subprocess, 'Popen') as background:
                     self.assertFalse(scenarios.run('isolated-m2-test', path))
                     background.assert_not_called()
+            recovery.assert_called_once()
             result = json.loads((path / 'security-scenarios.json').read_text())
             self.assertFalse(result['onion_unreachable']['passed'])
             self.assertFalse(result['redirect_loop']['passed'])

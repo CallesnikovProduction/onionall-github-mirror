@@ -171,9 +171,14 @@ class TorPolicy(
         val rawPath = u.rawPath.ifEmpty { "/" }
         val rawQuery = u.rawQuery?.let { "?$it" } ?: ""
 
-        return URI("${u.scheme}://${u.rawAuthority}$rawPath$rawQuery")
-                .normalize()
-                .toASCIIString()
+        val pathUri = URI("${u.scheme}://${u.rawAuthority}$rawPath$rawQuery")
+        val normalized = pathUri.normalize()
+        // OkHttp also collapses encoded dot segments; robots rules see the policy
+        // URL first. Reject residual segments rather than fetching another path.
+        if (normalized.rawPath != pathUri.rawPath || pathUri.rawPath.split('/').any {
+                it.replace("%2e", ".", ignoreCase = true) in setOf(".", "..")
+            }) throw IOException("SCOPE_REJECTED")
+        return normalized.toASCIIString()
     }
 
     /**
