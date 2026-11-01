@@ -5,53 +5,24 @@ import java.io.PrintWriter;
 final class Brand {
     private Brand() { }
     static String safe(String text) { return text == null ? "" : text.replaceAll("[\\p{Cc}\\p{Cf}]", " "); }
-    // Filled front, upper-left highlights and a dense right-hand shadow create depth.
-    // ASCII geometry avoids font-dependent blocks and ambiguous cell widths.
-    private static final java.util.List<String> FULL = java.util.List.of(
-            "          /\\  /\\",
-            "         / /\\/ /\\",
-            "         \\ \\||/ /",
-            "          \\ || /",
-            "       .-==\\||/==-.",
-            "     .+*##########*+.",
-            "    /..::###########@\\",
-            "   /..::  \\___ ___/##@@\\",
-            "  |..::    (O) (O) ##@@@|",
-            "  |..:::     \\___/ ###@@|",
-            "   \\::::..________###@/",
-            "    '+#############+'",
-            "       '--=======--'");
-    private static final java.util.List<String> COMPACT = java.util.List.of(
-            "        /\\|/\\",
-            "        \\|||/",
-            "     .-==|||==-.",
-            "   .+*#########*+.",
-            "  /..:: \\__ __/##@\\",
-            " |..::  (O) (O)##@@|",
-            " |..:::   \\___/###@|",
-            "  \\::::.._____###@/",
-            "   '+##########+'",
-            "      '--===--'");
-    private static final java.util.List<String> TINY = java.util.List.of(
-            "      /\\|/\\",
-            "   .+######+.",
-            "  /.. (O)(O)@@\\",
-            "  \\::  \\__/##@/",
-            "    '+=####=+'");
     private static final String[] RGB = {"124;58;237", "139;92;246", "167;139;250", "196;181;253", "233;213;255"};
     private static final int[] COLORS_256 = {99, 141, 147, 183, 189};
 
     static java.util.List<String> header(int width, int height, java.util.Map<String,String> env, boolean color) {
-        int columns = Math.max(1, width - 1), budget = Math.max(1, height - 6);
+        int columns = Math.max(1, width - 1), budget = Math.max(1, height - 7);
+        boolean enabled = color && !env.containsKey("NO_COLOR") && !"dumb".equals(env.get("TERM"));
         java.util.List<String> lines = new java.util.ArrayList<>();
-        if (width >= 100 && budget >= FULL.size() + 3) {
-            lines.addAll(beside(FULL, wordsFor(columns - artWidth(FULL) - 3), 3));
-        } else if (width >= 70 && budget >= COMPACT.size() + 3) {
-            var words = wordsFor(columns - artWidth(COMPACT) - 3);
-            if(Math.max(COMPACT.size(),words.size()) + 3 <= budget) lines.addAll(beside(COMPACT, words, 3));
-            else lines.addAll(TINY);
-        } else if (budget >= TINY.size() + 3) {
-            lines.addAll(TINY);
+        if(budget>=8) {
+            int rows=Math.min(20,budget-3);
+            int mascotWidth=Math.min(width<70?columns:width>=100?34:32,Math.max(10,(int)Math.round(rows*1.65)));
+            if(width>=70)mascotWidth=Math.min(mascotWidth,columns-artWidth(wordsFor(0))-3);
+            rows=Math.min(rows,Math.max(5,(int)Math.round(mascotWidth/1.65)));
+            var art=Mascot.render(mascotWidth,rows,env,enabled);
+            if(width>=70) {
+                var words=wordsFor(columns-mascotWidth-3);
+                if(Math.max(rows,words.size())+3<=budget) lines.addAll(beside(art,words,3,env,enabled));
+                else lines.addAll(art);
+            } else lines.addAll(art);
         }
         // Accessible caption also makes the product name searchable in terminal logs.
         lines.add("ONIONALL BRAWLER");
@@ -61,9 +32,9 @@ final class Brand {
             lines = new java.util.ArrayList<>(java.util.List.of("ONIONALL BRAWLER", "-".repeat(columns)));
             if (budget == 1) lines = new java.util.ArrayList<>(java.util.List.of("ONIONALL BRAWLER"));
         }
-        boolean enabled = color && !env.containsKey("NO_COLOR") && !"dumb".equals(env.get("TERM"));
         java.util.List<String> rendered = new java.util.ArrayList<>();
         for (String line : lines) {
+            if(line.contains("\033[")) { rendered.add(line); continue; }
             String plain = line.substring(0, Math.min(columns, line.length()));
             rendered.add(!enabled ? plain : line.equals("ONIONALL BRAWLER") ? tone(2, env) + plain + "\033[0m" : line.equals("Tor-native fetch engine")
                     ? tone(3, env) + plain + "\033[0m" : gradient(plain, env));
@@ -71,21 +42,22 @@ final class Brand {
         return java.util.List.copyOf(rendered);
     }
 
-    private static java.util.List<String> beside(java.util.List<String> art, java.util.List<String> words, int gap) {
-        int artWidth = art.stream().mapToInt(String::length).max().orElse(0);
+    private static java.util.List<String> beside(java.util.List<String> art, java.util.List<String> words, int gap, java.util.Map<String,String> env, boolean color) {
+        int artWidth = artWidth(art);
         java.util.List<String> rows = new java.util.ArrayList<>();
         int offset = Math.max(0, (art.size() - words.size()) / 2);
         for (int row = 0; row < Math.max(art.size(), words.size()); row++) {
             String left = row < art.size() ? art.get(row) : "";
             int right = row - offset;
-            rows.add(left + " ".repeat(artWidth - left.length() + gap)
-                    + (right >= 0 && right < words.size() ? words.get(right) : ""));
+            rows.add(left + " ".repeat(artWidth - visibleWidth(left) + gap)
+                    + (right >= 0 && right < words.size() ? (color ? gradient(words.get(right),env) : words.get(right)) : ""));
         }
         return rows;
     }
 
+    private static int visibleWidth(String line) {return line.replaceAll("\u001b\\[[0-9;]*m", "").length();}
     private static int artWidth(java.util.List<String> art) {
-        return art.stream().mapToInt(String::length).max().orElse(0);
+        return art.stream().mapToInt(Brand::visibleWidth).max().orElse(0);
     }
     private static java.util.List<String> wordsFor(int columns) {
         var single=wordmark("ONIONALL BRAWLER");
@@ -148,11 +120,7 @@ final class Brand {
     }
 
     private static char displayPixel(char pixel, java.util.Map<String,String> env) {
-        String locale=env.getOrDefault("LC_ALL",env.getOrDefault("LC_CTYPE",env.getOrDefault("LANG",""))).toLowerCase(java.util.Locale.ROOT);
-        boolean blocks=(locale.contains("utf-8") || locale.contains("utf8"))
-                && !locale.matches("^(zh|ja|ko).*")
-                && !env.containsKey("ONIONALL_ASCII");
-        if(!blocks)return pixel;
+        if(!blocks(env))return pixel;
         return switch(pixel) {
             case '#' -> '\u2588';
             case '@' -> '\u2593';
@@ -160,6 +128,14 @@ final class Brand {
             case '+', '.' -> '\u2591';
             default -> pixel;
         };
+    }
+
+    static boolean blocks(java.util.Map<String,String> env) {
+        String locale=env.getOrDefault("LC_ALL",env.getOrDefault("LC_CTYPE",env.getOrDefault("LANG",""))).toLowerCase(java.util.Locale.ROOT);
+        boolean blocks=(locale.contains("utf-8") || locale.contains("utf8"))
+                && !locale.matches("^(zh|ja|ko).*")
+                && !env.containsKey("ONIONALL_ASCII");
+        return blocks;
     }
 
     static void welcome(PrintWriter out, boolean color, int width) {

@@ -96,7 +96,9 @@ Interactive ANSI terminals now keep a layered onion/gradient wordmark fixed abov
 a selective-update content region, with80/120/narrow layouts and resize reflow.
 Enter returns from an action to the menu. NO_COLOR/--no-color retain plain output
 without cursor controls (no physical pinning); JSON/direct commands are unchanged.
-Renderer contracts and actual PTY captures: [interactive rendering](docs/cli-rendering.md).
+The surface mascot uses headless JDK java.desktop and ANSI half-blocks; custom
+jlink runtimes must include java.desktop. `ONIONALL_ASCII=1` selects its density
+fallback. The wordmark is unchanged. Renderer contracts and actual PTY captures: [interactive rendering](docs/cli-rendering.md).
 
 ## Build
 

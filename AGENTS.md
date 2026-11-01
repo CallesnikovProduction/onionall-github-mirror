@@ -23,7 +23,9 @@ Delivery66 JVM/9 packaged tests pass; installed Ahmia GET200/4735bytes passed.
 Evidence and precise limits: docs/cli-verification.md; M2/M3 still BLOCKED.
 Menu/spinner are real-TTY only; JSON/NO_COLOR never use colored branding.
 InteractiveSession owns fixed-header ANSI viewport, read-only size polling and
-idempotent margin/cursor cleanup. Brand owns ASCII geometry/palette/layouts.
+idempotent margin/cursor cleanup. Brand owns wordmark/palette/layouts; Mascot
+owns headless Java2D surfaces encoded as ANSI half-blocks (java.desktop required).
+No external image/font dependency; ASCII density fallback shares the same vector.
 NO_COLOR/--no-color keep the plain no-control stream, not a pinned viewport.
 Rendering verification69 JVM/14 CLI tests: docs/cli-rendering.md.
 

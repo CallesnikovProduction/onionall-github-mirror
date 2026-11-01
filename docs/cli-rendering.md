@@ -6,7 +6,7 @@ were not modified. No new dependencies or terminal framework.
 
 ## Rendering contract
 
-Brand owns single-column ASCII geometry and a custom ASCII glyph wordmark (see visual revision below).
+Brand owns terminal layout and a custom ASCII glyph wordmark (see visual revision below).
 Three silhouettes were compared: teardrop was too egg-like, squat bulb too much
 like a pumpkin; the selected layered/tapered bulb has multiple shoots, brows,
 large eyes and smile. ASCII-only geometry is deliberate: it is also the reliable
@@ -88,3 +88,32 @@ Actual PTY replays: render-80/120/50.txt and .ansi. The ignored
 brand-depth-preview.png is a color replay of the real80-column stream using a
 monospace font, not a native desktop screenshot. Downloaded/source images are not
 used by the CLI, and no generated image enters Git.
+
+## Reference-inspired surface mascot
+
+Mascot now owns an original vector drawing inspired by the supplied purple onion
+reference: swept shoots, rounded layered bulb, light face, dark wedge eyes and a
+curved smile. It is rasterized off-screen by JDK java.desktop/Java2D in explicit
+headless mode; no X11 connection, fonts, windows, image protocol or third-party
+dependency. Standard JDK/JRE25 includes this module; a custom jlink runtime must
+include java.desktop. The user's reference bitmap is not copied into the repository.
+
+UTF-8 color terminals draw opaque colour surfaces using foreground/background
+▀/▄ cells with transparent surrounding cells. Every row resets SGR, preventing
+background bleed. Monochrome/ONIONALL_ASCII uses density characters from the same
+shape (no slash outline). Wordmark glyphs/extrusion and transport remain unchanged.
+ANSI is excluded from cell-width calculations. Mascot size follows the available
+height and leaves room for the existing wordmark/menu/results. Resolution is
+necessarily limited by terminal cells; tall/larger terminals provide more detail.
+
+Actual verification:72 Maven tests PASS,14 CLI/PTY tests PASS. New tests check
+transparent corners, light face/dark eyes, exact half-cell width and background
+reset. First geometry run caught overflow at70columns; available mascot width
+is now constrained by the unchanged wordmark. Explicit headless rendering avoids
+a failed DISPLAY connection even on desktop hosts. Updated CLI installed and its
+actual interactive PTY verified. No public onion GET needed for this visual pass.
+
+Evidence: .runtime/cli/mascot-build.log, mascot-tests.log,
+render-mascot-installed-80.ansi/.txt. mascot-reference-preview.png is a color replay
+of the real80-column stream with proper foreground/background half-cell filling;
+it is not a native desktop screenshot. No preview image is tracked in Git.
