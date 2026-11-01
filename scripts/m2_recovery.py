@@ -109,7 +109,7 @@ def recover(project, path, detection='recovery-detection.json'):
                 or observed.get('socks_atyp') != 3 or observed.get('remote_hostname_sent') is not True):
             raise RuntimeError('Replacement did not restore controlled onion HTTP; quarantine retained')
         command(compose + ['run', '--rm', '--no-deps', '--entrypoint', 'java', 'probe',
-            '-cp', '/apache-storm/lib/*:/evidence/crawler-m2.jar',
+            '-cp', '/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar',
             'dev.onionall.brawler.m2.RecoverySeriesProbe'], 'series', 160)
         series = json.loads((path / 'recovery-series.json').read_text())
         if not isinstance(series, dict):

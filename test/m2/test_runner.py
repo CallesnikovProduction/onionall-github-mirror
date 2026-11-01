@@ -57,6 +57,21 @@ class RunnerContractTest(unittest.TestCase):
             self.assertFalse(cleanup['volume_retained'])
             self.assertFalse(cleanup['retained_volumes']['onion-state'])
 
+    def test_jdk25_selected_consistently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory);runner=self.runner(path)
+            binpath=path/'jdk/bin';binpath.mkdir(parents=True)
+            for name in ('java','javac','jar'):(binpath/name).touch()
+            runner.environment['JAVA_HOME']=str(binpath.parent)
+            def version(args,**kwargs):
+                name=Path(args[0]).name
+                value='openjdk version "25.0.5"' if name=='java' else name+' 25.0.5'
+                return subprocess.CompletedProcess(args,0,stdout=value,stderr='')
+            with patch.object(m2_runner.subprocess,'run',side_effect=version):
+                runner.validate_toolchain()
+            import json
+            self.assertEqual(25,json.loads((path/'toolchain.json').read_text())['compile_release'])
+
     def test_jdk_mismatch_rejected_before_docker(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory);runner=self.runner(path)

@@ -34,8 +34,8 @@ def main():
             'command':['python','-u','/tests/fixture.py',*hosts,'--extended','--port','80','--log','/evidence/requests.jsonl'],
             'healthcheck':{'test':['CMD','python','-c',"import socket;socket.create_connection(('localhost',80),2).close()"]}},
             'crawler':{'extra_hosts':{h:'172.30.71.10' for h in hosts},
-                'entrypoint':['storm','local',str(path.relative_to(ROOT)/'crawler-m1.jar'),'org.apache.storm.flux.Flux',str(path.relative_to(ROOT)/'topology.flux'),'--local-ttl','100']},
-            'probe':{'entrypoint':['java','-cp','/apache-storm/lib/*:/evidence/crawler-m1.jar','dev.onionall.brawler.m2.FrontierProbe']}}}
+                'entrypoint':['storm','local',(path.relative_to(ROOT)/'crawler-m1.jar').as_posix(),'org.apache.storm.flux.Flux',(path.relative_to(ROOT)/'topology.flux').as_posix(),'--local-ttl','100']},
+            'probe':{'entrypoint':['java','-cp','/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m1.jar','dev.onionall.brawler.m2.FrontierProbe']}}}
         if env.get('M3_STORM_IMAGE'):
             for service in ('crawler','probe'):
                 overrides['services'][service]['image']=env['M3_STORM_IMAGE']
@@ -44,7 +44,7 @@ def main():
         shutil.copy2(ROOT/'target/onionall-brawler-0.1.0-SNAPSHOT.jar',path/'crawler-m1.jar')
         source=(ROOT/'test/m2/FrontierProbe.java').read_text().replace('"m2"','"m3"')
         (path/'FrontierProbe.java').write_text(source);(path/'classes').mkdir()
-        cmd(['javac','--release','17','-cp',str(path/'crawler-m1.jar'),'-d',str(path/'classes'),str(path/'FrontierProbe.java')],'compile')
+        cmd(['javac','--release','25','-cp',str(path/'crawler-m1.jar'),'-d',str(path/'classes'),str(path/'FrontierProbe.java')],'compile')
         cmd(['jar','--update','--file',str(path/'crawler-m1.jar'),'-C',str(path/'classes'),'.','-C',str(path),'m3-parsefilters.json','-C',str(path),'m3-urlfilters.json'],'package')
         (path/'onion-hostname.txt').write_text(hosts[0])
         dc(['config','--quiet'],'config');dc(['up','-d','--no-build','--pull','never','--wait','--wait-timeout','60','fixture','frontier'],'startup',90)

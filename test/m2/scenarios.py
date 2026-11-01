@@ -33,7 +33,7 @@ def run(project, path):
                     finished_at_utc=datetime.now(timezone.utc).isoformat(), exit_code=code))+'\n')
     def probe(name, host=None, background=False):
         args=compose+['run','--rm','--no-deps','--entrypoint','java','probe','-cp',
-                     '/apache-storm/lib/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.TorScenarioProbe',name]
+                     '/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.TorScenarioProbe',name]
         if host:
             args.append(host)
         if background:

@@ -38,7 +38,7 @@ class Runner:
             directory = Path(self.environment['JAVA_HOME']) / 'bin'
         else:
             compiler = shutil.which('javac')
-            if not compiler: raise RuntimeError('A JDK 17+ with javac and jar is required')
+            if not compiler: raise RuntimeError('A JDK 25+ with javac and jar is required')
             directory = Path(compiler).resolve().parent
         versions = {}
         for name in ('java','javac','jar'):
@@ -51,12 +51,12 @@ class Runner:
             if result.returncode or not match: raise RuntimeError('Could not determine selected JDK version: ' + name)
             versions[name] = int(match.group(1))
             self.jdk_tools[name] = str(executable)
-        if len(set(versions.values())) != 1 or min(versions.values()) < 17:
-            raise RuntimeError('java, javac and jar must belong to the same JDK 17+ toolchain')
+        if len(set(versions.values())) != 1 or min(versions.values()) < 25:
+            raise RuntimeError('java, javac and jar must belong to the same JDK 25+ toolchain')
         self.environment['JAVA_HOME'] = str(directory.parent)
         self.environment['PATH'] = str(directory) + os.pathsep + self.environment.get('PATH','')
         self.save('toolchain.json', dict(java_feature=versions['java'], javac_feature=versions['javac'],
-                                       jar_feature=versions['jar'], compile_release=17))
+                                       jar_feature=versions['jar'], compile_release=25))
 
     def tool(self, name):
         if name in self.jdk_tools: return self.jdk_tools[name]
@@ -118,21 +118,21 @@ class Runner:
             if previous is None: os.environ.pop('M2_BRIDGES_FILE', None)
             else: os.environ['M2_BRIDGES_FILE'] = previous
         if not ready['ready']: raise RuntimeError('Tor bridge preflight failed; full M2 was not started')
-        maven = [self.tool('mvn'), '-B', '-Dmaven.compiler.release=17']
+        maven = [self.tool('mvn'), '-B', '-Dmaven.compiler.release=25']
         if self.environment.get('M2_MAVEN_REPOSITORY'):
             maven += ['-Dmaven.repo.local=' + self.environment['M2_MAVEN_REPOSITORY']]
         self.command(maven + ['verify'], 'build.log')
         self.command(maven + ['org.apache.maven.plugins:maven-dependency-plugin:3.10.0:build-classpath',
                              '-Dmdep.outputFile=' + str(self.path/'classpath.txt')], 'dependencies.log')
         cp = str(ROOT/'target/onionall-brawler-0.1.0-SNAPSHOT.jar') + os.pathsep + (self.path/'classpath.txt').read_text().strip()
-        self.command([self.tool('javac'), '--release', '17', '-cp', cp, '-d', self.path/'classes'] +
+        self.command([self.tool('javac'), '--release', '25', '-cp', cp, '-d', self.path/'classes'] +
                      sorted((ROOT/'test/m2').glob('*.java')), 'compile-probes.log')
         shutil.copy2(ROOT/'target/onionall-brawler-0.1.0-SNAPSHOT.jar', self.path/'crawler-m2.jar')
         self.dc(['--profile', 'tools', 'config', '--quiet'], 'config.log')
         self.save('compose.json', json.loads(self.dc(['--profile','tools','config','--format','json'], capture=True).stdout))
         if self.cached_images:
             self.inspect_to(['docker','image','inspect',IMAGE,'crawlercommons/url-frontier:2.4',
-                'storm:2.8.9-jre17','python:3.12-slim'], 'cached-images.json')
+                'storm:3.1.0-jre25','python:3.12-slim'], 'cached-images.json')
             self.save('image-policy.json', dict(mode='existing-local-images', build=False, pull=False))
         else:
             self.dc(['build'], 'build-images.log')
@@ -146,14 +146,14 @@ class Runner:
         self.command([sys.executable, '-B', 'test/m2/prepare.py', self.path], 'prepare.log')
         self.command([self.tool('jar'),'--update','--file',self.path/'crawler-m2.jar','-C',self.path/'classes','.',
                       '-C',self.path/'resources','.'], 'package-probes.log')
-        self.inspect_to(['docker','image','inspect',IMAGE,'crawlercommons/url-frontier:2.4','storm:2.8.9-jre17','python:3.12-slim'], 'images.json')
+        self.inspect_to(['docker','image','inspect',IMAGE,'crawlercommons/url-frontier:2.4','storm:3.1.0-jre25','python:3.12-slim'], 'images.json')
         fixture = self.dc(['ps','-q','fixture'], capture=True).stdout.strip()
         self.inspect_to(['docker','inspect',fixture], 'fixture-inspect.json')
         networks = json.loads((self.path/'fixture-inspect.json').read_text())[0]['NetworkSettings']['Networks']
         if len(networks) != 1: raise RuntimeError('Fixture must have exactly one isolated network')
         fixture_ip = next(iter(networks.values()))['IPAddress']
         self.network('initial', fixture_ip)
-        self.dc(['run','--rm','--no-deps','--entrypoint','java','probe','-cp','/apache-storm/lib/*:/evidence/crawler-m2.jar',
+        self.dc(['run','--rm','--no-deps','--entrypoint','java','probe','-cp','/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar',
                  'dev.onionall.brawler.m2.TorPolicyProbe'], 'policy.log')
         self.dc(['run','--rm','--no-deps','probe','ready'], 'ready.log')
         self.snapshot('empty.json')

@@ -81,7 +81,7 @@ def main():
             'org.apache.maven.plugins:maven-dependency-plugin:3.10.0:build-classpath',
             '-Dmdep.outputFile=' + str(path / 'classpath.txt')], 'dependencies.log', timeout=45)
         classpath = str(artifact) + os.pathsep + (path / 'classpath.txt').read_text().strip()
-        runner.command([runner.tool('javac'), '--release', '17', '-cp', classpath, '-d', path / 'classes',
+        runner.command([runner.tool('javac'), '--release', '25', '-cp', classpath, '-d', path / 'classes',
             ROOT / 'test/m2/FrontierProbe.java', ROOT / 'test/m2/RecoverySeriesProbe.java'], 'compile-probe.log')
         runner.command([runner.tool('jar'), '--update', '--file', path / 'crawler-m2.jar',
             '-C', path / 'classes', '.', '-C', path / 'resources', '.'], 'package-probe.log')

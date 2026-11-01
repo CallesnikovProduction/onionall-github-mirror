@@ -46,7 +46,7 @@ services:
       retries: 20
 
   crawler:
-    image: storm:2.8.9-jre17
+    image: storm:3.1.0-jre25
     profiles: [tools]
     working_dir: /workspace
     volumes:
@@ -61,13 +61,13 @@ services:
     stop_grace_period: 60s
 
   probe:
-    image: storm:2.8.9-jre17
+    image: storm:3.1.0-jre25
     profiles: [tools]
     working_dir: /workspace
     volumes:
       - .:/workspace:ro
       - ${M1_RUN_DIR:?Use scripts/m1.sh or scripts/m1.ps1}:/evidence
-    entrypoint: ["java", "-cp", "/apache-storm/lib/*:/evidence/crawler-m1.jar", "dev.onionall.brawler.m1.FrontierProbe"]
+    entrypoint: ["java", "-cp", "/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m1.jar", "dev.onionall.brawler.m1.FrontierProbe"]
     networks: [controlled]
 
 volumes:

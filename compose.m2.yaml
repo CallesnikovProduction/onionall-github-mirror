@@ -106,7 +106,7 @@ services:
 
   crawler:
     user: ${M2_RUNTIME_USER:-1000:1000}
-    image: storm:2.8.9-jre17
+    image: storm:3.1.0-jre25
     profiles: [tools]
     working_dir: /workspace
     volumes:
@@ -135,12 +135,12 @@ services:
     user: ${M2_RUNTIME_USER:-1000:1000}
     environment:
       HOME: /tmp
-    image: storm:2.8.9-jre17
+    image: storm:3.1.0-jre25
     profiles: [tools]
     working_dir: /workspace
     volumes:
       - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
-    entrypoint: [java, -cp, '/apache-storm/lib/*:/evidence/crawler-m2.jar', dev.onionall.brawler.m2.FrontierProbe]
+    entrypoint: [java, -cp, '/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar', dev.onionall.brawler.m2.FrontierProbe]
     networks: [crawler]
     dns: [127.0.0.1]
     cap_drop: [ALL]

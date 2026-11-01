@@ -53,7 +53,7 @@ function Invoke-M1Ready {
 Push-Location $root
 try {
     if (-not (Test-Path target/onionall-brawler-0.1.0-SNAPSHOT.jar)) { throw 'Build the project first' }
-    if (-not $JdkHome -or -not (Test-Path "$JdkHome/bin/javac.exe")) { throw 'Pass -JdkHome pointing to a JDK (17 or newer)' }
+    if (-not $JdkHome -or -not (Test-Path "$JdkHome/bin/javac.exe")) { throw 'Pass -JdkHome pointing to a JDK (25 or newer)' }
     $pythonCommand = Get-Command $Python -ErrorAction Stop
     & docker info *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Docker API unavailable or denied. Run this script from normal host PowerShell.' }
@@ -63,7 +63,7 @@ try {
     & $pythonCommand.Source test/m1/prepare.py $runDir
     if ($LASTEXITCODE -ne 0) { throw 'Topology derivation failed' }
     $javaSources = @(Get-ChildItem test/m1 -Filter '*.java' | ForEach-Object { $_.FullName })
-    & "$JdkHome/bin/javac.exe" --release 17 -cp target/onionall-brawler-0.1.0-SNAPSHOT.jar -d "$runDir/classes" @javaSources
+    & "$JdkHome/bin/javac.exe" --release 25 -cp target/onionall-brawler-0.1.0-SNAPSHOT.jar -d "$runDir/classes" @javaSources
     if ($LASTEXITCODE -ne 0) { throw 'Test probe compilation failed' }
     Copy-Item -LiteralPath target/onionall-brawler-0.1.0-SNAPSHOT.jar -Destination "$runDir/crawler-m1.jar"
     & "$JdkHome/bin/jar.exe" --update --file "$runDir/crawler-m1.jar" -C "$runDir/classes" . -C test/m1/resources .
@@ -72,7 +72,7 @@ try {
     & docker @composeArgs --profile tools config --format json > "$runDir/compose.json"
     if ($LASTEXITCODE -ne 0) { throw 'Could not record resolved M1 configuration' }
     Invoke-M1Compose -DockerArgs @('--profile', 'tools', 'pull') -LogName 'pull.log'
-    & docker image inspect crawlercommons/url-frontier:2.4 storm:2.8.9-jre17 python:3.12-slim > "$runDir/images.json"
+    & docker image inspect crawlercommons/url-frontier:2.4 storm:3.1.0-jre25 python:3.12-slim > "$runDir/images.json"
     if ($LASTEXITCODE -ne 0) { throw 'Image inspection failed' }
     $verified = $false
     try {

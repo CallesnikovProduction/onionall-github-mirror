@@ -90,13 +90,13 @@ PY
 
 docker info > "$run_dir/docker-info.log" 2>&1 || { echo "Docker API unavailable or denied; run this runner in a host terminal. See $run_dir/docker-info.log" >&2; exit 1; }
 "$python" test/m1/prepare.py "$run_dir"
-"$javac" --release 17 -cp target/onionall-brawler-0.1.0-SNAPSHOT.jar -d "$run_dir/classes" test/m1/*.java
+"$javac" --release 25 -cp target/onionall-brawler-0.1.0-SNAPSHOT.jar -d "$run_dir/classes" test/m1/*.java
 cp -- target/onionall-brawler-0.1.0-SNAPSHOT.jar "$run_dir/crawler-m1.jar"
 "$jar_tool" --update --file "$run_dir/crawler-m1.jar" -C "$run_dir/classes" . -C test/m1/resources .
 "${compose[@]}" config --quiet
 "${compose[@]}" --profile tools config --format json > "$run_dir/compose.json"
 compose_log pull.log --profile tools pull
-docker image inspect crawlercommons/url-frontier:2.4 storm:2.8.9-jre17 python:3.12-slim > "$run_dir/images.json"
+docker image inspect crawlercommons/url-frontier:2.4 storm:3.1.0-jre25 python:3.12-slim > "$run_dir/images.json"
 cleanup_needed=true
 compose_log startup.log up -d --wait --wait-timeout 60 frontier fixture
 compose_log filter-check.log run --rm --no-deps probe filter-check
