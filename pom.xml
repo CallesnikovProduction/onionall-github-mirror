@@ -31,6 +31,7 @@ under the License.
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <java.version>17</java.version>
         <stormcrawler.version>3.7.0</stormcrawler.version>
         <storm.version>2.8.9</storm.version>
         <urlfrontier.version>2.4</urlfrontier.version>
@@ -49,7 +50,7 @@ under the License.
                 <artifactId>kotlin-maven-plugin</artifactId>
                 <version>${kotlin.version}</version>
                 <executions><execution><id>kotlin-compile</id><phase>process-sources</phase><goals><goal>compile</goal></goals></execution></executions>
-                <configuration><jvmTarget>17</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
+                <configuration><jvmTarget>${java.version}</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
             </plugin>
             <!-- Pin lifecycle plugins: Maven distributions use different defaults. -->
             <plugin>
@@ -77,7 +78,7 @@ under the License.
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <release>17</release>
+                    <release>${java.version}</release>
                 </configuration>
             </plugin>
             <plugin>
@@ -185,4 +186,10 @@ under the License.
             <version>${urlfrontier.version}</version>
         </dependency>
     </dependencies>
+    <profiles>
+        <profile>
+            <id>java25</id>
+            <properties><java.version>25</java.version></properties>
+        </profile>
+    </profiles>
 </project>
