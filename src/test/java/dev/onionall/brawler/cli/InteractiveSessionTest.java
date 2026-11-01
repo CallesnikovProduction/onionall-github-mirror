@@ -22,6 +22,15 @@ public class InteractiveSessionTest {
         assertTrue(String.join("\n",Brand.header(80,24,Map.of("TERM","vt100"),true)).contains("[35m"));
         assertFalse(String.join("\n",Brand.header(80,24,Map.of("NO_COLOR","1"),true)).contains("\u001b"));
     }
+    @Test public void depthGlyphsHaveSameGeometryAndExplicitAsciiFallback() {
+        var env=new HashMap<>(ENV);env.put("LANG","en_US.UTF-8");
+        var filled=Brand.header(80,30,env,true);
+        assertTrue(String.join("",filled).contains("\u2588"));
+        env.put("ONIONALL_ASCII","1");var ascii=Brand.header(80,30,env,true);
+        assertEquals(ascii.size(),filled.size());
+        for(int row=0;row<ascii.size();row++)assertEquals(plain(ascii.get(row)).length(),plain(filled.get(row)).length());
+        assertTrue(plain(String.join("",ascii)).chars().allMatch(c->c>=32&&c<127));
+    }
     @Test public void headerIsNotRepaintedByNavigationOrProgressAndCleanupIsIdempotent() {
         StringWriter capture=new StringWriter();var out=new PrintWriter(capture,true);
         var size=new AtomicReference<>(new InteractiveSession.Size(80,24));

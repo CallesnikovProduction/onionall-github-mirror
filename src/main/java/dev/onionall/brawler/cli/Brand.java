@@ -5,41 +5,39 @@ import java.io.PrintWriter;
 final class Brand {
     private Brand() { }
     static String safe(String text) { return text == null ? "" : text.replaceAll("[\\p{Cc}\\p{Cf}]", " "); }
-    // Three explored silhouettes: teardrop (too egg-like), squat layered bulb
-    // (too pumpkin-like), and tapered bulb with three shoots (chosen below).
-    // ASCII is intentional: every geometry character occupies one terminal column.
+    // Filled front, upper-left highlights and a dense right-hand shadow create depth.
+    // ASCII geometry avoids font-dependent blocks and ambiguous cell widths.
     private static final java.util.List<String> FULL = java.util.List.of(
-            "           /\\  /\\",
-            "          / /\\/ /\\",
-            "          \\ \\| / /",
-            "           \\ | /",
-            "        .-' \\|/ '-.",
-            "      .'  .-----.  '.",
-            "     /  .'       '.  \\",
-            "    /  / \\___ ___/ \\  \\",
-            "   |  |   \\O/ \\O/   |  |",
-            "   |  |    ._____.    |  |",
-            "    \\  \\    \\___/    /  /",
-            "     '. '._       _.' .'",
-            "       '-._'-----'_.-'",
-            "           '---'");
+            "          /\\  /\\",
+            "         / /\\/ /\\",
+            "         \\ \\||/ /",
+            "          \\ || /",
+            "       .-==\\||/==-.",
+            "     .+*##########*+.",
+            "    /..::###########@\\",
+            "   /..::  \\___ ___/##@@\\",
+            "  |..::    (O) (O) ##@@@|",
+            "  |..:::     \\___/ ###@@|",
+            "   \\::::..________###@/",
+            "    '+#############+'",
+            "       '--=======--'");
     private static final java.util.List<String> COMPACT = java.util.List.of(
-            "         /\\ | /\\",
-            "         \\ \\|/ /",
-            "       .-' \\|/ '-.",
-            "     .' .------. '.",
-            "    / .'        '. \\",
-            "   | | \\___ ___/ | |",
-            "   | |  \\O/ \\O/  | |",
-            "    \\ \\  \\___/  / /",
-            "     '._'------'_." ,
-            "        '------'");
+            "        /\\|/\\",
+            "        \\|||/",
+            "     .-==|||==-.",
+            "   .+*#########*+.",
+            "  /..:: \\__ __/##@\\",
+            " |..::  (O) (O)##@@|",
+            " |..:::   \\___/###@|",
+            "  \\::::.._____###@/",
+            "   '+##########+'",
+            "      '--===--'");
     private static final java.util.List<String> TINY = java.util.List.of(
-            "       /\\|/\\",
-            "     .'     '.",
-            "    / >O   O< \\",
-            "    \\  \\___/  /",
-            "      '.___.'");
+            "      /\\|/\\",
+            "   .+######+.",
+            "  /.. (O)(O)@@\\",
+            "  \\::  \\__/##@/",
+            "    '+=####=+'");
     private static final String[] RGB = {"124;58;237", "139;92;246", "167;139;250", "196;181;253", "233;213;255"};
     private static final int[] COLORS_256 = {99, 141, 147, 183, 189};
 
@@ -47,11 +45,11 @@ final class Brand {
         int columns = Math.max(1, width - 1), budget = Math.max(1, height - 6);
         java.util.List<String> lines = new java.util.ArrayList<>();
         if (width >= 100 && budget >= FULL.size() + 3) {
-            lines.addAll(beside(FULL, wordmark("ONIONALL BRAWLER"), 3));
+            lines.addAll(beside(FULL, wordsFor(columns - artWidth(FULL) - 3), 3));
         } else if (width >= 70 && budget >= COMPACT.size() + 3) {
-            java.util.List<String> words = new java.util.ArrayList<>(wordmark("ONIONALL"));
-            words.add(""); words.addAll(wordmark("BRAWLER"));
-            lines.addAll(beside(COMPACT, words, 3));
+            var words = wordsFor(columns - artWidth(COMPACT) - 3);
+            if(Math.max(COMPACT.size(),words.size()) + 3 <= budget) lines.addAll(beside(COMPACT, words, 3));
+            else lines.addAll(TINY);
         } else if (budget >= TINY.size() + 3) {
             lines.addAll(TINY);
         }
@@ -86,24 +84,41 @@ final class Brand {
         return rows;
     }
 
+    private static int artWidth(java.util.List<String> art) {
+        return art.stream().mapToInt(String::length).max().orElse(0);
+    }
+    private static java.util.List<String> wordsFor(int columns) {
+        var single=wordmark("ONIONALL BRAWLER");
+        if(artWidth(single)<=columns)return single;
+        var stacked=new java.util.ArrayList<>(wordmark("ONIONALL"));
+        stacked.add("");stacked.addAll(wordmark("BRAWLER"));return stacked;
+    }
     private static java.util.List<String> wordmark(String text) {
-        StringBuilder[] rows = {new StringBuilder(), new StringBuilder(), new StringBuilder()};
-        for (char letter : text.toCharArray()) {
-            String[] glyph = switch (letter) {
-                case 'O' -> new String[]{" _ ", "| |", "|_|"};
-                case 'N' -> new String[]{"|\\ |", "| \\|", "|  |"};
-                case 'I' -> new String[]{"___", " | ", "_|_"};
-                case 'A' -> new String[]{" _ ", "|_|", "| |"};
-                case 'L' -> new String[]{"|  ", "|  ", "|__"};
-                case 'B' -> new String[]{"|_ ", "|_)", "|_)"};
-                case 'R' -> new String[]{"|_ ", "|_)", "| \\"};
-                case 'W' -> new String[]{"|   |", "| | |", "|_|_|"};
-                case 'E' -> new String[]{" __", "|_ ", "|__"};
-                default -> new String[]{"  ", "  ", "  "};
+        StringBuilder[] front=new StringBuilder[5];
+        for(int row=0;row<5;row++)front[row]=new StringBuilder(" ".repeat((4-row)/2));
+        for(char letter:text.toCharArray()) {
+            String[] glyph=switch(letter) {
+                case 'O' -> new String[]{" ## ","#  #","#  #","#  #"," ## "};
+                case 'N' -> new String[]{"#  #","## #","####","# ##","#  #"};
+                case 'I' -> new String[]{"###"," # "," # "," # ","###"};
+                case 'A' -> new String[]{" ## ","#  #","####","#  #","#  #"};
+                case 'L' -> new String[]{"#   ","#   ","#   ","#   ","####"};
+                case 'B' -> new String[]{"### ","#  #","### ","#  #","### "};
+                case 'R' -> new String[]{"### ","#  #","### ","# # ","#  #"};
+                case 'W' -> new String[]{"#   #","#   #","# # #","# # #"," # # "};
+                case 'E' -> new String[]{"####","#   ","### ","#   ","####"};
+                default -> new String[]{"  ","  ","  ","  ","  "};
             };
-            for (int i = 0; i < rows.length; i++) rows[i].append(glyph[i]).append(' ');
+            for(int row=0;row<5;row++)front[row].append(glyph[row]).append(' ');
         }
-        return java.util.List.of(rows[0].toString().stripTrailing(), rows[1].toString().stripTrailing(), rows[2].toString().stripTrailing());
+        int width=java.util.Arrays.stream(front).mapToInt(StringBuilder::length).max().orElse(0)+1;
+        char[][] pixels=new char[6][width];for(char[] row:pixels)java.util.Arrays.fill(row,' ');
+        // Offset extrusion first; opaque letter faces cover their own shadow.
+        for(int row=0;row<5;row++)for(int col=0;col<front[row].length();col++)
+            if(front[row].charAt(col)=='#')pixels[row+1][col+1]='+';
+        for(int row=0;row<5;row++)for(int col=0;col<front[row].length();col++)
+            if(front[row].charAt(col)=='#')pixels[row][col]='#';
+        return java.util.Arrays.stream(pixels).map(row->new String(row).stripTrailing()).toList();
     }
 
     private static String tone(int shade, java.util.Map<String,String> env) {
@@ -118,14 +133,33 @@ final class Brand {
         StringBuilder result = new StringBuilder(); int previous = -1;
         for (int i = 0; i < line.length(); i++) {
             int shade = Math.min(4, i * 5 / Math.max(1, line.length()));
-            if (line.charAt(i) == 'O') shade = 4;
+            char pixel=line.charAt(i);
+            if(pixel=='#')shade=2+Math.min(2,i*3/Math.max(1,line.length()));
+            if(pixel=='.' || pixel=='O')shade=4;
+            if(pixel==':' || pixel=='*')shade=3;
+            if(pixel=='@' || pixel=='+')shade=0;
             if (shade != previous) {
                 result.append(tone(shade, env));
                 previous = shade;
             }
-            result.append(line.charAt(i));
+            result.append(displayPixel(pixel, env));
         }
         return result.append("\033[0m").toString();
+    }
+
+    private static char displayPixel(char pixel, java.util.Map<String,String> env) {
+        String locale=env.getOrDefault("LC_ALL",env.getOrDefault("LC_CTYPE",env.getOrDefault("LANG",""))).toLowerCase(java.util.Locale.ROOT);
+        boolean blocks=(locale.contains("utf-8") || locale.contains("utf8"))
+                && !locale.matches("^(zh|ja|ko).*")
+                && !env.containsKey("ONIONALL_ASCII");
+        if(!blocks)return pixel;
+        return switch(pixel) {
+            case '#' -> '\u2588';
+            case '@' -> '\u2593';
+            case ':' -> '\u2592';
+            case '+', '.' -> '\u2591';
+            default -> pixel;
+        };
     }
 
     static void welcome(PrintWriter out, boolean color, int width) {

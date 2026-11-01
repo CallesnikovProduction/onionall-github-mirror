@@ -6,7 +6,7 @@ were not modified. No new dependencies or terminal framework.
 
 ## Rendering contract
 
-Brand owns single-column ASCII geometry and a custom three-row glyph wordmark.
+Brand owns single-column ASCII geometry and a custom ASCII glyph wordmark (see visual revision below).
 Three silhouettes were compared: teardrop was too egg-like, squat bulb too much
 like a pumpkin; the selected layered/tapered bulb has multiple shoots, brows,
 large eyes and smile. ASCII-only geometry is deliberate: it is also the reliable
@@ -68,3 +68,23 @@ python3 -B -m unittest discover -s test/cli -p 'test*.py'
 ./scripts/install-cli.sh --no-build
 onionall
 ```
+
+## Filled pseudo-3D revision
+
+After visual feedback, Brand alone now uses a filled shaded bulb, upper-left
+highlights and a dark right edge. Five-row italic letter faces have a one-cell
+offset extrusion; the wordmark stacks automatically when a full line cannot fit.
+The product name remains ONIONALL BRAWLER. No continuous animation is added to
+the stationary header. UTF-8 locales outside CJK use common single-cell block
+glyphs for solid faces/shadows; ONIONALL_ASCII=1 forces the original ASCII cell
+geometry. Missing UTF-8 locale metadata and NO_COLOR also retain ASCII. This is
+pseudo-3D shading, not a 3D engine, bitmap protocol or font-specific icon.
+
+Java25 Maven verify70 PASS; CLI/PTy suite14 PASS (wide/standard/narrow, resize,
+progress/complete fetch, cancel, NO_COLOR/JSON, installation). Updated CLI installed.
+No public request or Tor/runtime policy changes. Geometry/ASCII fallback equality
+is covered by a new unit test. Logs: .runtime/cli/depth-build.log, depth-tests.log.
+Actual PTY replays: render-80/120/50.txt and .ansi. The ignored
+brand-depth-preview.png is a color replay of the real80-column stream using a
+monospace font, not a native desktop screenshot. Downloaded/source images are not
+used by the CLI, and no generated image enters Git.
