@@ -964,3 +964,15 @@ M2 fail-closed/outage/retry gate. Native Windows execution and actual desktop
 notification delivery remain unexecuted. Hooks/notification user settings were
 preserved; no volume deletion was performed or automated. No new audit commit
 or push was created after the user's explicit no-commit instruction.
+
+## JVM migration boundary — 2026-11-01
+
+The migration branch now uses Java25/Storm3.1, with StormCrawler3.7 unchanged.
+The historical JDK17 private-resolver guard described above is superseded by
+a separate test-only InetAddressResolverProvider service JAR. Positive controls
+include plain and uppercase/trailing-dot onion hosts;35 tests pass with zero
+application onion resolver attempts. All M2 helper Java sources compile for25.
+Probes include Storm's lib-common directory. Python M2 67 tests pass.
+M2 runtime/recovery/full gate were not rerun: local SOCKS19050 refused and Tor
+security/recovery blockers persist. m2_verified=false. Detailed migration
+inputs, evidence and limitations: [migration report](jvm25-storm31-migration.md).

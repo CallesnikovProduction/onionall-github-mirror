@@ -6,6 +6,25 @@ Onionall Brawler is an open-source-oriented, JVM-first project to build an indep
 
 Tor v3 has no global registry of onion services. Complete enumeration is not a realistic guarantee. Measure discovery and coverage of known, permitted sources instead of claiming comprehensive coverage.
 
+## JVM migration — current candidate, 2026-11-01
+
+On migration/java25-storm31, defaults are Java25 / Storm3.1.0;
+StormCrawler3.7, URLFrontier server/client2.4 and Kotlin2.3.21 remain.
+Select one JDK25 with JAVA_HOME/PATH; run Maven verify before M1/M3 helpers.
+Profiles java25/storm31 are aliases, not Java17 fallback. Main97b9da4 is retained.
+M1 e1c1f2931a8f passes all assertions/cleanup, six records, gap2.003810683s.
+G0/G1 pass47 JVM tests; G2/G3 real local Storm A/B/C passes (91c6025d49, five records,
+provenance,503 retry, robots and retention). Python M2 67/M3 2 pass.
+Java25 DNS guard uses a separate test-only resolver SPI service JAR,35 tests,
+zero application onion lookups; not system-wide DNS-leak proof. Probes require
+Storm3.1 lib-common on their classpath. Native Windows remains unverified.
+G4 blocked: local SOCKS19050 refused; no live Tor retries. Tor0.4.9.11 security
+and M2 recovery blockers persist. G5 blocked: no atomic global reservation in
+current API; ADR0002 selects a separate additive frontier-server contract.
+M2/M3 acceptance stays BLOCKED, production discovery admission fail-closed.
+Detailed gates, exact inputs, rollback and limitations:
+docs/jvm25-storm31-migration.md. Historical entries below describe prior runtimes.
+
 ## M3 offline discovery in progress — 2026-11-01
 
 M3 local vertical is verified, Tor acceptance remains BLOCKED. Discovery uses

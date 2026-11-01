@@ -20,9 +20,14 @@ Verified on Windows 11 on 2026-10-30:
 
 **Tor transport is not configured in the default M0/M1 topology.** Do not inject onion URLs or begin a real crawl yet. DNS, redirects and fail-closed verification remain M2 work. Existing URL filters alone are not a complete network boundary.
 
+Current migration branch uses **Java25 LTS / Storm3.1.0**, retaining
+StormCrawler3.7.0. Real local M3 passes; Tor acceptance and durable global budgets
+remain BLOCKED. Earlier Java17 results below are historical. See the
+[migration report](docs/jvm25-storm31-migration.md) for exact gates and rollback.
+
 ## Build
 
-Prerequisites: JDK 17 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.
+Prerequisites: JDK 25 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.
 
 Linux / a shell with Java and Maven on PATH:
 
@@ -35,7 +40,7 @@ mvn -B clean package
 PowerShell:
 
 ```powershell
-./scripts/build.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
+./scripts/build.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
 The helper finds `mvn` on PATH or Maven bundled with IntelliJ under `$env:ProgramFiles/JetBrains`. For other installations, pass `-Maven` with the path to `mvn.cmd`. `-Repository <path>` selects a writable dependency cache; `-Offline` requires a complete cache. Environment changes are restored afterwards. Log: `.runtime/build.log`.
@@ -44,7 +49,7 @@ Output: `target/onionall-brawler-0.1.0-SNAPSHOT.jar`. Storm supplies the provide
 
 ## M0: empty-frontier runtime baseline
 
-Requires Docker Engine with Linux containers and Docker Compose. Start Docker Desktop on Windows first. The host-verified recipe uses `crawlercommons/url-frontier:2.4` and `storm:2.8.9-jre17`, matching project dependency versions. Image tags are versioned but not locked by digest. Storm's logged Java runtime is Eclipse Adoptium 17.0.20.
+Requires Docker Engine with Linux containers and Docker Compose. Start Docker Desktop on Windows first. The original host-verified recipe used `crawlercommons/url-frontier:2.4` and `storm:2.8.9-jre17`. Current Compose selects `storm:3.1.0-jre25` on the migration branch. Image tags are versioned but not locked by digest. The historical runtime was Eclipse Adoptium17.0.20; the current candidate image was checked as Temurin25.0.5+8.
 
 ```powershell
 ./scripts/m0.ps1
@@ -85,7 +90,7 @@ Linux / Omarchy (from the repository root, after building):
 bash scripts/m1.sh
 ```
 
-Requires Bash, Python 3.12+, JDK 17+ (`javac` and `jar`), and Docker Engine / Compose.
+Requires Bash, Python 3.12+, JDK 25+ (`javac` and `jar`), and Docker Engine / Compose.
 `JAVA_HOME` optionally selects the JDK; `PYTHON` optionally selects Python.
 The runner uses the same assertions and evidence layout as Windows, retains the
 RocksDB volume, and checks cleanup even on failure or interruption.
@@ -102,7 +107,7 @@ container/network cleanup passed; the RocksDB volume is retained.
 Windows PowerShell:
 
 ```powershell
-./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
+./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
 The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/m1-controlled.md). Local regression tests pass. Docker evidence comes from user host runs `df35366e0994` (Windows) and `e55203e97536` (Omarchy Linux), rechecked offline by the agent. The agent cannot directly access Docker Engine. No blocking log defects were found; unavailable cgroup metrics and resolved shutdown warnings are documented.

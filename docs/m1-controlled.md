@@ -36,14 +36,14 @@ and Java probe/check classes. The original JAR is not modified.
 ## Host run
 
 Prerequisites: Docker Engine with Linux containers, Docker Compose, Bash (Linux) or PowerShell (Windows),
-Python 3.12 or newer, a JDK 17 or newer (compiling with `--release 17`), and the
+Python 3.12 or newer, a JDK 25 or newer (compiling with `--release 25`), and the
 current built main JAR. The Python fixture image is `python:3.12-slim`; the
 first host attempt pulled and started it. The runner records image inspection data.
 
 From the repository root in normal host PowerShell:
 
 ```powershell
-./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
+./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
 Two bounded 45-second crawler runs plus setup/teardown are expected. Every run
@@ -557,3 +557,11 @@ M0 and M1 are complete for their stated scopes. M2 has not started. Acceptance
 covers synthetic HTML and graceful recreation; it does not establish crash
 recovery, Tor, OpenSearch/search, distributed Storm, Tika parsing or production
 isolation/throughput. Image tags are not digest-pinned.
+
+## Java25 / Storm3.1 regression — 2026-11-01
+
+Current migration branch passed M1 e1c1f2931a8f: all three verification booleans
+true, six records, restored state/pending work, gap2.003810683s and cleanup with
+retained frontier volume. Original Windows/Linux results above remain historical;
+Windows25 execution was not performed. Current input versions and rollback:
+[jvm25-storm31-migration.md](jvm25-storm31-migration.md).
