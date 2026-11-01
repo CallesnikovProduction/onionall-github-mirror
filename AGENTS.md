@@ -6,6 +6,13 @@ Onionall Brawler is an open-source-oriented, JVM-first project to build an indep
 
 Tor v3 has no global registry of onion services. Complete enumeration is not a realistic guarantee. Measure discovery and coverage of known, permitted sources instead of claiming comprehensive coverage.
 
+## Robots decoding contract — 2026-11-01
+
+TorProtocol rejects malformed UTF-8/BOM-selected UTF-16 robots before parser;
+parser runtime errors become ROBOTS_UNAVAILABLE with cause and are not cached.
+Empty robots and valid BOM files retain crawler-commons semantics. TODO inventory
+and remaining evidence contracts: docs/kotlin-todo-audit.md. No milestone upgrade.
+
 ## JVM migration — current candidate, 2026-11-01
 
 On migration/java25-storm31, defaults are Java25 / Storm3.1.0;
