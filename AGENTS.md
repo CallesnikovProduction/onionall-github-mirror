@@ -8,16 +8,21 @@ Tor v3 has no global registry of onion services. Complete enumeration is not a r
 
 ## M3 offline discovery in progress — 2026-11-01
 
-M3 is authorized, but M2 remains BLOCKED; do not claim M3 acceptance or start a
-public crawl. DiscoveryPlanner/DiscoveryParseFilter reuse the existing parser,
-status stream and frontier with unchanged TorPolicy/transport. Provenance and
-per-instance admission/depth/link bounds are implemented; replay re-emits prior
-admissions to frontier rather than losing unacknowledged outlinks. Known file
-suffixes are metadata-only. Durable global budgets, live delivery/order and
-pre-body MIME gating for extensionless binaries remain unresolved. No live M3
-activation until these and M2 prerequisites pass. Offline verify42 tests and
-fixture test pass; fixture/config generator and limits: docs/m3-discovery.md.
-Small M3 commits authorized; no push requested for this iteration.
+M3 local vertical is verified, Tor acceptance remains BLOCKED. Discovery uses
+stock parser/status/frontier and existing TorPolicy. TorProtocol has opt-in
+`tor.discovery.html.only`: pre-body HTML/plain-robots MIME/encoding gate,
+bounded inspection and cancellation of rejected/redirect bodies; M2 default
+behavior unchanged. DiscoveryScopeFilter counts safe parent refusals without
+raw rejected URLs. Use finite fetchInterval.default=1440 to retain provenance;
+terminal refetch=0 entries dropped metadata in the actual frontier test.
+Durable atomic global admission is unavailable: filter requires explicit
+`discovery.budget.mode=local-test` plus crawl session ID; other modes fail closed.
+Do not claim global/restart bounds. Local runner: test/m3/local_integration.py
+uses isolated M1 Compose + stock HTTP solely for the diagnostic (not Tor fallback).
+Run Maven verify first. Actual A/B/C dedup, depth/provenance, robots,503 retry,
+five records and cleanup pass. JVM47/Python M2 66/M3 2 pass. Tor acceptance,
+durable budget and M2/security prerequisites stay blocked. Details and commands:
+docs/m3-discovery.md. Logical completion commits/push authorized for this task.
 
 ## M2 implementation in progress — 2026-10-31
 

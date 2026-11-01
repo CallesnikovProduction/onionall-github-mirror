@@ -1,109 +1,126 @@
-# M3 autonomous discovery — offline implementation, NOT accepted
+# M3 discovery: local vertical verified, Tor acceptance BLOCKED
 
-Baseline f0d1ce11940d44a66cd5470ecfef4fa8006a31ec is recorded in Entire.
-M2 is still BLOCKED; no new Tor experiment or M3 acceptance claim is made.
+## Current boundary
 
-## Existing flow and minimal addition
+M2 remains BLOCKED; no Tor restart/circuit investigation or public crawl ran in
+this iteration. M3 has an actual local Storm + gRPC URLFrontier vertical test,
+not a completed Tor milestone. All manifests/results keep m3_verified=false.
+Baseline82dce67 was pushed normally; subsequent checkpoint0a3148d contains the
+MIME/local-integration implementation. No history was rewritten.
 
-Stock JSoupParserBolt already extracts/resolves HTML outlinks, invokes URLFilters
-and ParseFilters, then emits discovered tuples into the existing status stream
-and URLFrontier updater. M3 reuses this flow and TorPolicy; it does not implement
-another HTTP client, queue, frontier or recovery controller.
+## Discovery and delivery
 
-DiscoveryPlanner accepts raw references from one validated parent. It resolves
-relative URLs, enforces the existing strict v3/scheme/host allowlist, discards
-fragments, deduplicates canonical URLs within each document and stops admitting new targets at explicit
-per-session depth/page/link budgets. The source counts against the page budget.
-Explicitly preapprove A/B/C: discovering an unknown onion never expands TorPolicy.
-The bounded set belongs to one parser instance; it is NOT durable global state.
+Stock JSoupParserBolt resolves/extracts HTML links; the M3 parse filter applies
+existing TorPolicy and records bounded source/target/time/depth/decision edges.
+Known file suffixes are metadata-only. Replays re-emit admitted URLs to the stock
+frontier dedup mechanism: an in-memory reservation must not suppress a tuple that
+never received its previous frontier ACK. Per-document duplicate output is removed.
+ADMITTED means a planner decision, not FRONTIER_ACK or FETCHED.
 
-DiscoveryParseFilter applies the planner to the stock parser's outlinks. Parent
-metadata discovery.edges holds bounded JSON edge records (source, valid target
-or null, timestamp, depth and decision). Invalid raw references are not persisted
-because they may contain credentials. Eligible children carry discovery.source,
-discovery.at, discovery.depth and discovery.result=ADMITTED. ADMITTED is not an
-RPC acknowledgement or a successful fetch. Cross-document/retry duplicates are
-re-emitted to the existing frontier deduplication mechanism: the parser must not
-suppress an outlink before a prior attempt's status RPC has been acknowledged.
-A replay regression proves this avoids the pre-ack in-memory suppression trap. Existing frontier status metadata
-remains authoritative for later FETCHED/FETCH_ERROR/retry outcomes. Distinct
-parents retain their own edge observations even when targets are duplicates.
-Rejected links already removed by upstream URLFilters cannot be audited here.
+DiscoveryScopeFilter observes policy refusals before ParseFilters. Installed
+StatusEmitterBolt.filterOutlink bytecode confirms that URLFilters receive parent
+metadata before getMetaForOutlink. Refusals increment bounded parent counters and
+record time; raw rejected URLs/credentials are never stored. URI resolution
+failures occurring before URLFilters remain outside this observer; do not claim
+that every malformed raw HTML attribute is audited.
 
-Known non-HTML suffixes, including archives/databases/documents/images, receive
-METADATA_ONLY and are removed from output links; no bodies or previews are read
-by this component. Only extensionless paths or .html/.htm candidates are admitted.
-A response with a misleading/absent suffix can still be binary: **a pre-body MIME
-contract is not implemented**, so this is not yet safe to activate as unrestricted
-live M3. Turning off Tika/non-HTML parsing does not prevent downloading a body.
-Tor transport remains unchanged per the task boundary.
+Live integration found a persistence defect in the generated config: with
+fetchInterval.default=-1, frontier records became refetch=0 with empty metadata.
+The corrected generator uses1440 minutes; graph metadata now survives actual
+status updates/serialization. Terminal ERROR records may still compact/drop
+metadata. Frontier is not an immutable historical graph store; never claim
+permanent provenance retention across terminal states without another verified
+storage contract. Different parents preserve their own edge arrays in their
+parent records. Child discovery.source is not a complete multi-parent graph.
 
-## Controlled scenario / reproduction
+## Pre-body MIME gate
 
-1. Run offline Maven verify using the existing cache and Java17.
-2. Run `python3 -B -m unittest discover -s test/m3 -p 'test*.py'`.
-3. After M2 passes, obtain three OWNED v3 hostnames from retained service keys.
-   Prepare a new directory:
+`tor.discovery.html.only: true` opts TorProtocol into the narrow M3 content gate.
+Default M2 behavior is unchanged. M3 permits one valid Content-Type of text/html
+for pages and text/plain for robots.txt. Missing/duplicate/malformed/other MIME
+is rejected before application body reads with IOException(METADATA_ONLY).
+The gate requests identity encoding and rejects unexpected Content-Encoding,
+avoiding implicit decompression of untrusted binary objects. It cancels the Call
+before closing a rejected/redirect response, avoiding body draining for reuse.
+
+Redirect headers still require one policy-normalized Location (except304),
+automatic following/retries remain off; redirect payloads are not read. HTML body
+reads are bounded to configured limit+1, independently of Content-Length/chunking.
+Obvious lying text/html (e.g. ZIP prefix) is refused after bounded inspection;
+accepted documents need a conservative HTML prefix. This may reject valid HTML
+fragments and is not a universal MIME authenticator. Headers may already cause
+TCP/Okio read-ahead; no claim of zero binary bytes on the wire is made. The safety
+contract is no automatic unbounded/full arbitrary file download, not perfect
+classification of malicious bytes embedded inside a small HTML response.
+Robots retains its existing parser, strict status checks and fail-closed handling.
+
+## Durable global budget: fail-closed, NOT implemented
+
+URLFrontier's installed admission/status API does not expose an atomic global
+unique-URL reservation transaction. Parser synchronized sets do not implement
+that. DiscoveryParseFilter now requires explicit `discovery.budget.mode=local-test`
+and a bounded-format `discovery.crawl.session.id`. Default/durable/unknown modes
+fail configuration. Page/depth/link counters remain bounded per parser instance;
+retries of the same URL do not consume additional in-memory admission slots.
+They are not durable or global across workers/restarts. Source counts as a page.
+
+A real durable session needs immutable session ID plus an atomic unique
+(session,URL) reservation/count in existing frontier storage (or a justified
+server extension), restored before dispatch. Two concurrent workers admitting
+the same URL must consume one slot; crash/retry must not reset it. Do not add a
+new database or pretend the current local-test mode fulfills that contract.
+Configuration failure prevents this discovery filter from emitting links; it
+is not a claim that arbitrary separately launched seed fetchers cannot start.
+
+## Reproduce the local vertical
+
+Requires cached M1 images, Docker Compose, Java17 tools on PATH, Python and an
+offline Maven cache. No host DNS/proxy/VPN/route changes are needed:
 
 ```sh
-python3 -B test/m3/prepare.py .runtime/m3/run <A.onion> <B.onion> <C.onion>
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk PATH=/usr/lib/jvm/java-17-openjdk/bin:$PATH mvn -o -B -Dmaven.repo.local=.runtime/maven-linux-repository verify
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk PATH=/usr/lib/jvm/java-17-openjdk/bin:$PATH python3 -B test/m3/local_integration.py
+python3 -B -m unittest discover -s test/m3 -p 'test*.py'
+python3 -B -m unittest discover -s test/m2 -p 'test*.py'
 ```
 
-The generator writes a separate Flux topology, JSON-as-YAML config, parse/URL
-filter resources and a manifest with m3_verified=false. It requires three distinct
-v3-shaped names; TorPolicy checks actual checksum during runtime initialization.
-It never starts containers, changes networking or supplies bridge credentials.
-Package both m3 JSON resource files into a COPY of the fresh shaded application
-JAR before Flux use. Generated topology preserves the base graph/one parser task;
-M0/M1/M2 topology/config files are unchanged. Configuration persists discovery.*,
-sets fixed2s delay/robots enforcement, capped errors, no successful revisits,
-page/depth/outlink budgets, and explicitly disables sitemap/non-HTML parsing.
-It is experimental input, not a verified deployment recipe.
+The harness reuses compose.m1.yaml with a generated ignored override and one
+internal network. Three synthetic valid-v3-shaped hostnames map only inside the
+crawler container to one owned fixture. They are not real Tor services. The
+local override explicitly uses stock HTTP transport for this diagnostic only;
+it is neither a Tor fallback nor proof of Tor routing/MIME enforcement. Production
+M3 config still selects TorProtocol. Existing M0–M2 config files are unchanged.
+Only A is seeded. Fixture A links B twice, an archive, /blocked, /temporary and
+one out-of-scope host; B links C and A; C links A. There is no upstream fetch.
 
-`test/m3/fixture.py` serves virtual hosts A/B/C on port8080, with A→B twice plus
-an archive link, B→C and A, C→A. /robots.txt denies /blocked with crawl-delay2;
-/unavailable returns503; /temporary returns503 once then200. /dump.zip returns404
-rather than a binary payload. It never contacts upstream or serves filesystem
-files. Example future isolated fixture command (not run in this pass):
+The100s Storm run proves A/B/C exactly once, cycles/dedup, no archive request,
+robots deny without /blocked request, one503 then successful scheduled retry
+(one-minute test-only error interval), parsed retry marker and persisted graph,
+sources/depths0/1/2. Real gRPC snapshots contain five records (three roots plus
+blocked and temporary URLs). Cleanup handles SIGTERM with bounded consumer stop,
+removes its owned containers/network and retains RocksDB volume; missing retained
+volume makes the result fail. It never removes Tor state or service keys.
 
-```sh
-python3 test/m3/fixture.py <A.onion> <B.onion> <C.onion> --log /evidence/requests.jsonl
-```
+## Actual results
 
-For real acceptance, reuse M2's isolated crawler/outbound/fixture networks and
-read-only/capability restrictions, publish three hidden services to this fixture,
-retain all service keys/volumes, seed ONLY A, and prove B/C automatic discovery
-with exact request counts, real SOCKS ATYP3 and actual frontier snapshots. Do not
-start this step while the M2 recovery/security prerequisites remain blocked.
+- **PASS** offline Java17 Maven verify:47tests (including MIME/header/chunked/
+  redirect/robots, durable-mode refusal, safe rejection audit and previous tests).
+- **PASS** Python M2:66tests; Python M3:2tests (fixture and generated config guard).
+- **PASS** real local vertical: .runtime/m3/onionall-brawler-m1-m3-830a39ae9a/,
+  five records, persisted provenance, cleanup and retained volume. The result
+  intentionally reports m3_verified=false. Base three-record run9f09fc2973 also
+  passed; it does not cover the extended negative/retry assertions.
+- **FAIL, fixed** initial f0be205980: host-absolute config path was absent inside
+  /workspace; generator now writes repo-relative topology include paths.
+- **FAIL, fixed** f5f732c5e6: three roots were fetched but terminal scheduling
+  discarded provenance. Finite revisit fixed this; failed raw evidence retained.
+- **NOT RUN** real onion M3 acceptance, live Tor MIME test, full M2 gate/recovery.
+- **BLOCKED** durable global budgets, M2 acceptance, Tor security update and
+  production recovery prerequisites. No new supervisors or circuit resets.
 
-## Unfinished acceptance requirements
-
-- Global max-pages across restarts/tasks: admission state must be reconciled with
-  durable frontier before restarting; current in-memory budget must not be
-  represented as a durable limit. Cross-session duplicate/revisit policy is not
-  proven by an in-memory set. No new storage architecture chosen silently.
-- Live parser/filter ordering, depth propagation and URLFrontier persistence of
-  graph/outcomes require a real controlled topology test. Current adapter test
-  invokes the actual ParseFilter API/ParseResult and verifies metadata/outlinks,
-  not a running Storm topology or gRPC server.
-- Extensionless/mislabelled binaries need pre-body content-type policy; link
-  suffix gating alone does not fulfill requirement8 universally.
-- Real multi-service Tor routing, robots, unavailable service isolation and timed
-  retries remain integration work. Existing M2 protocol/scheduler regression
-  tests still run, but are not M3 acceptance evidence.
-- Resume/recovery cannot be claimed until M2 gate passes; no endless retries,
-  no DIRECT fallback, Tor allowlist or network isolation changes are introduced.
-
-## Executed results
-
-Final results are recorded after the checks below. Logs remain ignored under
-.runtime/m3. Earlier local adapter tests exposed two API assumptions (Metadata's
-two-key getter is not a default-value getter; new Outlink metadata may be null).
-Both were fixed; failed setup logs are not acceptance evidence.
-
-Final offline JDK17 Maven verify: **42 tests passed**, including4 new discovery
-checks and the38 existing M2/policy/lifecycle tests. Python M3 fixture:1test
-passes; Python M2:66pass. git diff --check passes. No dependency versions or
-M0/M1/M2 transport/configuration changed, no Docker/Tor/network operation,
-no persistent volume/key deletion. M3 remains IN PROGRESS / acceptance BLOCKED;
-network-independent components are committed separately from the M2 baseline.
+Logs stay ignored under .runtime/m3; they can contain runtime credentials and
+must never be committed. Subsequent cleanup/retention-result guard and SIGTERM
+hardening do not change the proven graph/retry assertions; live cancellation
+fault injection remains unverified. Current exact commands/results are recorded
+in the raw logs. Unrelated pre-existing pom.xml release17 edit is not included
+in the completion commits.
