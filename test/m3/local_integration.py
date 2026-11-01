@@ -1,5 +1,5 @@
 """Actual local Storm/frontier diagnostic. Internal-only HTTP; never Tor acceptance."""
-import base64,hashlib,json,os,shutil,subprocess,sys,uuid
+import base64,hashlib,json,os,shutil,subprocess,sys,uuid,signal
 from pathlib import Path
 from prepare import prepare,ROOT
 
@@ -13,6 +13,10 @@ def main():
     prepare(path,hosts)
     env=os.environ.copy();env.update(M1_RUN_DIR=str(path),M1_RUN_REL=str(path.relative_to(ROOT)))
     compose=['docker','compose','-p',project,'-f','compose.m1.yaml','-f',str(path/'override.json')]
+    def interrupted(signum,frame):
+        signal.signal(signum,signal.SIG_IGN)
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM,interrupted)
     result={'passed':False,'m3_verified':False,'transport':'isolated local HTTP, not Tor'}
     def cmd(args,name,timeout=60):
         with (path/(name+'.log')).open('w') as out:
@@ -62,6 +66,7 @@ def main():
         result.update(passed=True,frontier_records=len(entries),provenance_persisted=True)
     except (Exception,KeyboardInterrupt) as e:result['blocker']=str(e)
     finally:
+        signal.signal(signal.SIGTERM,signal.SIG_IGN)
         try:
             try:dc(['logs','--no-color'],'services')
             finally:
@@ -73,6 +78,7 @@ def main():
             result['passed'] &= result['containers_removed'] and result['networks_removed']
         except Exception as e:result.update(passed=False,cleanup_blocker=str(e))
         result['volume_retained']=subprocess.run(['docker','volume','inspect',project+'_frontier-data'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+        result['passed'] &= result['volume_retained']
         (path/'local-result.json').write_text(json.dumps(result,indent=2));print(path);print(json.dumps(result))
     return 0 if result['passed'] else 1
 if __name__=='__main__':raise SystemExit(main())

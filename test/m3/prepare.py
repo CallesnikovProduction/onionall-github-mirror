@@ -38,7 +38,7 @@ def prepare(directory,hosts):
     topology=topology.replace('file: "crawler-conf.yaml"','file: '+json.dumps((directory/'crawler-conf.yaml').relative_to(ROOT).as_posix()),1)
     (directory/'topology.flux').write_text(topology)
     (directory/'manifest.json').write_text(json.dumps({'m3_verified':False,'seed':'http://'+hosts[0]+'/',
-        'owned_hosts':hosts,'blocker':'M2 gate, durable global budget, pre-body MIME gate and live topology delivery unverified'},indent=2))
+        'owned_hosts':hosts,'blocker':'M2 gate and durable global budget unavailable; local HTTP tests are not Tor acceptance'},indent=2))
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('directory',type=Path);p.add_argument('hosts',nargs=3);a=p.parse_args();prepare(a.directory,a.hosts)
