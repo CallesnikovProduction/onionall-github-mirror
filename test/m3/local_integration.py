@@ -36,6 +36,10 @@ def main():
             'crawler':{'extra_hosts':{h:'172.30.71.10' for h in hosts},
                 'entrypoint':['storm','local',str(path.relative_to(ROOT)/'crawler-m1.jar'),'org.apache.storm.flux.Flux',str(path.relative_to(ROOT)/'topology.flux'),'--local-ttl','100']},
             'probe':{'entrypoint':['java','-cp','/apache-storm/lib/*:/evidence/crawler-m1.jar','dev.onionall.brawler.m2.FrontierProbe']}}}
+        if env.get('M3_STORM_IMAGE'):
+            for service in ('crawler','probe'):
+                overrides['services'][service]['image']=env['M3_STORM_IMAGE']
+            result['storm_image']=env['M3_STORM_IMAGE']
         (path/'override.json').write_text(json.dumps(overrides))
         shutil.copy2(ROOT/'target/onionall-brawler-0.1.0-SNAPSHOT.jar',path/'crawler-m1.jar')
         source=(ROOT/'test/m2/FrontierProbe.java').read_text().replace('"m2"','"m3"')
