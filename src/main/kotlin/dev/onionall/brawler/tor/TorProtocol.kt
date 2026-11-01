@@ -74,9 +74,7 @@ class TorProtocol : Protocol {
      * Настраивается один раз при [configure].
      * Автоматические редиректы и повторы запросов отключены.
      *
-     * TODO(TPR-01): Подтвердить интеграционными тестами,
-     *  что все обращения к onion-адресам проходят через SOCKS,
-     *  а локальное разрешение целевых hostname не выполняется.
+     * TODO(TPR-01): BLOCKED: controlled Tor end-to-end + resolver guard and outage denial must pass; local SOCKS tests alone are insufficient.
      */
     private lateinit var client: OkHttpClient
 
@@ -113,8 +111,7 @@ class TorProtocol : Protocol {
      *
      * Максимальное количество записей: `16`.
      *
-     * TODO(TPR-02): Проверить поведение кеша при повторной
-     *  загрузке, истечении TTL и конкурентных обращениях.
+     * TODO(TPR-02): BLOCKED: verify TTL expiry and concurrent misses with a deterministic clock test before changing cache synchronization.
      */
     private val robots = LinkedHashMap<String, Pair<Long, BaseRobotRules>>()
 
@@ -138,11 +135,9 @@ class TorProtocol : Protocol {
      *
      * TPR-03: configure и cleanup сериализованы отдельным lifecycle lock.
      * После cleanup экземпляр терминален; для restart нужен новый экземпляр.
-     * TODO(TPR-03): Проверить контракт Storm при частичной ошибке инициализации.
+     * TODO(TPR-03): BLOCKED: inject partial prepare failure in a real topology and prove cleanup of every created protocol instance.
      *
-     * TODO(TPR-04): Проверить, что запрет небезопасных
-     *  настроек нельзя обойти альтернативными конфигурациями
-     *  StormCrawler или сетевых компонентов.
+     * TODO(TPR-04): BLOCKED: enumerate upstream configuration aliases with negative tests before claiming complete bypass prevention.
      */
     override fun configure(conf: Config): Unit = synchronized(lifecycle) {
         check(!closed) { "Protocol closed" }
@@ -190,10 +185,7 @@ class TorProtocol : Protocol {
 
         require(agent.matches(Regex("[A-Za-z_-]+"))) { "Invalid crawler agent" }
 
-        // TODO(TPR-05): Проверить разрешение имени SOCKS gateway.
-        //  Здесь допускается DNS-разрешение самого прокси.
-        //  Целевые onion-hostname должны передаваться через SOCKS
-        //  без локального DNS-разрешения.
+        // TODO(TPR-05): BLOCKED: replacement test must prove a new protocol resolves the new gateway IP; existing instances intentionally retain their endpoint.
         val endpoint = InetSocketAddress(
             policy.proxyHost, // hostname
             policy.proxyPort             // port
@@ -234,7 +226,6 @@ class TorProtocol : Protocol {
                     TimeUnit.SECONDS
                 )
 
-                // todo: потенциально нужна изоляция (SOCKS-аутентификация и подтврждение поведения в тестах)
             )
             .dns(
                 /*
@@ -273,19 +264,9 @@ class TorProtocol : Protocol {
             )
             .build()
 
-        // TODO(TPR-01): Интеграционно подтвердить SOCKS-only маршрутизацию.
-        //  Проверить, что целевые onion-hostname не разрешаются локально
-        //  и что при недоступном SOCKS-прокси запрос завершается ошибкой.
+        // TODO(TPR-01): BLOCKED: controlled Tor end-to-end + resolver guard and outage denial must pass; local SOCKS tests alone are insufficient.
 
-        // TODO(TPR-12): Проверить стратегию переиспользования соединений.
-        //  maxIdleConnections=0 не гарантирует отдельный Tor circuit.
-        //  Определить требования к stream/circuit isolation.
-
-        // TODO(TPR-13): Разделить таймауты при необходимости.
-        //  Подобрать connect/read/call timeout по измерениям Tor latency.
-
-        // TODO(TPR-14): Проверить сетевые follow-up запросы OkHttp.
-        //  Учесть HTTP authentication, TLS и HTTP/2 multiplexing.
+        // TODO(TPR-14): BLOCKED: controlled TLS/HTTP2/auth challenge fixtures must demonstrate bounded follow-ups on SOCKS only.
     }
 
     /**
@@ -318,13 +299,11 @@ class TorProtocol : Protocol {
      * TPR-06: Дубли, пустой или отсутствующий Location отклоняются для redirect.
      *  Downstream получает только проверенный канонический target; 304 не требует Location.
      *
-     * TODO(TPR-07): Проверить классификацию исключений.
-     *  Сохранить диагностическую информацию и различать
-     *  ошибки политики, таймауты, SOCKS и TLS.
+     * TODO(TPR-07): BLOCKED: controlled TLS and every SOCKS reply-code test needed; ONION_UNREACHABLE retains cause, not a precise Tor diagnosis.
      *
      * TPR-08: Непустой protocol.md.prefix обязателен при configure;
      *  prefix добавляет SimpleFetcherBolt, а не этот протокол.
-     * TODO(TPR-08): Проверить ограничения размера заголовков на уровне OkHttp.
+     * TODO(TPR-08): BLOCKED: execute oversized aggregate-header tests against pinned OkHttp before claiming a header-memory bound.
      */
     override fun getProtocolOutput(
         url: String,
@@ -462,8 +441,7 @@ class TorProtocol : Protocol {
      *
      * TPR-10: Размер ограничен транспортом, явно HTML отклоняется до parser.
      *  Пустой robots и отсутствие подходящей UA-группы допускаются parser.
-     * TODO(TPR-10): Определить политику повреждённых кодировок/прочих ошибок parser.
-     *  crawler-commons 1.6 использует replacement decoding, а не строгий UTF-8.
+     * Malformed UTF-8/BOM-selected UTF-16 and parser runtime errors fail closed.
      */
     @Synchronized
     override fun getRobotRules(url: String): BaseRobotRules {
@@ -486,13 +464,20 @@ class TorProtocol : Protocol {
         if (response.statusCode != 200) throw IOException("ROBOTS_UNAVAILABLE")
 
         val content = response.content
-        // Match crawler-commons 1.6 BOM selection for HTML detection only.
-        // String decoding deliberately retains its replacement semantics.
+        // Match crawler-commons 1.6 BOM selection for validation and HTML detection.
+        // Reject malformed input before the parser can replace bytes in policy directives.
         val charset = if (content.size >= 2 && (
                 (content[0] == 0xff.toByte() && content[1] == 0xfe.toByte()) ||
                 (content[0] == 0xfe.toByte() && content[1] == 0xff.toByte())))
             Charsets.UTF_16 else Charsets.UTF_8
-        val text = content.toString(charset).removePrefix("\uFEFF")
+        val text = try {
+            charset.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(content)).toString().removePrefix("\uFEFF")
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            throw IOException("ROBOTS_UNAVAILABLE", e)
+        }
         val htmlType = response.metadata.getValues("content-type")?.any {
             it.substringBefore(';').trim().lowercase() in setOf("text/html", "application/xhtml+xml")
         } == true
@@ -508,13 +493,15 @@ class TorProtocol : Protocol {
 
         // TPR-15: Exact agent, wildcard and no matching group have local regressions.
         // RFC-wide compliance remains the dependency's contract.
-        val rules = SimpleRobotRulesParser()
+        val rules = try { SimpleRobotRulesParser()
             .parseContent(
                 "$base/robots.txt",
                 response.content,
                 "text/plain",
                 listOf(agent.lowercase())
-            )
+            ) } catch (e: RuntimeException) {
+                throw IOException("ROBOTS_UNAVAILABLE", e)
+            }
 
         if (closed) throw IOException("PROTOCOL_CLOSED")
         if (robots.size >= 16) robots.remove(robots.keys.first())
@@ -540,7 +527,7 @@ class TorProtocol : Protocol {
      * TPR-11: Локально проверены повторный cleanup, запрет новых вызовов
      * и отмена заблокированного SOCKS вызова. Call учитывается до execute,
      * поэтому cleanup отменяет и ещё не зарегистрированный в dispatcher Call.
-     * TODO(TPR-11): Подтвердить владение lifecycle при остановке Storm topology.
+     * TODO(TPR-11): BLOCKED: real Storm shutdown/partial-prepare test must prove ProtocolFactory ownership; unit cancellation alone is insufficient.
      */
     override fun cleanup() {
         synchronized(lifecycle) {

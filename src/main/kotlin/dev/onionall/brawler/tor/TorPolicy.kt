@@ -140,11 +140,7 @@ class TorPolicy(
      * @return нормализованный URL, прошедший проверки политики.
      * @throws IOException если URL отклонён политикой.
      *
-     * TODO(TP-01): Проверить нестандартные формы URI,
-     *  включая пустой/null path, opaque URI и encoded delimiters.
      *
-     * TODO(TP-03): Подтвердить тестами, что нормализация
-     *  не меняет смысл адреса и не нарушает ограничения scope.
      */
     fun normalize(url: String): String {
         val u = try {
@@ -198,9 +194,7 @@ class TorPolicy(
      * @param metadata метаданные обнаруженной ссылки.
      * @throws IOException при обнаружении запрещённого ключа.
      *
-     * TODO(TP-04): Сопоставить проверки с реальными ключами,
-     *  которые StormCrawler и TorProtocol используют для
-     *  управления прокси, HTTP-заголовками и запросами.
+     * TODO(TP-04): BLOCKED: audit metadata consumers and test each request-control key; current proxy-key tests do not prove an exhaustive contract.
      */
     fun checkMetadata(metadata: Metadata) {
         if (
@@ -240,8 +234,7 @@ class TorPolicy(
          * @return `true` при корректной структуре onion v3,
          * иначе `false`.
          *
-         * TODO(TP-02): Проверить алгоритм по независимым тестовым векторам.
-         *  Base32-декодирование уже выделено в decodeBase32.
+         * TODO(TP-02): BLOCKED: add externally sourced onion-v3 vectors (key/version/checksum); generated round-trips are not independent evidence.
          */
         @JvmStatic fun validOnion(host: String): Boolean {
             if (!host.matches(Regex("[a-z2-7]{56}\\.onion"))) return false

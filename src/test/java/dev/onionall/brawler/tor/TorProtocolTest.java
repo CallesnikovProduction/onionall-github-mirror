@@ -302,7 +302,7 @@ public class TorProtocolTest {
         }
     }
 
-    @Test public void robotsBomAndReplacementDecodingMatchCrawlerCommons16() throws Exception {
+    @Test public void robotsBomIsSupportedAndMalformedEncodingIsRejected() throws Exception {
         String host = TorPolicyTest.onion(9), base = "http://" + host;
         for (var charset : List.of(StandardCharsets.UTF_8, StandardCharsets.UTF_16LE, StandardCharsets.UTF_16BE)) {
             for (boolean html : List.of(false, true)) {
@@ -325,10 +325,32 @@ public class TorProtocolTest {
         try (SocksWire wire = new SocksWire(new byte[][]{replyBytes(malformed)})) {
             TorProtocol protocol = protocol(host, wire.port());
             try {
-                // The pinned parser replaces malformed input; it does not report a decoding error.
-                assertFalse(protocol.getRobotRules(base + "/").isAllowed(base + "/blocked"));
+                // Application policy rejects corruption before the replacement-decoding parser.
+                assertEquals("ROBOTS_UNAVAILABLE", assertThrows(IOException.class,
+                        () -> protocol.getRobotRules(base + "/")).getMessage());
                 wire.await(1); wire.assertNoFurtherConnection();
             } finally { protocol.cleanup(); }
+        }
+    }
+
+    @Test public void corruptedRobotsDirectiveIsNotCachedAndValidRetryIsParsed() throws Exception {
+        String host = TorPolicyTest.onion(9), base = "http://" + host;
+        for (byte[] malformed : List.of(
+                "User-agent: *\nDisallow: /blocked\uD800".getBytes(StandardCharsets.UTF_16),
+                new byte[]{(byte)0xff, (byte)0xfe, 65},
+                new byte[]{'U', 's', 'e', 'r', '-', 'a', 'g', 'e', 'n', 't', ':', ' ', (byte)0xc3})) {
+            // A Java encoder replaces an unpaired surrogate; use truncated bytes for UTF-16.
+            if (malformed.length > 20) malformed = java.util.Arrays.copyOf(malformed, malformed.length - 1);
+            try (SocksWire wire = new SocksWire(new byte[][]{replyBytes(malformed),
+                    replyBytes("User-agent: *\nDisallow: /blocked\n".getBytes(StandardCharsets.UTF_8))})) {
+                TorProtocol protocol = protocol(host, wire.port());
+                try {
+                    assertEquals("ROBOTS_UNAVAILABLE", assertThrows(IOException.class,
+                            () -> protocol.getRobotRules(base + "/")).getMessage());
+                    assertFalse(protocol.getRobotRules(base + "/").isAllowed(base + "/blocked"));
+                    wire.await(2); wire.assertNoFurtherConnection();
+                } finally { protocol.cleanup(); }
+            }
         }
     }
 
