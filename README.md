@@ -25,6 +25,73 @@ StormCrawler3.7.0. Real local M3 passes; Tor acceptance and durable global budge
 remain BLOCKED. Earlier Java17 results below are historical. See the
 [migration report](docs/jvm25-storm31-migration.md) for exact gates and rollback.
 
+## Terminal CLI
+
+The Java25 CLI exposes `fetch`, offline `inspect`, and `status`; launching without
+arguments opens a violet onion menu only in a real terminal. Pipes receive usage,
+never a blocking prompt. `--json` emits JSON without branding/animation; `--no-color`,
+`NO_COLOR` and non-TTY output disable colors. Branding uses ASCII, no special font.
+
+Select a JDK25 with `JAVA_HOME` (and its bin on PATH for Maven), then:
+
+```sh
+# Uses Maven Central; prefix ONIONALL_OFFLINE=1 when the dependency cache is complete.
+./scripts/install-cli.sh
+onionall --version
+onionall --help
+onionall status --json
+onionall fetch http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/ --output ./ahmia.html
+onionall inspect ./ahmia.html --json
+```
+
+No Maven is used by the installed launcher. Default installation:
+`~/.local/bin/onionall` → `~/.local/share/onionall/cli/bin/onionall`.
+`XDG_DATA_HOME` and optional `XDG_BIN_HOME` select absolute installation paths.
+The installer reports if its bin directory is absent from PATH; it never edits
+shell configuration. Update by rerunning the installer. Remove with
+`./scripts/uninstall-cli.sh` using the same XDG variables; downloads/user-added
+files are preserved. Unknown executables/install contents are never overwritten.
+
+Repository-only usage: `./scripts/build-cli.sh`, then
+`target/onionall/bin/onionall --help`. The distribution copies an explicit dependency
+allowlist, including necessary Storm API/StormCrawler classes; it excludes Flux,
+Tika, gRPC, URLFrontier and test libraries. It does not start a topology or daemon.
+
+Default downloads use `.runtime/downloads` when invoked from this checkout,
+otherwise `$XDG_DATA_HOME/onionall/downloads` (default `~/.local/share/onionall/downloads`).
+Override with `--download-dir` or `ONIONALL_DOWNLOAD_DIR`; `--output` selects an exact
+file. Default filename is `ahmia.html`. Existing files require `--overwrite`.
+Publication is atomic: same-directory hard link without overwrite, atomic rename
+with overwrite. Filesystems lacking these operations fail safely. HTML is untrusted
+data; no scripts, links, browsers or binaries are launched. Inspection is bounded
+at4MiB and uses JSoup charset detection/replacement decoding, not strict UTF-8.
+Link statistics count raw hrefs, including relative and protocol-relative links.
+
+`fetch` calls the existing JVM TorProtocol. Only the approved Ahmia v3 hostname,
+HTTP/HTTPS and standard ports are allowed; userinfo/ambiguous paths are refused.
+SOCKS is fixed to local127.0.0.1, with `--socks-port` (default19050).
+`--timeout-ms` bounds the entire request (default30000, maximum120000);
+`--max-bytes` bounds HTML (default/maximum131072). No automatic redirects,
+retries, clearnet or DIRECT fallback. Fetch is a single transport diagnostic,
+not a robots-aware crawl or M2/M3 acceptance. No crawl/discover commands are exposed.
+
+Status checks only local TCP reachability with a1500ms bound. It explicitly marks
+Tor/onion availability NOT_TESTED. An open SOCKS port does not establish either.
+Exit codes:0 success;1 unexpected failure;2 arguments/config;3 rejected URL;
+4 transport (including timeout/body gate);5 unacceptable HTTP/content;
+6 filesystem/output failure;130 usual Ctrl+C. Ctrl+C invokes protocol cleanup;
+no completed output is published before a successful response. On monochrome
+terminals progress is a plain wait message; animated elapsed time is TTY/color-only.
+
+Troubleshooting: select Java25 if launcher exits69; build once before offline
+installation; use a new output path if a download already exists. A SOCKS refusal
+or Tor timeout is an error, not a reason to change host DNS/VPN or bypass transport.
+Current full M2/M3 acceptance and durable global budget remain BLOCKED.
+
+CLI verification: select Java25, run `mvn verify` or `scripts/build-cli.sh`, then
+`python3 -B -m unittest discover -s test/cli -p 'test*.py'` against the built bundle.
+Actual delivery results and retained failures: [CLI verification](docs/cli-verification.md).
+
 ## Build
 
 Prerequisites: JDK 25 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.

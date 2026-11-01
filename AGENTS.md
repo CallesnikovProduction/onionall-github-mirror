@@ -6,6 +6,23 @@ Onionall Brawler is an open-source-oriented, JVM-first project to build an indep
 
 Tor v3 has no global registry of onion services. Complete enumeration is not a realistic guarantee. Measure discovery and coverage of known, permitted sources instead of claiming comprehensive coverage.
 
+## Terminal CLI boundary
+
+Entrypoint dev.onionall.brawler.cli.Onionall (Picocli4.7.7), with separate Brand
+and HtmlFiles. fetch invokes existing TorProtocol: Ahmia allowlist only, local
+SOCKS19050, HTML-only128KiB, finite30s call, no redirects/retries/DIRECT fallback.
+inspect is offline; status is local TCP only, never Tor-readiness proof. No
+crawl/discover CLI until existing blocked prerequisites are resolved.
+Build scripts/build-cli.sh (Java25, ONIONALL_OFFLINE=1 for cached Maven); install
+scripts/install-cli.sh; uninstall scripts/uninstall-cli.sh. Thin target/onionall
+bundle contains API dependencies, no Flux/Tika/frontier services. XDG user install,
+checkout .runtime/downloads or XDG downloads; logs/evidence stay ignored.
+CLI tests: OnionallTest plus existing TorProtocol regressions; mvn verify.
+Packaged/installation/PTY tests: python3 -B -m unittest discover -s test/cli.
+Delivery66 JVM/9 packaged tests pass; installed Ahmia GET200/4735bytes passed.
+Evidence and precise limits: docs/cli-verification.md; M2/M3 still BLOCKED.
+Menu/spinner are real-TTY only; JSON/NO_COLOR never use colored branding.
+
 ## Robots decoding contract — 2026-11-01
 
 TorProtocol rejects malformed UTF-8/BOM-selected UTF-16 robots before parser;
