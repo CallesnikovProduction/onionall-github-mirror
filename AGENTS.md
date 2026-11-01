@@ -22,6 +22,10 @@ Packaged/installation/PTY tests: python3 -B -m unittest discover -s test/cli.
 Delivery66 JVM/9 packaged tests pass; installed Ahmia GET200/4735bytes passed.
 Evidence and precise limits: docs/cli-verification.md; M2/M3 still BLOCKED.
 Menu/spinner are real-TTY only; JSON/NO_COLOR never use colored branding.
+InteractiveSession owns fixed-header ANSI viewport, read-only size polling and
+idempotent margin/cursor cleanup. Brand owns ASCII geometry/palette/layouts.
+NO_COLOR/--no-color keep the plain no-control stream, not a pinned viewport.
+Rendering verification69 JVM/14 CLI tests: docs/cli-rendering.md.
 
 ## Robots decoding contract — 2026-11-01
 

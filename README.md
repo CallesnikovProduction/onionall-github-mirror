@@ -92,6 +92,12 @@ CLI verification: select Java25, run `mvn verify` or `scripts/build-cli.sh`, the
 `python3 -B -m unittest discover -s test/cli -p 'test*.py'` against the built bundle.
 Actual delivery results and retained failures: [CLI verification](docs/cli-verification.md).
 
+Interactive ANSI terminals now keep a layered onion/gradient wordmark fixed above
+a selective-update content region, with80/120/narrow layouts and resize reflow.
+Enter returns from an action to the menu. NO_COLOR/--no-color retain plain output
+without cursor controls (no physical pinning); JSON/direct commands are unchanged.
+Renderer contracts and actual PTY captures: [interactive rendering](docs/cli-rendering.md).
+
 ## Build
 
 Prerequisites: JDK 25 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.

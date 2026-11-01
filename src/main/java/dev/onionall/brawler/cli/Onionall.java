@@ -27,6 +27,7 @@ public final class Onionall implements Callable<Integer> {
     @Spec Model.CommandSpec spec;
     final Map<String,String> env;
     final boolean tty;
+    private boolean interactiveContent;
     final Transport transport;
     interface Transport { ProtocolResponse fetch(Config config, String url) throws IOException; }
     Onionall(boolean tty, Map<String,String> env, Transport transport) { this.tty=tty; this.env=env; this.transport=transport; }
@@ -56,6 +57,7 @@ public final class Onionall implements Callable<Integer> {
     }
     void print(Map<String,Object> result) throws IOException {
         if (json) out().println(new ObjectMapper().writeValueAsString(result).replaceAll("[\\p{Cf}]", ""));
+        else if(interactiveContent) { for(String line:InteractiveSession.summary(result)) out().println(Brand.safe(line)); }
         else {
             if (color()) out().print("\033[38;2;167;139;250mONIONALL BRAWLER\033[0m\n");
             for (var entry : result.entrySet()) out().printf("%-18s %s%n", entry.getKey(), Brand.safe(String.valueOf(entry.getValue())));
@@ -65,23 +67,39 @@ public final class Onionall implements Callable<Integer> {
     public Integer call() throws Exception {
         if (json) { print(new LinkedHashMap<>(Map.of("commands",List.of("fetch","inspect","status"),"version","0.1.0-SNAPSHOT"))); return 0; }
         if (!tty) { spec.commandLine().usage(out()); return 0; }
-        while (true) {
-            int width;try { width=Integer.parseInt(env.getOrDefault("COLUMNS","80")); } catch (NumberFormatException e) { width=80; }
-            Brand.welcome(out(),color(),width);
-            out().println("1  Fetch onion page\n2  Inspect HTML\n3  Tor SOCKS status\n4  Help\n0  Quit");out().flush();
-            String choice=System.console().readLine("Choose > "); if (choice == null || choice.equals("0")) return 0;
-            String[] args;
-            switch (choice) {
-                case "1" -> { String url=System.console().readLine("URL > ");if(url==null)return 0;args=new String[]{"fetch",url}; }
-                case "2" -> { String file=System.console().readLine("File > ");if(file==null)return 0;args=new String[]{"inspect",file}; }
-                case "3" -> args=new String[]{"status"};
-                default -> args=new String[]{"--help"};
+        try(var session=new InteractiveSession(out(),env,color())) {
+            PrintWriter screen=session.writer();
+            while(true) {
+                session.begin();
+                screen.println("1  Fetch onion page\n2  Inspect HTML\n3  Tor SOCKS status\n4  Help\n0  Quit");
+                String choice=prompt(screen,"Choose > ");
+                if(choice==null || choice.equals("0"))return 0;
+                session.begin();String[] args;
+                switch(choice) {
+                    case "1" -> {String url=prompt(screen,"URL > ");if(url==null)return 0;args=new String[]{"fetch",url};}
+                    case "2" -> {String file=prompt(screen,"File > ");if(file==null)return 0;args=new String[]{"inspect",file};}
+                    case "3" -> args=new String[]{"status"};
+                    default -> args=new String[]{"--help"};
+                }
+                session.begin();
+                var next=new ArrayList<>(List.of(args));
+                next.addAll(List.of("--socks-port",String.valueOf(port),"--timeout-ms",String.valueOf(timeout),"--max-bytes",String.valueOf(limit),"--download-dir",downloads().toString()));
+                next.add("--no-color");
+                java.util.concurrent.ScheduledExecutorService feedback=null;
+                if(choice.equals("1") && color()) {
+                    long start=System.nanoTime();
+                    feedback=java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"onionall-menu-progress");t.setDaemon(true);return t;});
+                    feedback.scheduleAtFixedRate(()->session.progress("Running fetch... "+String.format(java.util.Locale.ROOT,"%.1f s",(System.nanoTime()-start)/1e9)),0,120,java.util.concurrent.TimeUnit.MILLISECONDS);
+                }
+                try {execute(next.toArray(String[]::new),screen,screen,false,env,transport,true);}
+                finally {if(feedback!=null){feedback.shutdownNow();feedback.awaitTermination(1,java.util.concurrent.TimeUnit.SECONDS);}session.stopProgress();}
+                if(prompt(screen,"Enter to return > ")==null)return 0;
             }
-            var next=new ArrayList<>(List.of(args));
-            next.addAll(List.of("--socks-port",String.valueOf(port),"--timeout-ms",String.valueOf(timeout),"--max-bytes",String.valueOf(limit),"--download-dir",downloads().toString()));
-            if(noColor) next.add("--no-color");
-            execute(next.toArray(String[]::new),out(),err(),true,env,transport);
         }
+    }
+    private static String prompt(PrintWriter screen,String label) {
+        screen.print(label);screen.flush();
+        String value=System.console().readLine();screen.println();return value;
     }
     @Command(name="fetch", mixinStandardHelpOptions=true, description="One HTML GET. Only the approved Ahmia v3 host; no redirects or retries.")
     static final class Fetch implements Callable<Integer> {
@@ -134,7 +152,10 @@ public final class Onionall implements Callable<Integer> {
         else { err().println("Error: "+String.join(" -> ",causes));err().flush(); }return code;
     }
     static int execute(String[] args, PrintWriter out, PrintWriter err, boolean tty, Map<String,String> env, Transport transport) {
-        Onionall root=new Onionall(tty,env,transport);
+        return execute(args,out,err,tty,env,transport,false);
+    }
+    private static int execute(String[] args, PrintWriter out, PrintWriter err, boolean tty, Map<String,String> env, Transport transport, boolean interactiveContent) {
+        Onionall root=new Onionall(tty,env,transport);root.interactiveContent=interactiveContent;
         CommandLine cli=new CommandLine(root).setOut(out).setErr(err).setColorScheme(CommandLine.Help.defaultColorScheme(CommandLine.Help.Ansi.OFF));
         cli.setParameterExceptionHandler((e,a)->{ root.json=root.json || Arrays.asList(args).contains("--json") || Arrays.asList(args).contains("--json=true"); return root.failure(2,e); });
         cli.setExecutionExceptionHandler((e,line,parse)->root.failure(e instanceof IllegalArgumentException?2:e instanceof IOException?6:1,e));
