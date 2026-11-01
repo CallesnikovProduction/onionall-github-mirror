@@ -6,6 +6,19 @@ Onionall Brawler is an open-source-oriented, JVM-first project to build an indep
 
 Tor v3 has no global registry of onion services. Complete enumeration is not a realistic guarantee. Measure discovery and coverage of known, permitted sources instead of claiming comprehensive coverage.
 
+## M3 offline discovery in progress — 2026-11-01
+
+M3 is authorized, but M2 remains BLOCKED; do not claim M3 acceptance or start a
+public crawl. DiscoveryPlanner/DiscoveryParseFilter reuse the existing parser,
+status stream and frontier with unchanged TorPolicy/transport. Provenance and
+per-instance admission/depth/link bounds are implemented; replay re-emits prior
+admissions to frontier rather than losing unacknowledged outlinks. Known file
+suffixes are metadata-only. Durable global budgets, live delivery/order and
+pre-body MIME gating for extensionless binaries remain unresolved. No live M3
+activation until these and M2 prerequisites pass. Offline verify42 tests and
+fixture test pass; fixture/config generator and limits: docs/m3-discovery.md.
+Small M3 commits authorized; no push requested for this iteration.
+
 ## M2 implementation in progress — 2026-10-31
 
 Final integration review: TorPolicy rejects paths rewritten by URI.normalize
