@@ -97,6 +97,21 @@ class M1RegressionContractTest(unittest.TestCase):
         runner.cached_images=True
         return runner
 
+    def test_selected_storm_candidate_is_passed_to_child_and_environment_restored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);runner=self.runner(root)
+            image='onionall-storm:3.1.0-jre25-cleanup1'
+            runner.environment.update(M2_STORM_IMAGE=image,M1_STORM_IMAGE='original-user-value')
+            def child(args,log,**kwargs):
+                self.assertEqual(image,runner.environment['M1_STORM_IMAGE'])
+                evidence=root/'.runtime/m1'/ (runner.project+'-m1');evidence.mkdir(parents=True)
+                (evidence/'result.json').write_text('{"assertions_passed":true}')
+                return subprocess.CompletedProcess(args,0)
+            runner.command=child
+            with patch.object(m2_runner,'ROOT',root):runner.run_m1_regression()
+            self.assertEqual('original-user-value',runner.environment['M1_STORM_IMAGE'])
+            self.assertEqual(image,runner.environment['M2_STORM_IMAGE'])
+
     def test_failed_child_preserves_image_failure_before_checking_result(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);runner=self.runner(root)

@@ -106,7 +106,7 @@ services:
 
   crawler:
     user: ${M2_RUNTIME_USER:-1000:1000}
-    image: storm:3.1.0-jre25
+    image: ${M2_STORM_IMAGE:-storm:3.1.0-jre25}
     profiles: [tools]
     working_dir: /workspace
     volumes:
@@ -135,7 +135,7 @@ services:
     user: ${M2_RUNTIME_USER:-1000:1000}
     environment:
       HOME: /tmp
-    image: storm:3.1.0-jre25
+    image: ${M2_STORM_IMAGE:-storm:3.1.0-jre25}
     profiles: [tools]
     working_dir: /workspace
     volumes:

@@ -102,7 +102,7 @@ cp -- target/onionall-brawler-0.1.0-SNAPSHOT.jar "$run_dir/crawler-m1.jar"
 "${compose[@]}" --profile tools config --format json > "$run_dir/compose.json"
 if [[ ${M1_CACHED_IMAGES:-0} != 1 ]]; then compose_log pull.log --profile tools pull; fi
 printf '{"cached_images":%s,"pull_policy":"%s"}\n' "$([[ ${M1_CACHED_IMAGES:-0} == 1 ]] && echo true || echo false)" "$M1_PULL_POLICY" > "$run_dir/image-policy.json"
-docker image inspect crawlercommons/url-frontier:2.4 storm:3.1.0-jre25 python:3.12-slim > "$run_dir/images.json"
+docker image inspect crawlercommons/url-frontier:2.4 "${M1_STORM_IMAGE:-storm:3.1.0-jre25}" python:3.12-slim > "$run_dir/images.json"
 cleanup_needed=true
 compose_log startup.log up -d --wait --wait-timeout 60 frontier fixture
 compose_log filter-check.log run --rm --no-deps probe filter-check

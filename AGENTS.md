@@ -37,6 +37,21 @@ No external image/font dependency; ASCII density fallback shares the same vector
 NO_COLOR/--no-color keep the plain no-control stream, not a pinned viewport.
 Rendering verification69 JVM/14 CLI tests: docs/cli-rendering.md.
 
+## M1 lifecycle fix — 2026-11-02
+
+M1 now passes twice consecutively on explicit image
+onionall-storm:3.1.0-jre25-cleanup2:25da2046fecb andd927d1d8835e, all three
+verification flags true, six records, pending resume, zero ERROR/FATAL, cleanup
+and volume retention. Baseline and cleanup1 variants remain available.
+Build: JAVA_HOME=<jdk25> bash scripts/build-storm-lifecycle.sh; run with
+M1_CACHED_IMAGES=1 M1_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2.
+Backport serializes Nimbus cleanup on submitLock and drains active cleanup before
+closing its timer/ZK dependencies; genuine ERROR logging/assertions unchanged.
+Hash-pinned source and original server JAR, deterministic real Nimbus/StormTimer
+regressions: docker/storm-lifecycle/README.md. M2_STORM_IMAGE propagates to M1 child.
+M2/M3 remain BLOCKED; same-container Tor readiness experiment is pending real
+verification, not a production recovery guarantee. Tor security pin unchanged.
+
 ## Recovery closure — 2026-11-02
 
 M2/M3 remain BLOCKED. Fresh8b64cfc89746: controlled bootstrap/health, preserved

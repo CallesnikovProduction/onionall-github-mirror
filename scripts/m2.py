@@ -131,7 +131,7 @@ class Runner:
         self.save('compose.json', json.loads(self.dc(['--profile','tools','config','--format','json'], capture=True).stdout))
         if self.cached_images:
             self.inspect_to(['docker','image','inspect',IMAGE,'crawlercommons/url-frontier:2.4',
-                'storm:3.1.0-jre25','python:3.12-slim'], 'cached-images.json')
+                self.environment.get('M2_STORM_IMAGE', 'storm:3.1.0-jre25'),'python:3.12-slim'], 'cached-images.json')
             self.save('image-policy.json', dict(mode='existing-local-images', build=False, pull=False))
         else:
             self.dc(['build'], 'build-images.log')
@@ -145,7 +145,7 @@ class Runner:
         self.command([sys.executable, '-B', 'test/m2/prepare.py', self.path], 'prepare.log')
         self.command([self.tool('jar'),'--update','--file',self.path/'crawler-m2.jar','-C',self.path/'classes','.',
                       '-C',self.path/'resources','.'], 'package-probes.log')
-        self.inspect_to(['docker','image','inspect',IMAGE,'crawlercommons/url-frontier:2.4','storm:3.1.0-jre25','python:3.12-slim'], 'images.json')
+        self.inspect_to(['docker','image','inspect',IMAGE,'crawlercommons/url-frontier:2.4',self.environment.get('M2_STORM_IMAGE', 'storm:3.1.0-jre25'),'python:3.12-slim'], 'images.json')
         fixture = self.dc(['ps','-q','fixture'], capture=True).stdout.strip()
         self.inspect_to(['docker','inspect',fixture], 'fixture-inspect.json')
         networks = json.loads((self.path/'fixture-inspect.json').read_text())[0]['NetworkSettings']['Networks']
@@ -203,6 +203,8 @@ class Runner:
                       log=str(self.path / 'm1-regression.log'), cached_images=self.cached_images)
         self.save('m1-regression.json', record)
         selected = {'M1_PROJECT_NAME': project, 'M1_CACHED_IMAGES': '1' if self.cached_images else '0'}
+        if self.environment.get('M2_STORM_IMAGE'):
+            selected['M1_STORM_IMAGE'] = self.environment['M2_STORM_IMAGE']
         previous = {key: self.environment.get(key) for key in selected}
         self.environment.update(selected)
         try:

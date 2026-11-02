@@ -49,7 +49,7 @@ services:
       retries: 20
 
   crawler:
-    image: storm:3.1.0-jre25
+    image: ${M1_STORM_IMAGE:-storm:3.1.0-jre25}
     pull_policy: ${M1_PULL_POLICY:-missing}
     profiles: [tools]
     working_dir: /workspace
@@ -65,7 +65,7 @@ services:
     stop_grace_period: 60s
 
   probe:
-    image: storm:3.1.0-jre25
+    image: ${M1_STORM_IMAGE:-storm:3.1.0-jre25}
     pull_policy: ${M1_PULL_POLICY:-missing}
     profiles: [tools]
     working_dir: /workspace

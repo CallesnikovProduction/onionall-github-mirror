@@ -81,7 +81,8 @@ try {
     if (-not $cachedImages) { Invoke-M1Compose -DockerArgs @('--profile', 'tools', 'pull') -LogName 'pull.log' }
     [ordered]@{ cached_images = $cachedImages; pull_policy = $env:M1_PULL_POLICY } |
         ConvertTo-Json | Set-Content "$runDir/image-policy.json" -Encoding utf8
-    & docker image inspect crawlercommons/url-frontier:2.4 storm:3.1.0-jre25 python:3.12-slim > "$runDir/images.json"
+    $stormImage = if ($env:M1_STORM_IMAGE) { $env:M1_STORM_IMAGE } else { "storm:3.1.0-jre25" }
+    & docker image inspect crawlercommons/url-frontier:2.4 $stormImage python:3.12-slim > "$runDir/images.json"
     if ($LASTEXITCODE -ne 0) { throw 'Image inspection failed' }
     $verified = $false
     try {
