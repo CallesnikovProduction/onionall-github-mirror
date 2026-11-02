@@ -30,7 +30,8 @@ Packaged/installation/PTY tests: python3 -B -m unittest discover -s test/cli.
 Delivery66 JVM/9 packaged tests pass; installed Ahmia GET200/4735bytes passed.
 Evidence and precise limits: docs/cli-verification.md; M2/M3 still BLOCKED.
 Menu/spinner are real-TTY only; JSON/NO_COLOR never use colored branding.
-InteractiveSession owns fixed-header ANSI viewport, read-only size polling and
+InteractiveSession owns a supported-TTY alternate screen with idempotent restore
+on Quit/EOF/SIGINT/handled errors, fixed-header ANSI viewport, read-only size polling and
 idempotent margin/cursor cleanup. Brand owns wordmark/palette/layouts; Mascot
 owns headless Java2D surfaces encoded as ANSI half-blocks (java.desktop required).
 No external image/font dependency; ASCII density fallback shares the same vector.

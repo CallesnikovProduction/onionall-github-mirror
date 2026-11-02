@@ -45,7 +45,14 @@ class Screen:
                     break  # An unfinished terminal write can be completed by the next capture.
                 arguments, command = match.groups()
                 values = [int(n) if n else 0 for n in arguments.lstrip('?').split(';')]
-                if command in ('H', 'f'):
+                if arguments == '?1049' and command == 'h':
+                    self.saved = (self.rows, self.x, self.y, self.top, self.bottom)
+                    self.rows = [[' '] * self.width for _ in range(self.height)]
+                    self.x = self.y = self.top = 0
+                    self.bottom = self.height - 1
+                elif arguments == '?1049' and command == 'l':
+                    self.rows, self.x, self.y, self.top, self.bottom = self.saved
+                elif command in ('H', 'f'):
                     self.y = max(0, min(self.height - 1, (values[0] or 1) - 1))
                     self.x = max(0, min(self.width - 1, (values[1] if len(values) > 1 else 1) - 1))
                 elif command == 'K':
@@ -185,7 +192,7 @@ class RenderingTest(unittest.TestCase):
                 boundary = terminal.send('\n')
                 terminal.wait(b'Choose ', boundary)
                 self.assertEqual(1, terminal.raw.count(b'Tor-native fetch engine'))
-                self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
+                self.assertEqual(1, terminal.raw.count(b'\x1b[?1049h'))
                 terminal.save(str(width))
                 terminal.send('0\n')
                 self.assertEqual(0, terminal.process.wait(timeout=4))
@@ -201,7 +208,7 @@ class RenderingTest(unittest.TestCase):
                 self.assertEqual(count, terminal.raw.count(b'Tor-native fetch engine'))
                 terminal.drain(.7)
                 self.assertEqual(count, terminal.raw.count(b'Tor-native fetch engine'))
-                self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
+                self.assertEqual(1, terminal.raw.count(b'\x1b[?1049h'))
             terminal.save('resize-50')
             terminal.send('0\n')
             self.assertEqual(0, terminal.process.wait(timeout=4))
@@ -228,7 +235,7 @@ class RenderingTest(unittest.TestCase):
                 terminal.wait(b'Choose ', boundary)
                 self.assertEqual(initial, self.header(terminal))
                 self.assertEqual(1, terminal.raw.count(b'Tor-native fetch engine'))
-                self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
+                self.assertEqual(1, terminal.raw.count(b'\x1b[?1049h'))
                 terminal.send('0\n')
                 self.assertEqual(0, terminal.process.wait(timeout=4))
 
@@ -246,13 +253,39 @@ class RenderingTest(unittest.TestCase):
                 terminal.drain(.3)
                 self.assertEqual(initial, self.header(terminal))
                 self.assertEqual(1, terminal.raw.count(b'Tor-native fetch engine'))
-                self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
+                self.assertEqual(1, terminal.raw.count(b'\x1b[?1049h'))
                 terminal.save('fetch-progress')
                 terminal.process.send_signal(signal.SIGINT)
                 self.assertEqual(130, terminal.process.wait(timeout=6))
                 terminal.drain(.1)
                 self.assertIn(b'\x1b[r\x1b[?25h', terminal.raw)
                 self.assertFalse((Path(directory)/'ahmia.html').exists())
+
+    def test_alternate_screen_restores_primary_on_quit_eof_interrupt_and_handled_error(self):
+        for mode in ('quit', 'eof', 'interrupt', 'error'):
+            with self.subTest(mode=mode), Terminal(80) as terminal:
+                terminal.wait(b'Choose ')
+                if mode == 'error':
+                    terminal.send('2\n')
+                    terminal.wait(b'File >')
+                    terminal.send('/nonexistent/onionall-test.html\n')
+                    terminal.wait(b'Enter to return >')
+                    terminal.send('\n')
+                    terminal.wait(b'Choose ', after=len(terminal.raw)-1)
+                if mode == 'interrupt':
+                    terminal.process.send_signal(signal.SIGINT)
+                else:
+                    terminal.send('\x04' if mode == 'eof' else '0\n')
+                terminal.process.wait(timeout=6)
+                terminal.drain(.1)
+                self.assertEqual(1, terminal.raw.count(b'\x1b[?1049h'))
+                self.assertEqual(1, terminal.raw.count(b'\x1b[?1049l'))
+                self.assertNotIn(b'\x1b[2J', terminal.raw)
+                self.assertNotIn(b'\x1b[3J', terminal.raw)
+                before = b'previous shell output\r\n$ onionall'
+                expected = Screen(terminal.width, terminal.height).replay(before)
+                restored = Screen(terminal.width, terminal.height).replay(before + bytes(terminal.raw))
+                self.assertEqual(expected, restored)
 
     def test_no_color_stays_linear_without_terminal_escape_codes(self):
         with Terminal(80, no_color=True) as terminal:

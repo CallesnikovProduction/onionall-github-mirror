@@ -50,7 +50,7 @@ public class InteractiveSessionTest {
         var positions=Pattern.compile("\u001b\\[(\\d+);\\d+H").matcher(updates);
         while(positions.find())assertTrue(Integer.parseInt(positions.group(1))>headerRows);
         assertEquals(1,count(capture.toString(),"Tor-native fetch engine"));
-        assertEquals(1,count(capture.toString(),"\u001b[2J"));
+        assertEquals(1,count(capture.toString(),"\u001b[?1049h"));
         session.close();String closed=capture.toString();session.close();assertEquals(closed,capture.toString());
         assertTrue(closed.contains("\u001b[r\u001b[?25h"));
     }
@@ -60,7 +60,7 @@ public class InteractiveSessionTest {
             session.resize();assertEquals(1,count(capture.toString(),"Tor-native fetch engine"));
             size.set(new InteractiveSession.Size(40,20));session.resize();session.resize();
             assertEquals(2,count(capture.toString(),"Tor-native fetch engine"));
-            assertEquals(1,count(capture.toString(),"\u001b[2J"));
+            assertEquals(1,count(capture.toString(),"\u001b[?1049h"));
         }
         capture=new StringWriter();
         try(var session=new InteractiveSession(new PrintWriter(capture,true),Map.of("NO_COLOR","1"),false,size::get,false)) {

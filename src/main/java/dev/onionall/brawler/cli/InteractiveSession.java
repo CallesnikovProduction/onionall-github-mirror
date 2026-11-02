@@ -27,6 +27,7 @@ final class InteractiveSession implements AutoCloseable {
         this(terminal,env,pinned,()->terminalSize(env),true);
     }
     InteractiveSession(PrintWriter terminal, Map<String,String> env, boolean pinned, Dimensions dimensions, boolean poll) {
+        pinned = pinned && env.getOrDefault("TERM", "").matches("(?i)(xterm.*|screen.*|tmux.*|rxvt.*|foot.*|alacritty|kitty)");
         this.terminal=terminal;this.env=env;this.pinned=pinned;this.dimensions=dimensions;
         this.writer=new PrintWriter(new Writer() {
             public void write(char[] chars,int offset,int length) { accept(new String(chars,offset,length)); }
@@ -36,7 +37,7 @@ final class InteractiveSession implements AutoCloseable {
         this.shutdown=new Thread(this::close,"onionall-terminal-reset");
         Runtime.getRuntime().addShutdownHook(shutdown);
         size=dimensions.read();
-        if(pinned) terminal.print("\033[2J\033[H"); // Once on entry, never per interaction.
+        if(pinned) terminal.print("\033[?1049h"); // Own one alternate buffer for this session.
         header();
         timer=poll && pinned ? Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"onionall-terminal-size");t.setDaemon(true);return t;}) : null;
         if(timer!=null) timer.scheduleWithFixedDelay(this::resize,500,500,TimeUnit.MILLISECONDS);
@@ -120,7 +121,7 @@ final class InteractiveSession implements AutoCloseable {
     public synchronized void close() {
         if(closed)return;closed=true;
         if(timer!=null)timer.shutdownNow();
-        if(pinned)terminal.printf("\033[r\033[?25h\033[%d;1H%n",size.rows());
+        if(pinned)terminal.print("\033[0m\033[r\033[?25h\033[?1049l");
         terminal.flush();
         try {Runtime.getRuntime().removeShutdownHook(shutdown);}catch(IllegalStateException stopping){ }
     }

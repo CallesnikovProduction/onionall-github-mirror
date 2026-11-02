@@ -117,3 +117,13 @@ Evidence: .runtime/cli/mascot-build.log, mascot-tests.log,
 render-mascot-installed-80.ansi/.txt. mascot-reference-preview.png is a color replay
 of the real80-column stream with proper foreground/background half-cell filling;
 it is not a native desktop screenshot. No preview image is tracked in Git.
+
+## Clean interactive exit — 2026-11-02
+
+Supported ANSI TTY sessions now own one alternate screen (1049 entry/exit).
+The previous primary screen, cursor position and scrollback remain intact.
+Cleanup resets styling/margins/cursor visibility before leaving the alternate
+buffer; normal close and the shutdown hook share the same idempotent close.
+No global clear/scrollback erase is issued. Plain/no-color and unsupported TERM
+fallbacks keep linear output; noninteractive commands are unchanged. PTY replay
+checks primary-screen restoration on Quit, EOF, SIGINT and handled input errors.
