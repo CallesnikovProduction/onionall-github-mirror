@@ -41,6 +41,7 @@ final class InteractiveSession implements AutoCloseable {
         timer=poll && pinned ? Executors.newSingleThreadScheduledExecutor(r->{Thread t=new Thread(r,"onionall-terminal-size");t.setDaemon(true);return t;}) : null;
         if(timer!=null) timer.scheduleWithFixedDelay(this::resize,500,500,TimeUnit.MILLISECONDS);
     }
+    synchronized int availableRows() {return Math.max(1,size.rows()-headerRows);}
     PrintWriter writer() { return writer; }
     synchronized void begin() {
         lines.clear();current.setLength(0);progress=null;paint();
@@ -88,7 +89,7 @@ final class InteractiveSession implements AutoCloseable {
         int count=Math.max(painted.size(),view.size());
         for(int i=0;i<count;i++) {
             String value=i<view.size()?clip(view.get(i),size.columns()-1):"";
-            if(i>=painted.size() || !value.equals(painted.get(i))) terminal.printf("\033[%d;1H\033[2K%s",headerRows+1+i,value);
+            if(i>=painted.size() || !value.equals(painted.get(i))) terminal.printf("\033[%d;1H\033[2K%s",headerRows+1+i,CliPresentation.style(value,true));
         }
         painted.clear();for(String row:view)painted.add(clip(row,size.columns()-1));
         int cursor=headerRows+Math.max(1,view.size());
@@ -113,7 +114,7 @@ final class InteractiveSession implements AutoCloseable {
     // Untrusted wide/combining characters cannot invalidate viewport cell accounting.
     static String clip(String text,int width) {
         StringBuilder ascii=new StringBuilder();
-        Brand.safe(text).codePoints().forEach(c->{if(c>=32 && c<127)ascii.appendCodePoint(c);else ascii.append(String.format("\\u%04x",c));});
+        Brand.safe(text).codePoints().forEach(c->{if(c>=32 && c<127 || c==0x276f)ascii.appendCodePoint(c);else ascii.append(String.format("\\u%04x",c));});
         return ascii.substring(0,Math.min(Math.max(0,width),ascii.length()));
     }
     public synchronized void close() {

@@ -11,8 +11,16 @@ Tor v3 has no global registry of onion services. Complete enumeration is not a r
 Entrypoint dev.onionall.brawler.cli.Onionall (Picocli4.7.7), with separate Brand
 and HtmlFiles. fetch invokes existing TorProtocol: Ahmia allowlist only, local
 SOCKS19050, HTML-only128KiB, finite30s call, no redirects/retries/DIRECT fallback.
-inspect is offline; status is local TCP only, never Tor-readiness proof. No
-crawl/discover CLI until existing blocked prerequisites are resolved.
+inspect is offline; status is local TCP only, never Tor-readiness proof.
+Offline discover reuses JSoup/TorPolicy and the planner metadata-only rule; no
+transport/Frontier calls. Limit4MiB/1000 anchors/2048 URL chars, deterministic JSON
+and explicit atomic JSONL export (no overwrite). Admission is unavailable per
+ADR0002; no crawl CLI until blocked prerequisites resolve.
+Menu/status presentation styles trusted rows after clipping; status is TCP-only.
+Discovery contracts/tests: docs/cli-discovery.md.
+2026-11-02 offline Java25 verify80 tests and CLI/PTY15 pass. Installed discover
+works without Maven in PATH; controlled SOCKS fixture sees zero connections.
+M2/M3 remain BLOCKED; no live Tor or full milestone gate rerun in this pass.
 Build scripts/build-cli.sh (Java25, ONIONALL_OFFLINE=1 for cached Maven); install
 scripts/install-cli.sh; uninstall scripts/uninstall-cli.sh. Thin target/onionall
 bundle contains API dependencies, no Flux/Tika/frontier services. XDG user install,

@@ -116,6 +116,31 @@ class DistributionTransportTest(unittest.TestCase):
             self.fail(f'CLI did not emit JSON (exit {result.returncode}): {result.stderr} {result.stdout}')
         return result, parsed
 
+    def test_offline_discovery_export_from_packaged_cli_does_not_contact_socks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'fixture.html'
+            export = Path(directory) / 'report.jsonl'
+            source.write_text("<a href='/A'>A</a><a href='/A#dup'>dup</a><a href='https://example.com/'>excluded</a>")
+            fixture = SocksFixture()
+            try:
+                args = [str(BUNDLE), 'discover', str(source), '--base-url', URL,
+                        '--socks-port', str(fixture.port), '--json']
+                first = subprocess.run(args, cwd=directory, capture_output=True, text=True, timeout=10)
+                second = subprocess.run(args, cwd=directory, capture_output=True, text=True, timeout=10)
+                self.assertEqual(0, first.returncode, first.stderr)
+                self.assertEqual('', first.stderr)
+                self.assertEqual(first.stdout, second.stdout)
+                self.assertNotIn('\x1b', first.stdout)
+                report = json.loads(first.stdout)
+                self.assertEqual((3, 1, 1, 1), (report['links_found'], report['unique'], report['duplicates'], report['rejected']))
+                self.assertEqual(0, report['network_requests'])
+                result = subprocess.run(args + ['--export', str(export)], cwd=directory, capture_output=True, text=True, timeout=10)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(3, len(export.read_text().splitlines()))
+                self.assertEqual(0, fixture.connections)
+            finally:
+                fixture.close()
+
     @unittest.skipUnless(os.name == 'posix', 'PTY is POSIX-only')
     def test_interactive_brand_and_no_color_with_real_terminal(self):
         import pty
@@ -131,12 +156,12 @@ class DistributionTransportTest(unittest.TestCase):
             output = bytearray()
             try:
                 deadline = time.monotonic() + 5
-                while b'Choose >' not in output and time.monotonic() < deadline:
+                while b'Choose ' not in output and time.monotonic() < deadline:
                     if select.select([master], [], [], .1)[0]:
                         try: output.extend(os.read(master, 8192))
                         except OSError: break
-                self.assertIn(b'Choose >', output)
-                self.assertIn(b'ONIONALL BRAWLER', output)
+                self.assertIn(b'Choose ', output)
+                self.assertIn(b'Tor-native fetch engine', output)
                 self.assertEqual(not no_color, b'\x1b[' in output)
                 os.write(master, b'0\n')
                 self.assertEqual(0, process.wait(timeout=3))

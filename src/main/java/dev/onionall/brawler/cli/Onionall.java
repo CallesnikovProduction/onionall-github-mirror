@@ -16,7 +16,7 @@ import picocli.CommandLine.*;
 
 @Command(name="onionall", description="Bounded Tor-native HTML fetch and offline inspection.",
         mixinStandardHelpOptions=true, version="onionall 0.1.0-SNAPSHOT (Java 25)",
-        subcommands={Onionall.Fetch.class, Onionall.Inspect.class, Onionall.Status.class})
+        subcommands={Onionall.Fetch.class, Onionall.Inspect.class, Onionall.Status.class, Onionall.Discover.class})
 public final class Onionall implements Callable<Integer> {
     @Option(names="--json", scope=ScopeType.INHERIT, description="Machine-readable result, no branding or animation.") boolean json;
     @Option(names="--no-color", scope=ScopeType.INHERIT) boolean noColor;
@@ -57,6 +57,7 @@ public final class Onionall implements Callable<Integer> {
     }
     void print(Map<String,Object> result) throws IOException {
         if (json) out().println(new ObjectMapper().writeValueAsString(result).replaceAll("[\\p{Cf}]", ""));
+        else if(result.containsKey("socks_tcp_reachable")) { for(String line:CliPresentation.status(result,interactiveContent)) out().println(CliPresentation.style(line,color())); }
         else if(interactiveContent) { for(String line:InteractiveSession.summary(result)) out().println(Brand.safe(line)); }
         else {
             if (color()) out().print("\033[38;2;167;139;250mONIONALL BRAWLER\033[0m\n");
@@ -65,14 +66,15 @@ public final class Onionall implements Callable<Integer> {
         out().flush();
     }
     public Integer call() throws Exception {
-        if (json) { print(new LinkedHashMap<>(Map.of("commands",List.of("fetch","inspect","status"),"version","0.1.0-SNAPSHOT"))); return 0; }
+        if (json) { print(new LinkedHashMap<>(Map.of("commands",List.of("fetch","inspect","status","discover"),"version","0.1.0-SNAPSHOT"))); return 0; }
         if (!tty) { spec.commandLine().usage(out()); return 0; }
         try(var session=new InteractiveSession(out(),env,color())) {
             PrintWriter screen=session.writer();
             while(true) {
                 session.begin();
-                screen.println("1  Fetch onion page\n2  Inspect HTML\n3  Tor SOCKS status\n4  Help\n0  Quit");
-                String choice=prompt(screen,"Choose > ");
+                screen.println("(1)  Fetch onion page\n(2)  Inspect HTML\n(3)  Tor SOCKS status\n(4)  Help\n(0)  Quit");
+                if(session.availableRows()>=7)screen.println();
+                String choice=prompt(screen,Brand.blocks(env)?"Choose ❯ ":"Choose > ");
                 if(choice==null || choice.equals("0"))return 0;
                 session.begin();String[] args;
                 switch(choice) {
@@ -129,6 +131,34 @@ public final class Onionall implements Callable<Integer> {
             result.put("title",title);result.put("saved",target.toAbsolutePath().toString());result.put("passed",true);root.print(result);return 0;
         }
     }
+    @Command(name="discover", mixinStandardHelpOptions=true,
+            description="Offline bounded onion link report. No network or Frontier admission.")
+    static final class Discover implements Callable<Integer> {
+        @ParentCommand Onionall root;
+        @Parameters(index="0") Path file;
+        @Option(names="--base-url", required=true) String base;
+        @Option(names="--export", description="Create deterministic JSONL (no overwrite); not an admission queue.") Path export;
+        public Integer call() throws Exception {
+            var report=DiscoveryReport.discover(file,base,root.config());
+            if(export!=null) {
+                if(Files.exists(export) && Files.isSameFile(file,export))
+                    throw new IOException("Export must not overwrite input");
+                var json=new ObjectMapper();StringBuilder lines=new StringBuilder();
+                for(var link:report.links())lines.append(json.writeValueAsString(link)).append('\n');
+                HtmlFiles.save(lines.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8),export,false);
+            }
+            if(root.json)root.print(report.summary());
+            else {
+                root.out().println("DISCOVERY RESULTS");
+                for(var item:report.summary().entrySet()) {
+                    if(item.getKey().equals("links"))continue;
+                    root.out().printf("%-18s %s%n",item.getKey(),Brand.safe(String.valueOf(item.getValue())));
+                }
+                root.out().println("Discovery completed. No network requests performed.");root.out().flush();
+            }
+            return 0;
+        }
+    }
     @Command(name="inspect", mixinStandardHelpOptions=true, description="Offline HTML summary, at most 4 MiB; never follows links.")
     static final class Inspect implements Callable<Integer> {
         @ParentCommand Onionall root; @Parameters(index="0") Path file;
@@ -143,7 +173,7 @@ public final class Onionall implements Callable<Integer> {
             Map<String,Object> r=new LinkedHashMap<>();r.put("version","0.1.0-SNAPSHOT");r.put("java",Runtime.version().toString());
             r.put("socks_endpoint","127.0.0.1:"+root.port);r.put("socks_tcp_reachable",reachable);r.put("tor_connectivity","NOT_TESTED");r.put("onion_connectivity","NOT_TESTED");
             r.put("downloads",root.downloads().toAbsolutePath().toString());r.put("timeout_ms",root.timeout);r.put("max_bytes",root.limit);
-            r.put("allowed_host",OnionSmoke.HOST);r.put("features",List.of("fetch","inspect","status"));r.put("m2_m3_acceptance","BLOCKED");root.print(r);return 0;
+            r.put("allowed_host",OnionSmoke.HOST);r.put("features",List.of("fetch","inspect","status","discover"));r.put("m2_m3_acceptance","BLOCKED");root.print(r);return 0;
         }
     }
     int failure(int code, Exception e) throws IOException {
@@ -163,7 +193,7 @@ public final class Onionall implements Callable<Integer> {
             var leaf=parsed;
             while(leaf.hasSubcommand()) leaf=leaf.subcommand();
             if(root.json && (leaf.isUsageHelpRequested() || leaf.isVersionHelpRequested())) {
-                try { root.print(new LinkedHashMap<>(Map.of("version","0.1.0-SNAPSHOT","commands",List.of("fetch","inspect","status"),"help","Use --help without --json for option details"))); }
+                try { root.print(new LinkedHashMap<>(Map.of("version","0.1.0-SNAPSHOT","commands",List.of("fetch","inspect","status","discover"),"help","Use --help without --json for option details"))); }
                 catch(IOException e) { return 6; }
                 return 0;
             }

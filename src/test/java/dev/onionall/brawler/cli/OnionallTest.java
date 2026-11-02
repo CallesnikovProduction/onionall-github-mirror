@@ -182,7 +182,7 @@ public class OnionallTest {
     }
     @Test public void brandHasCompactMonochromeVariantAndNoRemoteControlCharacters() {
         StringWriter compact=new StringWriter();Brand.welcome(new PrintWriter(compact),false,35);
-        assertTrue(compact.toString().contains("ONIONALL BRAWLER"));assertFalse(compact.toString().contains("\u001b"));
+        assertTrue(compact.toString().contains("Tor-native fetch engine"));assertFalse(compact.toString().contains("\u001b"));
         assertEquals("a b c",Brand.safe("a\u001bb\u202ec"));
     }
 }

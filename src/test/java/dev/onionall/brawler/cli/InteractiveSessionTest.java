@@ -22,6 +22,14 @@ public class InteractiveSessionTest {
         assertTrue(String.join("\n",Brand.header(80,24,Map.of("TERM","vt100"),true)).contains("[35m"));
         assertFalse(String.join("\n",Brand.header(80,24,Map.of("NO_COLOR","1"),true)).contains("\u001b"));
     }
+    @Test public void mascotFooterHasThreeBlankRowsAndNoDuplicateName() {
+        var header=Brand.header(120,40,ENV,true).stream().map(InteractiveSessionTest::plain).toList();
+        int subtitle=header.indexOf("Tor-native fetch engine");
+        assertTrue(subtitle>=3);
+        assertEquals(List.of("", "", ""),header.subList(subtitle-3,subtitle));
+        assertFalse(header.contains("ONIONALL BRAWLER"));
+        assertEquals("=".repeat(97),header.get(subtitle+1));
+    }
     @Test public void depthGlyphsHaveSameGeometryAndExplicitAsciiFallback() {
         var env=new HashMap<>(ENV);env.put("LANG","en_US.UTF-8");
         var filled=Brand.header(80,30,env,true);
@@ -41,7 +49,7 @@ public class InteractiveSessionTest {
         String updates=capture.toString().substring(boundary);
         var positions=Pattern.compile("\u001b\\[(\\d+);\\d+H").matcher(updates);
         while(positions.find())assertTrue(Integer.parseInt(positions.group(1))>headerRows);
-        assertEquals(1,count(capture.toString(),"ONIONALL BRAWLER"));
+        assertEquals(1,count(capture.toString(),"Tor-native fetch engine"));
         assertEquals(1,count(capture.toString(),"\u001b[2J"));
         session.close();String closed=capture.toString();session.close();assertEquals(closed,capture.toString());
         assertTrue(closed.contains("\u001b[r\u001b[?25h"));
@@ -49,16 +57,16 @@ public class InteractiveSessionTest {
     @Test public void resizeOnlyReflowsOnDimensionChangeAndPlainModeHasNoControls() {
         StringWriter capture=new StringWriter();var size=new AtomicReference<>(new InteractiveSession.Size(120,30));
         try(var session=new InteractiveSession(new PrintWriter(capture,true),ENV,true,size::get,false)) {
-            session.resize();assertEquals(1,count(capture.toString(),"ONIONALL BRAWLER"));
+            session.resize();assertEquals(1,count(capture.toString(),"Tor-native fetch engine"));
             size.set(new InteractiveSession.Size(40,20));session.resize();session.resize();
-            assertEquals(2,count(capture.toString(),"ONIONALL BRAWLER"));
+            assertEquals(2,count(capture.toString(),"Tor-native fetch engine"));
             assertEquals(1,count(capture.toString(),"\u001b[2J"));
         }
         capture=new StringWriter();
         try(var session=new InteractiveSession(new PrintWriter(capture,true),Map.of("NO_COLOR","1"),false,size::get,false)) {
             session.begin();session.writer().println("plain");session.begin();session.writer().println("next");
         }
-        assertFalse(capture.toString().contains("\u001b"));assertEquals(1,count(capture.toString(),"ONIONALL BRAWLER"));
+        assertFalse(capture.toString().contains("\u001b"));assertEquals(1,count(capture.toString(),"Tor-native fetch engine"));
         assertEquals("\\u4e2d",InteractiveSession.clip("中",20));
     }
 }

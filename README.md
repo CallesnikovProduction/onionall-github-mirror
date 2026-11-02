@@ -27,7 +27,7 @@ remain BLOCKED. Earlier Java17 results below are historical. See the
 
 ## Terminal CLI
 
-The Java25 CLI exposes `fetch`, offline `inspect`, and `status`; launching without
+The Java25 CLI exposes `fetch`, offline `inspect`/`discover`, and `status`; launching without
 arguments opens a violet onion menu only in a real terminal. Pipes receive usage,
 never a blocking prompt. `--json` emits JSON without branding/animation; `--no-color`,
 `NO_COLOR` and non-TTY output disable colors. Branding uses ASCII, no special font.
@@ -42,7 +42,16 @@ onionall --help
 onionall status --json
 onionall fetch http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/ --output ./ahmia.html
 onionall inspect ./ahmia.html --json
+onionall discover ./ahmia.html --base-url http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/ --json
+# Optional explicit export; refuses to replace an existing file:
+# onionall discover ./ahmia.html --base-url <approved-source-url> --export .runtime/discovery.jsonl
 ```
+
+Offline discovery reads at most 4 MiB and processes at most 1,000 anchors. It uses
+JSoup and TorPolicy, preserves Ahmia-only scope, reports excluded links and never
+fetches or enqueues. JSONL export is a report, not a Frontier queue. No recursive
+crawl is enabled. See [discovery contracts](docs/cli-discovery.md). Status remains
+a TCP-only local check, with Tor/onion connectivity explicitly NOT_TESTED.
 
 No Maven is used by the installed launcher. Default installation:
 `~/.local/bin/onionall` → `~/.local/share/onionall/cli/bin/onionall`.

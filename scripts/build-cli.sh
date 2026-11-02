@@ -12,7 +12,7 @@ if [[ -d .runtime/maven-linux-repository ]]; then maven+=(-Dmaven.repo.local=.ru
 stage=$(mktemp -d "$root/target/onionall-stage.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 mkdir -p "$stage/lib" "$stage/bin" "$stage/classes/dev/onionall/brawler"
-for package in cli tor tools; do
+for package in cli tor tools discovery; do
     [[ -d target/classes/dev/onionall/brawler/$package ]] || { echo "Missing compiled package: $package" >&2; exit 1; }
     cp -R -- "target/classes/dev/onionall/brawler/$package" "$stage/classes/dev/onionall/brawler/"
 done

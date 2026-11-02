@@ -157,15 +157,16 @@ class RenderingTest(unittest.TestCase):
     def test_three_layouts_keep_header_stationary_during_help_and_errors(self):
         for width in (80, 120, 50):
             with self.subTest(width=width), Terminal(width) as terminal:
-                terminal.wait(b'Choose >')
+                terminal.wait(b'Choose ')
                 initial = self.header(terminal)
-                self.assertTrue(any('ONIONALL BRAWLER' in line for line in initial))
+                self.assertIn(b'\x1b[95m(1)', terminal.raw)
+                self.assertTrue(any('Tor-native fetch engine' in line for line in initial))
                 self.assertTrue(all(len(line) < width for line in initial))
                 boundary = terminal.send('4\n')
                 terminal.wait(b'Enter to return >', boundary)
                 self.assertEqual(initial, self.header(terminal))
                 boundary = terminal.send('\n')
-                terminal.wait(b'Choose >', boundary)
+                terminal.wait(b'Choose ', boundary)
                 self.assertEqual(initial, self.header(terminal))
                 boundary = terminal.send('2\n')
                 terminal.wait(b'File >', boundary)
@@ -174,16 +175,16 @@ class RenderingTest(unittest.TestCase):
                 self.assertIn(b'NoSuchFileException', terminal.raw[boundary:])
                 self.assertEqual(initial, self.header(terminal))
                 boundary = terminal.send('\n')
-                terminal.wait(b'Choose >', boundary)
+                terminal.wait(b'Choose ', boundary)
                 self.assertEqual(initial, self.header(terminal))
                 boundary = terminal.send('3\n')
                 terminal.wait(b'Enter to return >', boundary)
-                self.assertTrue(any('TCP reachable:' in row for row in terminal.screen()))
+                self.assertTrue(any('TCP reachable' in row or 'TCP unavailable' in row for row in terminal.screen()))
                 self.assertTrue(any('NOT_TESTED' in row for row in terminal.screen()))
                 self.assertEqual(initial, self.header(terminal))
                 boundary = terminal.send('\n')
-                terminal.wait(b'Choose >', boundary)
-                self.assertEqual(1, terminal.raw.count(b'ONIONALL BRAWLER'))
+                terminal.wait(b'Choose ', boundary)
+                self.assertEqual(1, terminal.raw.count(b'Tor-native fetch engine'))
                 self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
                 terminal.save(str(width))
                 terminal.send('0\n')
@@ -191,15 +192,15 @@ class RenderingTest(unittest.TestCase):
 
     def test_resize_reflows_only_after_size_changes(self):
         with Terminal(120) as terminal:
-            terminal.wait(b'Choose >')
+            terminal.wait(b'Choose ')
             for count, width in ((2, 80), (3, 50)):
                 terminal.resize(width, 30)
                 end = time.monotonic() + 4
-                while terminal.raw.count(b'ONIONALL BRAWLER') < count and time.monotonic() < end:
+                while terminal.raw.count(b'Tor-native fetch engine') < count and time.monotonic() < end:
                     terminal.drain(.1)
-                self.assertEqual(count, terminal.raw.count(b'ONIONALL BRAWLER'))
+                self.assertEqual(count, terminal.raw.count(b'Tor-native fetch engine'))
                 terminal.drain(.7)
-                self.assertEqual(count, terminal.raw.count(b'ONIONALL BRAWLER'))
+                self.assertEqual(count, terminal.raw.count(b'Tor-native fetch engine'))
                 self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
             terminal.save('resize-50')
             terminal.send('0\n')
@@ -209,7 +210,7 @@ class RenderingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, SocksFixture() as proxy:
             with Terminal(120, 24, extra=('--socks-port', str(proxy.port), '--timeout-ms', '1500',
                                          '--download-dir', directory)) as terminal:
-                terminal.wait(b'Choose >')
+                terminal.wait(b'Choose ')
                 initial = self.header(terminal)
                 boundary = terminal.send('1\n')
                 terminal.wait(b'URL >', boundary)
@@ -224,9 +225,9 @@ class RenderingTest(unittest.TestCase):
                 self.assertEqual(1, proxy.connections)
                 terminal.save('fetch-complete-120x24')
                 boundary = terminal.send('\n')
-                terminal.wait(b'Choose >', boundary)
+                terminal.wait(b'Choose ', boundary)
                 self.assertEqual(initial, self.header(terminal))
-                self.assertEqual(1, terminal.raw.count(b'ONIONALL BRAWLER'))
+                self.assertEqual(1, terminal.raw.count(b'Tor-native fetch engine'))
                 self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
                 terminal.send('0\n')
                 self.assertEqual(0, terminal.process.wait(timeout=4))
@@ -235,7 +236,7 @@ class RenderingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, SocksFixture(hold=True) as proxy:
             with Terminal(80, extra=('--socks-port', str(proxy.port), '--timeout-ms', '3000',
                                      '--download-dir', directory)) as terminal:
-                terminal.wait(b'Choose >')
+                terminal.wait(b'Choose ')
                 initial = self.header(terminal)
                 boundary = terminal.send('1\n')
                 terminal.wait(b'URL >', boundary)
@@ -244,7 +245,7 @@ class RenderingTest(unittest.TestCase):
                 terminal.wait(b'Running fetch...')
                 terminal.drain(.3)
                 self.assertEqual(initial, self.header(terminal))
-                self.assertEqual(1, terminal.raw.count(b'ONIONALL BRAWLER'))
+                self.assertEqual(1, terminal.raw.count(b'Tor-native fetch engine'))
                 self.assertEqual(1, terminal.raw.count(b'\x1b[2J'))
                 terminal.save('fetch-progress')
                 terminal.process.send_signal(signal.SIGINT)
@@ -255,12 +256,12 @@ class RenderingTest(unittest.TestCase):
 
     def test_no_color_stays_linear_without_terminal_escape_codes(self):
         with Terminal(80, no_color=True) as terminal:
-            terminal.wait(b'Choose >')
+            terminal.wait(b'Choose ')
             boundary = terminal.send('4\n')
             terminal.wait(b'Enter to return >', boundary)
             boundary = terminal.send('\n')
-            terminal.wait(b'Choose >', boundary)
-            self.assertEqual(1, terminal.raw.count(b'ONIONALL BRAWLER'))
+            terminal.wait(b'Choose ', boundary)
+            self.assertEqual(1, terminal.raw.count(b'Tor-native fetch engine'))
             self.assertNotIn(b'\x1b', terminal.raw)
             terminal.send('0\n')
             self.assertEqual(0, terminal.process.wait(timeout=4))

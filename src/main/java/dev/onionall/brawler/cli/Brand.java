@@ -9,34 +9,33 @@ final class Brand {
     private static final int[] COLORS_256 = {99, 141, 147, 183, 189};
 
     static java.util.List<String> header(int width, int height, java.util.Map<String,String> env, boolean color) {
-        int columns = Math.max(1, width - 1), budget = Math.max(1, height - 7);
+        int columns = Math.max(1, width - 1), budget = Math.max(1, height - (width >= 100 ? 7 : 6));
         boolean enabled = color && !env.containsKey("NO_COLOR") && !"dumb".equals(env.get("TERM"));
         java.util.List<String> lines = new java.util.ArrayList<>();
-        if(budget>=8) {
-            int rows=Math.min(20,budget-3);
+        if(budget>=10) {
+            int rows=Math.min(20,budget-5);
             int mascotWidth=Math.min(width<70?columns:width>=100?34:32,Math.max(10,(int)Math.round(rows*1.65)));
             if(width>=70)mascotWidth=Math.min(mascotWidth,columns-artWidth(wordsFor(0))-3);
             rows=Math.min(rows,Math.max(5,(int)Math.round(mascotWidth/1.65)));
             var art=Mascot.render(mascotWidth,rows,env,enabled);
             if(width>=70) {
                 var words=wordsFor(columns-mascotWidth-3);
-                if(Math.max(rows,words.size())+3<=budget) lines.addAll(beside(art,words,3,env,enabled));
+                if(Math.max(rows,words.size())+5<=budget) lines.addAll(beside(art,words,3,env,enabled));
                 else lines.addAll(art);
             } else lines.addAll(art);
         }
-        // Accessible caption also makes the product name searchable in terminal logs.
-        lines.add("ONIONALL BRAWLER");
+        if (!lines.isEmpty()) lines.addAll(java.util.List.of("", "", ""));
         lines.add("Tor-native fetch engine");
-        lines.add("-".repeat(Math.min(columns, width >= 100 ? 97 : 64)));
+        lines.add("=".repeat(Math.min(columns, width >= 100 ? 97 : 64)));
         if (lines.size() > budget) {
-            lines = new java.util.ArrayList<>(java.util.List.of("ONIONALL BRAWLER", "-".repeat(columns)));
-            if (budget == 1) lines = new java.util.ArrayList<>(java.util.List.of("ONIONALL BRAWLER"));
+            lines = new java.util.ArrayList<>(java.util.List.of("Tor-native fetch engine", "=".repeat(columns)));
+            if (budget == 1) lines = new java.util.ArrayList<>(java.util.List.of("Tor-native fetch engine"));
         }
         java.util.List<String> rendered = new java.util.ArrayList<>();
         for (String line : lines) {
             if(line.contains("\033[")) { rendered.add(line); continue; }
             String plain = line.substring(0, Math.min(columns, line.length()));
-            rendered.add(!enabled ? plain : line.equals("ONIONALL BRAWLER") ? tone(2, env) + plain + "\033[0m" : line.equals("Tor-native fetch engine")
+            rendered.add(!enabled ? plain : line.equals("Tor-native fetch engine")
                     ? tone(3, env) + plain + "\033[0m" : gradient(plain, env));
         }
         return java.util.List.copyOf(rendered);
