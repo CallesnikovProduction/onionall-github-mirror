@@ -1,5 +1,26 @@
 # M2 SOCKS incident — 2026-11-02
 
+## Current continuation — 2026-11-03
+
+Strict original target9560fd480748 fails at CONNECT reply after the single
+gateway restart (30s), before HTTP/JVM series. Same-context52b269ed5fb1 passes
+all four clients and actual Storm robots/pending, but8f2036152884 fails all four
+after restart even in the original namespace. Fresh namespace change is not
+necessary for failure; exact Tor/path cause remains unproven. The optional cold
+directory and fresh-context B comparisons were not exercised live. Four local
+A/B/A branch tests cover control flow only; original M2 assertions are unchanged.
+All three runs retain volumes, remove containers/networks and match protected
+host snapshots. No further identical real-Tor retry/full gate this pass.
+
+TPR-02 robots cache isolation is independently fixed (`6fc4597`); it cannot cure
+Python/native-JDK failures before HTTP. Original full M2 remains blocked, while
+fresh strict M136bf86224d74 and local HTTP M3f90ef8e542 pass. Tor0.4.9.11 remains;
+authenticated candidate delivery is blocked on ordinary official-host DNS.
+The historical NEXT EXPERIMENT below is superseded by the current
+[execution ledger](../engineering/recovery-execution-ledger.md): preserve evidence,
+qualify signed transport update separately and implement network-independent
+durable admission conformance, rather than repeat descriptor/circuit experiments.
+
 ## CONFIRMED
 
 Baseline f14a96d; M1 cleanup2 and existing acceptance assertions are unchanged.

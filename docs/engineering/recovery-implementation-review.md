@@ -1,9 +1,17 @@
 # Recovery implementation review
 
-Current baseline: `39257ef`; diagnostic checkpoint: `c63044d`. This review
+Endpoint baseline: `39257ef`; cache repair: `6fc4597`; frontier diagnostic:
+`f62385d`; retained-state diagnostic checkpoint: `c63044d`. This review
 describes written code and distinguishes local contracts from incomplete external
 acceptance. M2/M3 and production readiness remain BLOCKED pending the ledger's
 strict gate results and independent Tor security delivery.
+
+Tested application stack stays Java25/Kotlin2.3.21, Storm3.1.0 with explicit
+cleanup2 backport, StormCrawler3.7.0, crawler-commons1.6, OkHttp5.4.0,
+URLFrontier client/server2.4 with selected API2.5. No dependency version was
+upgraded. Existing shaded gRPC/protobuf/API overlaps remain build warnings, not
+newly solved compatibility/security claims; the legacy integration positives
+do not qualify a new admission RPC generator/runtime combination.
 
 ## Endpoint and transport ownership
 
@@ -76,6 +84,16 @@ Public no-argument construction is retained for Storm. Regression:
 including loader/waiter cancellation), alongside 35 existing protocol tests.
 No custom future/executor/cache dependency was needed.
 
+Selected algorithm: per-key single-flight with a bounded FIFO result cache.
+Hash lookups/publication are expected O(1); retained ownership is at most64 keys
+and16 rule entries under the validated policy. A miss on A no longer extends
+B's critical section by A's network latency. Same-key waiting still serializes
+loads and transport deadlines remain finite; this is not a claim of worker-wide
+fairness or production latency percentiles. Exponential/jitter retries, adaptive
+concurrency and a second queue/state machine were not added: the installed
+scheduler already owns bounded retries, and no new measured saturation justified
+competing algorithms. No new cryptography or formal-model claim is made.
+
 ## Frontier, retries and acknowledgments
 
 URLFrontier remains scheduling/storage authority; no second queue or crawler
@@ -101,6 +119,14 @@ zero means terminal, not a retry. The existing WriteOptions do not explicitly
 enable synchronous fsync; do not infer power-loss durability from recreation.
 M2 snapshots exercise normal process/container persistence, not commit/ACK-loss.
 
+The new `test/m2/frontier_lifecycle.py` / `FrontierLeaseProbe.java` diagnostic
+additionally exercises actual getURLs holds and consumer exit without a Known
+update, server SIGKILL/recreation, lease expiry, ACKed result and future scheduling
+across another recreation. The first run1a7cb4b6f722 passes with one retained row.
+This is internal gRPC, not Tor acceptance or reservation ACK-loss conformance.
+Pinned source compilation/storage tests and the executed fourth-CF rollback
+refusal are documented in [the admission implementation plan](frontier-admission-implementation-plan.md).
+
 `test/m2/outage_pipeline.py` verifies a genuinely interrupted handler, exactly
 one stored fetch error, unchanged unrelated rows, stored-date retry without
 reseed, parsed recovery marker and exactly two handler attempts. Full current
@@ -115,6 +141,9 @@ acceptance must execute these assertions before claiming their result.
 - Exact external Tor failure cause and repeatability remain open: four client
   implementations can fail before HTTP, so an application-only rewrite is not
   supported by that evidence. One positive recovery is not availability proof.
+  The opt-in fresh-context comparison is a bounded A/B/A diagnostic; its live
+  run8f2036152884 failed the original-A prerequisite, so it proves no namespace
+  attribution. The original targeted9560fd480748 also failed before HTTP.
 - Tor0.4.9.11 remains installed. Candidate delivery failed ordinary official-host
   DNS resolution; no unverified update/default pin is claimed.
 - ADR0002 durable global reservation+quota+enqueue is absent. ADR0003 is proposed,

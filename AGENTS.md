@@ -49,7 +49,18 @@ Controlled incident c8d4cc4db8e8 passed actual Storm robots/pending; cold-state
 fallback was not exercised. Fresh original target9560fd480748 failed after the
 one gateway restart at CONNECT reply30s, before HTTP/JVM series. Quarantine and
 cleanup pass, three volumes retained, host baseline unchanged. Full M2 not run;
-no M2/M3 status upgrade. Current evidence/next step:
+no M2/M3 status upgrade. Same-context52b269ed5fb1 passes actual Storm;8f2036152884
+fails four clients before fresh-context comparison can run. No more identical
+Tor retries. Frontier-only SIGKILL/lease/recreation1a7cb4b6f722 passes; this is
+not durable quota/ACK-loss admission. Fresh strict M136bf86224d74 passes six
+records/gap2.002960580s/cleanup. Python M2 now89, opt-in M1 32, M3 unit2 pass.
+Pinned upstream frontier compiles offline and nine storage tests pass; stock2.4
+refuses an added CF, so compatible rollback is required before migration.
+Fresh local M3f90ef8e542 passes five records/provenance/retry; transport is HTTP,
+not Tor. Final frontier timing-guard variante4b9595217a2 also passes. Cleanup
+audit: seven projects removed,13 expected volumes retained; protected host
+snapshot unchanged. M2/M3 VERIFIED and production-ready remain false.
+Current evidence/next step:
 docs/engineering/recovery-execution-ledger.md. Preserve the user's in-progress
 documentation consolidation; do not stage its deletions/new files as recovery work.
 

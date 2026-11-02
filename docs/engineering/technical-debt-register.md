@@ -27,6 +27,16 @@ maintainability, P3 needs a future requirement. Priority is not vulnerability se
 | NIM-02 / P1 | Closing cleanupTimer interrupted active dependency I/O during Nimbus shutdown. | **RESOLVED on explicit cleanup2 image**. `nimbus-cleanup-drain.patch`; real StormTimer drain regression and two strict M1 runs `25da2046fecb`, `d927d1d8835e`. | Retain drain-before-close ordering and ensure future upstream upgrade provides both publication and shutdown fixes. |
 | SOCK-01 / P1 | A resolved-but-named InetSocketAddress allowed native JDK SOCKS to re-resolve a supposed pinned gateway endpoint. | **RESOLVED**, commit39257ef. `configuredProxyHostnameIsFrozenAsNumericEndpointForNativeJdk` failed before fix and passes after; USER_PASSW/remote-name fixture covers both supported native methods. | Does not close REC-01 or the new-IP replacement obligation TPR-05. Gateway recreation still requires a new protocol instance. |
 
+2026-11-03 qualification: original target9560fd480748 FAIL at CONNECT after its
+one gateway restart; incident52b269ed5fb1 PASS includes actual Storm, while
+8f2036152884 fails all four clients even in the original namespace. Fresh-context
+B comparison and cold-state fallback were not exercised live; neither is a
+confirmed cause/fix. Full M2 remains blocked. New frontier lifecycle1a7cb4b6f722
+executes unacknowledged-consumer exit, server SIGKILL/recreation, lease expiry and
+ACKed-result recreation successfully. This strengthens existing at-least-once
+scheduling evidence, not ADM-01's absent atomic quota/reservation/ACK-loss contract.
+Strict M1 current artifact36bf86224d74 passes with cleanup/retention.
+
 ## Live source TODO markers
 
 The baseline scoped scan found **12 TODO comment occurrences / 11 distinct IDs**:
@@ -111,6 +121,14 @@ server's owning source/build in an explicitly scoped implementation, then execut
 concurrency/restart/ACK-loss conformance before capability activation. No new
 queue, coordinator, production mode or CLI admission is introduced by this
 register. No majority-closure count is manufactured from missing evidence.
+
+That source/build feasibility is now independently checked: all14 tag2.4 service
+files compile offline against the exact cached image JAR and nine unchanged
+upstream RocksDB tests pass. An executed negative probe proves that adding a
+fourth CF prevents stock2.4 reopening the DB. Missing Maven plugins no longer
+block this source-patch path; compatible RPC generation, transaction/auth guards
+and compatible rollback remain genuine implementation prerequisites. See
+[the pinned implementation plan](frontier-admission-implementation-plan.md).
 
 ## Inventory verification
 

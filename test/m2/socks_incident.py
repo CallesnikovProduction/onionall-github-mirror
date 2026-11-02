@@ -19,13 +19,16 @@ def cold_gateway_override(path, project):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cold-gateway-on-failure',action='store_true',help='One diagnostic replacement with fresh client directory; preserve old volume/state')
+    parser.add_argument('--compare-fresh-context',action='store_true',help='After recovery, compare a second namespace; recheck the original only if it fails')
     args=parser.parse_args()
     r=Runner();p=r.path;subject=r.project+'-incident';result={'passed':False,'m2_verified':False,'comparisons':[]}
+    fresh_subject=r.project+'-fresh-incident'
     before=host_state();r.save('host-before.json',before)
     def dc(args,name,**kw):
         print(name,flush=True);kw.setdefault('timeout',40)
         return r.dc(args,name+'.log',**kw)
-    def compare(phase):
+    def compare(phase,container=None):
+        container=container or subject
         python="""import sys,json,time;from pathlib import Path
 sys.path.insert(0,'/workspace/test/m2');from network_probe import single_health,remote_fetch
 p=Path('/evidence');host=(p/'onion-hostname.txt').read_text().strip()
@@ -38,10 +41,10 @@ else:r=single_health(host,20)
 r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1]).write_text(json.dumps(r))
 """
         # docker exec preserves exactly the same container, source IP and network namespace.
-        r.command(['docker','exec',subject,'python3','-c',python,phase+'-python.json'],phase+'-python.log',timeout=25)
-        r.command(['docker','exec',subject,'python3','-c',python,phase+'-python-auth.json','auth'],phase+'-python-auth.log',timeout=25)
+        r.command(['docker','exec',container,'python3','-c',python,phase+'-python.json'],phase+'-python.log',timeout=25)
+        r.command(['docker','exec',container,'python3','-c',python,phase+'-python-auth.json','auth'],phase+'-python-auth.log',timeout=25)
         for mode in ('native','protocol'):
-            r.command(['docker','exec',subject,'java','-cp','/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.SocksIncidentProbe',mode,phase+'-'+mode+'.json'],phase+'-'+mode+'.log',allow_failure=True,timeout=30)
+            r.command(['docker','exec',container,'java','-cp','/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.SocksIncidentProbe',mode,phase+'-'+mode+'.json'],phase+'-'+mode+'.log',allow_failure=True,timeout=30)
         rows={m:json.loads((p/(phase+'-'+m+'.json')).read_text()) for m in ('python','python-auth','native','protocol')}
         assert len({v['network_namespace'] for v in rows.values()})==1
         result['comparisons'].append(dict(phase=phase,results=rows));r.save('incident.json',result)
@@ -79,6 +82,20 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
                 '--wait','--wait-timeout','120','tor'],'cold-gateway-start',timeout=145)
             recovered=compare('cold-gateway-return')
         if not recovered:raise RuntimeError('Same-context recovery comparison failed; crawler not started')
+        if args.compare_fresh_context:
+            # A newly created Compose probe gets another source IP/namespace.
+            # Compare B only after recovered A; if B fails, recheck A once to
+            # distinguish identity effects from loss of availability over time.
+            dc(['run','-d','--no-deps','--name',fresh_subject,'--entrypoint','python3','crawler',
+                '-c','import time;time.sleep(600)'],'fresh-client-start')
+            result['fresh_context_passed']=compare('fresh-context',fresh_subject)
+            original_ns=result['comparisons'][-2]['results']['python']['network_namespace']
+            fresh_ns=result['comparisons'][-1]['results']['python']['network_namespace']
+            if original_ns==fresh_ns:raise RuntimeError('Fresh namespace control was not independent')
+            if not result['fresh_context_passed']:
+                result['original_context_recheck_passed']=compare('original-recheck')
+                if not result['original_context_recheck_passed']:
+                    raise RuntimeError('Both fresh and original contexts unavailable; crawler not started')
         # Only after all equivalent-context clients pass, exercise the actual
         # Storm fetcher in that same container, retaining normal robots/policy.
         dc(['run','--rm','--no-deps','probe','ready'],'frontier-ready')
@@ -93,13 +110,14 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
                 and 'M2_PENDING_MARKER' in (p/'crawler-path.log').read_text()):
             raise RuntimeError('Actual crawler did not consume and reschedule pending URL')
         result['crawler_path_passed']=True
-        result['passed']=True
+        result['passed']=result.get('fresh_context_passed',True)
+        if not result['passed']:result['blocker']='Fresh context failed while original context recovered; inspect A/B/A comparisons'
     except (OSError,ValueError,RuntimeError,AssertionError,subprocess.SubprocessError,KeyboardInterrupt) as e:result['blocker']=type(e).__name__+': '+str(e)
     finally:
         signal.signal(signal.SIGTERM,signal.SIG_IGN)
         signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:
-            r.command(['docker','rm','-f',subject],'client-cleanup.log',allow_failure=True,timeout=20)
+            r.command(['docker','rm','-f',subject,fresh_subject],'client-cleanup.log',allow_failure=True,timeout=20)
         finally:
             try:dc(['logs','--no-color'],'services',allow_failure=True)
             finally:dc(['down','--timeout','5'],'cleanup',allow_failure=True,timeout=60)

@@ -23,6 +23,29 @@ No larger deadlines, log suppression, scope relaxation or host network changes.
 Written control flow and production boundary:
 [implementation review](engineering/recovery-implementation-review.md).
 
+Follow-up bounded comparisons:52b269ed5fb1 passes real Storm in one namespace;
+8f2036152884 fails all four clients after gateway restart before the fresh-context
+comparison is eligible. Thus namespace change is not necessary for failure, and
+cold-state/fresh-context causal claims remain unverified. These options preserve
+default/original acceptance; four new branch tests make Python M2 **89 PASS**.
+No further identical Tor retry. Strict M136bf86224d74 passes on the same artifact:
+six records, gap2.002960580s and full cleanup/retention. Opt-in M1 unit32 and M3
+helper2 pass. Frontier-only lifecycle1a7cb4b6f722 passes SIGKILL, lease expiry,
+pending/result persistence and recreation; it does not establish atomic admission.
+The pinned server build path is now feasible offline (14 classes/nine upstream
+storage tests). A reproduced added-CF rollback incompatibility must be resolved
+before migration; [implementation plan](engineering/frontier-admission-implementation-plan.md).
+
+Final independent regressions: local HTTP M3f90ef8e542 passes five records and
+persisted provenance/retry, with no ERROR/FATAL in crawler/services logs. Final
+frontier timing-guard variante4b9595217a2 passes too. Cleanup audit confirms seven
+projects removed,13 expected volumes retained and protected host snapshot
+unchanged. Detailed machine summary stays ignored at
+`.runtime/autonomous-recovery/final-summary-20261103.json`. These results leave
+`m2_verified=false`, `m3_verified=false` and production-ready=false: current
+runtime ownership and durable admission still need implementation/qualification,
+separately from the external Tor/security blockers.
+
 ## Implementation pass — 2026-11-02
 
 Afterc99064f, Nimbus source and installed bytecode confirm two independent
