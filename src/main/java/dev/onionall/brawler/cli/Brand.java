@@ -69,8 +69,8 @@ final class Brand {
         for(int row=0;row<5;row++)front[row]=new StringBuilder(" ".repeat((4-row)/2));
         for(char letter:text.toCharArray()) {
             String[] glyph=switch(letter) {
-                case 'O' -> new String[]{" ## ","#  #","#  #","#  #"," ## "};
-                case 'N' -> new String[]{"#  #","## #","####","# ##","#  #"};
+                case 'O' -> new String[]{" ### ","#   #","#   #","#   #"," ### "};
+                case 'N' -> new String[]{"#   #","##  #","# # #","#  ##","#   #"};
                 case 'I' -> new String[]{"###"," # "," # "," # ","###"};
                 case 'A' -> new String[]{" ## ","#  #","####","#  #","#  #"};
                 case 'L' -> new String[]{"#   ","#   ","#   ","#   ","####"};
