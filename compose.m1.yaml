@@ -2,6 +2,7 @@
 services:
   frontier-init:
     image: crawlercommons/url-frontier:2.4
+    pull_policy: ${M1_PULL_POLICY:-missing}
     user: "0:0"
     # Normalize a copy: bind mounts may come from a Windows CRLF checkout.
     entrypoint:
@@ -15,6 +16,7 @@ services:
 
   frontier:
     image: crawlercommons/url-frontier:2.4
+    pull_policy: ${M1_PULL_POLICY:-missing}
     command: ["rocksdb.path=/crawldir/rocksdb"]
     depends_on:
       frontier-init:
@@ -32,6 +34,7 @@ services:
 
   fixture:
     image: python:3.12-slim
+    pull_policy: ${M1_PULL_POLICY:-missing}
     command: ["python", "-u", "/tests/fixture.py", "--log", "/evidence/requests.jsonl"]
     volumes:
       - ./test/m1:/tests:ro
@@ -47,6 +50,7 @@ services:
 
   crawler:
     image: storm:3.1.0-jre25
+    pull_policy: ${M1_PULL_POLICY:-missing}
     profiles: [tools]
     working_dir: /workspace
     volumes:
@@ -62,6 +66,7 @@ services:
 
   probe:
     image: storm:3.1.0-jre25
+    pull_policy: ${M1_PULL_POLICY:-missing}
     profiles: [tools]
     working_dir: /workspace
     volumes:

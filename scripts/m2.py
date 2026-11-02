@@ -7,7 +7,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -185,17 +184,58 @@ class Runner:
             self.save('outage-pipeline.json', dict(passed=False, evidence=[],
                 blocker='Not executed after failed security scenarios; quarantine must not be bypassed'))
         self.save('scenario-exits.json', dict(scenario_exit_code=scenario.returncode,pipeline_exit_code=outage_code))
-        m1_started = time.time()
+        self.run_m1_regression()
+        self.exit_code = 0
+
+    def run_m1_regression(self):
+        """Bind the child evidence path before launch; never infer success from mtimes."""
+        project = self.project + '-m1'
+        evidence = ROOT / '.runtime/m1' / project
+        if evidence.exists():
+            raise RuntimeError('Refusing to reuse existing M1 evidence: ' + str(evidence))
         if os.name == 'nt':
             shell = shutil.which('pwsh') or shutil.which('powershell')
             if not shell: raise RuntimeError('PowerShell required for Windows M1 regression')
-            m1_args = [shell,'-NoProfile','-File',str(ROOT/'scripts/m1.ps1')]
-        else: m1_args = ['bash','scripts/m1.sh']
-        regression = self.command(m1_args, 'm1-regression.log', allow_failure=True)
-        candidates = [p.parent for p in (ROOT/'.runtime/m1').glob('*/result.json') if p.stat().st_mtime >= m1_started]
-        if len(candidates) != 1: raise RuntimeError('Could not identify exactly one new complete M1 evidence directory')
-        self.save('m1-regression.json', dict(exit_code=regression.returncode,evidence_directory=str(candidates[0])))
-        self.exit_code = 0
+            args = [shell, '-NoProfile', '-File', str(ROOT / 'scripts/m1.ps1')]
+        else:
+            args = ['bash', 'scripts/m1.sh']
+        record = dict(exit_code=None, evidence_directory=str(evidence),
+                      log=str(self.path / 'm1-regression.log'), cached_images=self.cached_images)
+        self.save('m1-regression.json', record)
+        selected = {'M1_PROJECT_NAME': project, 'M1_CACHED_IMAGES': '1' if self.cached_images else '0'}
+        previous = {key: self.environment.get(key) for key in selected}
+        self.environment.update(selected)
+        try:
+            try:
+                child = self.command(args, 'm1-regression.log', allow_failure=True)
+            except (OSError, subprocess.SubprocessError) as error:
+                record['blocker'] = 'M1 child could not complete: ' + str(error)
+                self.save('m1-regression.json', record)
+                raise
+        finally:
+            for key, value in previous.items():
+                if value is None: self.environment.pop(key, None)
+                else: self.environment[key] = value
+        record['exit_code'] = child.returncode
+        record['result_present'] = (evidence / 'result.json').is_file()
+        self.save('m1-regression.json', record)
+        if child.returncode:
+            log = self.path / 'm1-regression.log'
+            text = log.read_text(encoding='utf-8', errors='replace') if log.is_file() else ''
+            image_errors = ('failed to resolve reference', 'pull access denied', 'no such image',
+                            'unable to get image', 'failed to pull', 'image inspection failed')
+            daemon_registry_failure = (any(prefix in text.lower() for prefix in
+                ('error response from daemon: get ', 'error response from daemon: head '))
+                and any(value in text.lower() for value in
+                    ('network is unreachable', 'no such host', 'tls handshake timeout', 'connection timed out')))
+            record['failure_kind'] = ('image-resolution' if daemon_registry_failure or
+                                      any(value in text.lower() for value in image_errors)
+                                      else 'child-command-failure')
+            self.save('m1-regression.json', record)
+            raise RuntimeError(f'M1 regression exited {child.returncode}; inspect {record["log"]}; '
+                               f'partial evidence: {evidence}')
+        if not record['result_present']:
+            raise RuntimeError('M1 regression exited 0 without result.json at ' + str(evidence))
 
     def cleanup(self):
         failure_stage = self.failed_stage

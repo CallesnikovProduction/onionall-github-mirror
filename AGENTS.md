@@ -37,6 +37,25 @@ No external image/font dependency; ASCII density fallback shares the same vector
 NO_COLOR/--no-color keep the plain no-control stream, not a pinned viewport.
 Rendering verification69 JVM/14 CLI tests: docs/cli-rendering.md.
 
+## Recovery closure — 2026-11-02
+
+M2/M3 remain BLOCKED. Fresh8b64cfc89746: controlled bootstrap/health, preserved
+identity, one gateway restart, JVM robots/health series and unchanged pending
+snapshot pass; resumed Storm robots times out in JDK SOCKS negotiation before
+HTTP. URL persists with error/backoff; target fails, full M2 not launched.
+No timeout/security changes. M3 lacks real-onion full runner and ADR0002 durable
+server admission; retain local HTTP variant and fail-closed production mode.
+M1 child now has deterministic isolated evidence/exit handling and propagated
+cached-image policy (M1_CACHED_IMAGES=1); no mtime scan or implicit pull in cached
+mode. Failed flat CONNECT health records preserve phase instead of “malformed”.
+Local M3 b62983d078 passes5 records/provenance/retry/retention (HTTP only).
+Checks: Java25 Maven80, Python M2 76/M1 31+1skip/M3 2, CLI15 pass.
+Details/current verification: docs/m2-hardening.md; ignored closure-20261102 summary.
+Fresh cached M1 ac0f49b9578d-m1 FAIL: six records/pending resume succeed, but
+strict no-ERROR gate catches Storm3.1 Nimbus cleanupTimer missing stormcode.ser
+during submission; no log whitelist or timer suppression. Parent preserves exit1.
+Tor pin0.4.9.11 unchanged; security update remains independent blocker.
+
 ## Robots decoding contract — 2026-11-01
 
 TorProtocol rejects malformed UTF-8/BOM-selected UTF-16 robots before parser;

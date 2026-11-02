@@ -1,7 +1,104 @@
 # M2 hardening and portability audit — 2026-10-31
 
-This audit accompanies bridge integration. No new commit is authorized by the
-latest audit request; preserve the working changes for review.
+Historical audit records accompany bridge integration. The 2026-11-02 closure
+request authorizes committing/pushing independently verified harness fixes,
+without claiming failed acceptance gates have passed.
+
+## Recovery closure attempt — 2026-11-02
+
+Branch migration/java25-storm31, starting checkpoint0998050. Existing M1/M2/M3
+variants and acceptance assertions are preserved; CLI, parser, TorProtocol,
+transport settings and dependency pins are unchanged. No new recovery layer.
+
+Confirmed defects fixed:
+
+- M2 used an mtime scan to find M1's successful result even after a failed
+  child command. Latest prior4f6890b7bf1c failed Docker Hub resolution before
+  result creation, then misleadingly reported missing evidence. Parent now
+  selects an isolated child project/path before launch, saves partial evidence
+  and exit first, and reports image resolution separately. Existing evidence
+  paths and arbitrary project names are rejected. No timestamp inference.
+- Explicit `--cached-images` now propagates to the M1 child. Both Bash and
+  PowerShell support M1_CACHED_IMAGES=1, inspect/record the unchanged pinned
+  images and select pull_policy=never for every M1 service and dependency.
+  Default online behavior remains; no substitutes or host network changes.
+- The recovery controller required a nested HTTP object even when a failed
+  network_probe correctly emitted a flat pre-HTTP phase/error record. Such
+  CONNECT failure is now reported with phase/type/elapsed evidence; quarantine
+  and gateway stop remain mandatory. Array/null/malformed success stay rejected.
+
+Fresh run8b64cfc89746, Tor0.4.9.11 (actual network-disabled --version):
+
+1. Isolated preflight: live bootstrap100, SOCKS ATYP3, HTTPS200 IsTor=true,
+   bridge process present, temporary container removed.
+2. Controlled initial /health succeeds. Owned onion is stopped/restarted;
+   hostname and key hashes remain identical. A fresh socket gets through SOCKS
+   greeting, then CONNECT reply times out30.024s.
+3. The existing one-cycle controller quarantines a consumer and restarts the
+   same gateway container. Python HTTP canary succeeds in11.853s; real JVM
+   TorProtocol completes robots/health three times plus final robots parsing.
+4. Consumer resumes; pending frontier snapshot is unchanged. A real Storm
+   crawler then fails its next robots fetch: ROBOTS_UNAVAILABLE -> REQUEST_TIMEOUT
+   -> SocketException in JDK SocksSocketImpl.readSocksReply/connect. This is
+   before HTTP; the Java stack does not identify greeting versus CONNECT reply.
+   No pending page request reaches the fixture. Its URL remains durably present
+   with fetch.error.count=1 and a future retry/backoff, rather than being lost.
+5. Targeted acceptance remains FAIL (`Pending content did not resume`);
+   m2_verified=false. Containers/networks removed, all three volumes retained,
+   protected VPN/default routes/rules/DNS unchanged.
+
+Independent cached M1 child regressionac0f49b9578d-m1 also FAILS in this fresh
+run: both crawler exits0, six records, before==after and pending fetched, but
+unchanged strict verifier detects Nimbus cleanupTimer ERROR/BlobStoreUtils:
+FileNotFoundException for stormcode.ser during topology submission. This occurs before the first fetch, during overlapping submission/cleanup;
+a Storm3.1 blob lifecycle race is a supported hypothesis, not a source-level
+proven cause. It is not a pull failure or observed frontier loss. No log suppression, ERROR whitelist, cleanup-timer workaround or
+acceptance change was made. Parent correctly records exit1 and the exact partial
+path instead of reporting a missing-evidence race. Prior M1 accepted evidence
+remains intact; this new regression must not be called green.
+
+A successful canary or finite protocol series does not establish future stream
+availability. The exclusive Tor/path cause of the subsequent negotiation stall
+is still unproven. Existing one-shot recovery cannot promise stable runtime
+resume; it remains fixture-coupled M2 tooling. No timeout increase, additional
+recovery loop, DIRECT fallback, manual circuit reset or security relaxation was
+used. Full M2 is BLOCKED behind the failed targeted prerequisite, not reported
+as an executed PASS/FAIL. Do not rerun identical full gates searching for luck.
+
+A suspected verifier mismatch was rejected after reading fixture.py: /health is
+intentionally absent from requests.jsonl, so four logged recovery robots requests
+are correct. The exploratory synthetic change was removed entirely; original
+verifier/test_harness assertions remain. Its failed synthetic output is retained
+as rejected-verifier-hypothesis.log, not evidence of a product defect.
+
+M3 has no existing full real-onion E2E runner: prepare.py emits Tor configuration,
+while local_integration.py deliberately uses isolated stock HTTP. Keep that
+variant as a local diagnostic. Durable global admission still requires ADR0002's
+additive server/storage/API contract (atomic unique reservation + quota + enqueue,
+restart and ambiguous-ACK tests); local planner ADMITTED is not a durable ACK.
+Therefore M3 cannot be declared complete even if an M2 network retry succeeds.
+No new queue, supervisor or inferred exactly-once guarantee is introduced.
+
+Safe next boundary: deliver/test the signed Tor security candidate independently
+(default remains0.4.9.11), then instrument the resumed JVM SOCKS negotiation phase
+for one discriminating comparison with the already successful series, using the
+same owned fixture. Do not change VPN/DNS/routes/firewall. Stable resumed Storm
+processing must pass before full M2; real-onion M3 variant and ADR0002 server work
+remain separate additive tasks, preserving current variants and acceptance.
+
+Executed checks: offline Java25 Maven verify/build80 PASS; Python M2 76 PASS,
+M1 31 PASS plus one optional skip, M3 2 PASS; CLI/PTY15 PASS. Installed offline
+discover exits0. Bash syntax and M1/M2 Compose config pass. Native PowerShell is
+not installed: Windows runtime is NOT executed. Fresh local M3b62983d078 PASS:
+five frontier records, provenance, cyclic dedup, temporary503 retry, robots,
+container/network cleanup and retained volume; m3_verified=false as designed.
+Final independent inspection verifies five retained volumes across target/M1/M3,
+no remaining containers/networks for those projects, unchanged protected host
+routes/rules/resolver hash. No existing volumes or keys were deleted. Entire
+doctor hooks/approval records pass. Diff excludes runtime/secret artifacts.
+
+Evidence root: `.runtime/m2/closure-20261102/acceptance-summary.json` and referenced
+logs. Target: `.runtime/m2/onionall-brawler-m2-8b64cfc89746/`.
 
 ## Final integration review — 2026-11-01
 

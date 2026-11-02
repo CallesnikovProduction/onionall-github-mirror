@@ -101,7 +101,15 @@ def recover(project, path, detection='recovery-detection.json'):
         result['gateway_container_preserved'] = True
         save('verifying')
         code, health_result = health('recovery-health.json', 'health')
-        if not isinstance(health_result, dict) or not isinstance(health_result.get('health'), dict):
+        if not isinstance(health_result, dict):
+            raise RuntimeError('Malformed recovery health evidence')
+        if health_result.get('passed') is False:
+            # network_probe emits a flat phase record on transport failure; a
+            # missing HTTP health object is expected before CONNECT succeeds.
+            result['health_failure'] = {key: health_result[key] for key in
+                ('phase', 'error_type', 'elapsed_seconds', 'socks_reply_code') if key in health_result}
+            raise RuntimeError('Replacement controlled onion probe failed; inspect recovery-health.json')
+        if not isinstance(health_result.get('health'), dict):
             raise RuntimeError('Malformed recovery health evidence')
         observed = health_result['health']
         if (code != 0 or health_result.get('passed') is not True

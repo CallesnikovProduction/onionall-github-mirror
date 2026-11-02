@@ -7,7 +7,13 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $oldRunDir = $env:M1_RUN_DIR
 $oldRunRel = $env:M1_RUN_REL
-$project = 'onionall-brawler-m1-' + [guid]::NewGuid().ToString('N').Substring(0, 12)
+$oldPullPolicy = $env:M1_PULL_POLICY
+$project = $env:M1_PROJECT_NAME
+if (-not $project) { $project = 'onionall-brawler-m1-' + [guid]::NewGuid().ToString('N').Substring(0, 12) }
+if ($project -cnotmatch '^onionall-brawler-(m1-[a-f0-9]{12}|m2-[a-f0-9]{12}-m1)$') { throw 'Invalid M1_PROJECT_NAME' }
+if ($env:M1_CACHED_IMAGES -and $env:M1_CACHED_IMAGES -notin @('0', '1')) { throw 'M1_CACHED_IMAGES must be 0 or 1' }
+$cachedImages = $env:M1_CACHED_IMAGES -eq '1'
+$env:M1_PULL_POLICY = if ($cachedImages) { 'never' } else { 'missing' }
 $relative = ".runtime/m1/$project"
 $runDir = Join-Path $root $relative
 $composeArgs = @('compose', '-p', $project, '-f', 'compose.m1.yaml')
@@ -57,6 +63,7 @@ try {
     $pythonCommand = Get-Command $Python -ErrorAction Stop
     & docker info *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Docker API unavailable or denied. Run this script from normal host PowerShell.' }
+    if (Test-Path -LiteralPath $runDir) { throw "Refusing to reuse M1 evidence: $runDir" }
     New-Item -ItemType Directory -Force "$runDir/classes" | Out-Null
     $env:M1_RUN_DIR = $runDir
     $env:M1_RUN_REL = $relative
@@ -71,7 +78,9 @@ try {
     Invoke-M1Compose -DockerArgs @('config', '--quiet')
     & docker @composeArgs --profile tools config --format json > "$runDir/compose.json"
     if ($LASTEXITCODE -ne 0) { throw 'Could not record resolved M1 configuration' }
-    Invoke-M1Compose -DockerArgs @('--profile', 'tools', 'pull') -LogName 'pull.log'
+    if (-not $cachedImages) { Invoke-M1Compose -DockerArgs @('--profile', 'tools', 'pull') -LogName 'pull.log' }
+    [ordered]@{ cached_images = $cachedImages; pull_policy = $env:M1_PULL_POLICY } |
+        ConvertTo-Json | Set-Content "$runDir/image-policy.json" -Encoding utf8
     & docker image inspect crawlercommons/url-frontier:2.4 storm:3.1.0-jre25 python:3.12-slim > "$runDir/images.json"
     if ($LASTEXITCODE -ne 0) { throw 'Image inspection failed' }
     $verified = $false
@@ -124,6 +133,7 @@ try {
         Write-Host "M1 assertions passed. Review evidence and warnings before milestone acceptance: $runDir"
     }
 } finally {
+    $env:M1_PULL_POLICY = $oldPullPolicy
     $env:M1_RUN_DIR = $oldRunDir
     $env:M1_RUN_REL = $oldRunRel
     Pop-Location

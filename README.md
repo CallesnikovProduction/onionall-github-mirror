@@ -25,6 +25,14 @@ StormCrawler3.7.0. Real local M3 passes; Tor acceptance and durable global budge
 remain BLOCKED. Earlier Java17 results below are historical. See the
 [migration report](docs/jvm25-storm31-migration.md) for exact gates and rollback.
 
+Recovery recheck (2026-11-02): **M2/M3 remain BLOCKED**. Targeted gateway
+restart restores the canary and JVM series, but resumed Storm robots still times
+out before HTTP. A fresh M1 regression preserves/reuses six records but fails
+the unchanged no-ERROR gate on Nimbus blob submission/cleanup. Cached M1 runs
+are available via `M1_CACHED_IMAGES=1 bash scripts/m1.sh`; M2 `--cached-images`
+propagates that policy and records deterministic child evidence and real exit
+codes. See [recovery evidence and boundaries](docs/m2-hardening.md).
+
 ## Terminal CLI
 
 The Java25 CLI exposes `fetch`, offline `inspect`/`discover`, and `status`; launching without

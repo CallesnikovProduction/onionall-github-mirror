@@ -10,10 +10,15 @@ for tool in docker "$python" "$javac" "$jar_tool"; do
     command -v "$tool" >/dev/null || { echo "Required command unavailable: $tool" >&2; exit 1; }
 done
 [[ -s target/onionall-brawler-0.1.0-SNAPSHOT.jar ]] || { echo 'Build first: mvn clean verify' >&2; exit 1; }
-project="onionall-brawler-m1-$("$python" -c 'import uuid; print(uuid.uuid4().hex[:12])')"
+project=${M1_PROJECT_NAME:-"onionall-brawler-m1-$("$python" -c 'import uuid; print(uuid.uuid4().hex[:12])')"}
+[[ $project =~ ^onionall-brawler-(m1-[a-f0-9]{12}|m2-[a-f0-9]{12}-m1)$ ]] || { echo 'Invalid M1_PROJECT_NAME' >&2; exit 2; }
+[[ ${M1_CACHED_IMAGES:-0} == 0 || ${M1_CACHED_IMAGES:-0} == 1 ]] || { echo 'M1_CACHED_IMAGES must be 0 or 1' >&2; exit 2; }
+export M1_PULL_POLICY=missing
+if [[ ${M1_CACHED_IMAGES:-0} == 1 ]]; then export M1_PULL_POLICY=never; fi
 export M1_RUN_REL=".runtime/m1/$project"
 export M1_RUN_DIR="$root/$M1_RUN_REL"
 run_dir=$M1_RUN_DIR
+[[ ! -e $run_dir ]] || { echo "Refusing to reuse M1 evidence: $run_dir" >&2; exit 2; }
 mkdir -p -- "$run_dir/classes"
 compose=(docker compose -p "$project" -f compose.m1.yaml)
 cleanup_needed=false
@@ -95,7 +100,8 @@ cp -- target/onionall-brawler-0.1.0-SNAPSHOT.jar "$run_dir/crawler-m1.jar"
 "$jar_tool" --update --file "$run_dir/crawler-m1.jar" -C "$run_dir/classes" . -C test/m1/resources .
 "${compose[@]}" config --quiet
 "${compose[@]}" --profile tools config --format json > "$run_dir/compose.json"
-compose_log pull.log --profile tools pull
+if [[ ${M1_CACHED_IMAGES:-0} != 1 ]]; then compose_log pull.log --profile tools pull; fi
+printf '{"cached_images":%s,"pull_policy":"%s"}\n' "$([[ ${M1_CACHED_IMAGES:-0} == 1 ]] && echo true || echo false)" "$M1_PULL_POLICY" > "$run_dir/image-policy.json"
 docker image inspect crawlercommons/url-frontier:2.4 storm:3.1.0-jre25 python:3.12-slim > "$run_dir/images.json"
 cleanup_needed=true
 compose_log startup.log up -d --wait --wait-timeout 60 frontier fixture
