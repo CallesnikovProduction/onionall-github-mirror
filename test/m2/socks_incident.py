@@ -1,12 +1,25 @@
 """One bounded same-container experiment. Never a replacement for M2 acceptance."""
-import json,os,shutil,subprocess,sys,signal,hashlib
+import argparse,json,os,shutil,subprocess,sys,signal,hashlib,re
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
 from m2 import Runner
 from restart_recovery import host_state
 
+def cold_gateway_override(path, project):
+    """Diagnostic-only new generation; never delete old state or onion identity."""
+    if not re.fullmatch(r'onionall-brawler-m2-[a-f0-9]{12}', project):
+        raise ValueError('Expected owned isolated M2 project')
+    directory='/var/lib/tor/client-generations/'+project.rsplit('-',1)[1]
+    destination=path/'cold-gateway.json'
+    with destination.open('x') as output:
+        json.dump({'services':{'tor':{'command':['--DataDirectory',directory]}}},output)
+    return destination
+
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--cold-gateway-on-failure',action='store_true',help='One diagnostic replacement with fresh client directory; preserve old volume/state')
+    args=parser.parse_args()
     r=Runner();p=r.path;subject=r.project+'-incident';result={'passed':False,'m2_verified':False,'comparisons':[]}
     before=host_state();r.save('host-before.json',before)
     def dc(args,name,**kw):
@@ -54,7 +67,18 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
         compare('service-return')
         dc(['restart','--timeout','5','tor'],'gateway-restart',timeout=30)
         dc(['up','-d','--no-build','--no-recreate','--pull','never','--wait','--wait-timeout','90','tor'],'gateway-bootstrap',timeout=110)
-        if not compare('gateway-return'):raise RuntimeError('Same-context recovery comparison failed; crawler not started')
+        recovered=compare('gateway-return')
+        if not recovered and args.cold_gateway_on_failure:
+            # Replacement changes IP; every compared client is newly constructed.
+            # No configured/live crawler may resume across this replacement.
+            result['cold_replacement_attempted']=True
+            dc(['stop','--timeout','5','tor'],'cold-gateway-stop',timeout=25)
+            override=cold_gateway_override(p,r.project)
+            r.compose += ['-f',str(override)]
+            dc(['up','-d','--no-deps','--force-recreate','--no-build','--pull','never',
+                '--wait','--wait-timeout','120','tor'],'cold-gateway-start',timeout=145)
+            recovered=compare('cold-gateway-return')
+        if not recovered:raise RuntimeError('Same-context recovery comparison failed; crawler not started')
         # Only after all equivalent-context clients pass, exercise the actual
         # Storm fetcher in that same container, retaining normal robots/policy.
         dc(['run','--rm','--no-deps','probe','ready'],'frontier-ready')
