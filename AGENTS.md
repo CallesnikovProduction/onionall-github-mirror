@@ -38,6 +38,23 @@ No external image/font dependency; ASCII density fallback shares the same vector
 NO_COLOR/--no-color keep the plain no-control stream, not a pinned viewport.
 Rendering verification69 JVM/14 CLI tests: docs/cli-rendering.md.
 
+## SOCKS incident — 2026-11-02
+
+Same-namespace controlled comparison: Python NO_AUTH/USER_PASSW, native JDK and
+TorProtocol can all stall after owned onion restart and recover after gateway
+restart. Storm is not a necessary cause; exact Tor/path cause remains unproven.
+TorProtocol now freezes the configured proxy as a numeric hostString: native JDK
+otherwise re-resolves a resolved-but-named InetSocketAddress. Regression failed
+before fix and passes after; this is separate from Tor network availability.
+New Linux diagnostic test/m2/socks_incident.py preserves one client namespace,
+20s deadlines, original isolation and volumes; original M2 gate unchanged.
+a3f5c6720038 incident PASS includes real Storm robots/pendingHTTP200 and retained
+frontier in that namespace. Fresh repeat b66bf31c112f FAIL: Python0/2 + nativeJDK
++ TorProtocol all time out beforeHTTP after gateway restart; crawler not started.
+M2 remains BLOCKED; endpoint fix is not a proved cure. Host baseline unchanged
+within all five experiments; no volumes removed.
+Details/CONFIRMED/FIXED/STILL BLOCKED/NEXT EXPERIMENT: docs/recovery/m2-socks-incident.md.
+
 ## M1 lifecycle fix — 2026-11-02
 
 M1 now passes twice consecutively on explicit image

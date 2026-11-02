@@ -214,7 +214,9 @@ class TorProtocol : Protocol {
                 * */
                 Proxy(
                     Proxy.Type.SOCKS,
-                    endpoint
+                    // Native JDK SOCKS retains getHostString and resolves it again.
+                    // A numeric spelling preserves the endpoint selected at configure.
+                    InetSocketAddress(endpoint.address.hostAddress, endpoint.port)
                 )
 
                 /*

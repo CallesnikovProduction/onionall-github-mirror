@@ -45,6 +45,36 @@ public class TorProtocolTest {
         } finally {System.setErr(previous);}
     }
 
+    @Test public void configuredProxyHostnameIsFrozenAsNumericEndpointForNativeJdk() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try(SocksWire wire=new SocksWire(reply(200,"ok"))) {
+            Config c=TorPolicyTest.configuration(host,wire.port());c.put("tor.socks.host","localhost");
+            TorProtocol p=new TorProtocol();
+            try {
+                p.configure(c);
+                var field=TorProtocol.class.getDeclaredField("client");field.setAccessible(true);
+                var client=(okhttp3.OkHttpClient)field.get(p);
+                var address=(InetSocketAddress)client.proxy().address();
+                assertEquals(address.getAddress().getHostAddress(),address.getHostString());
+                assertEquals(200,p.getProtocolOutput("http://"+host+"/",new Metadata()).getStatusCode());
+                assertEquals(3,wire.await(1).get(0).type);
+            }finally{p.cleanup();}
+        }
+    }
+
+    @Test public void nativeJdkUserPassNegotiationKeepsRemoteDnsAndFreshConnections() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try(SocksWire wire=new SocksWire(true,reply(200,"one"),reply(200,"two"))) {
+            TorProtocol p=protocol(host,wire.port());
+            try {
+                assertEquals(200,p.getProtocolOutput("http://"+host+"/one",new Metadata()).getStatusCode());
+                assertEquals(200,p.getProtocolOutput("http://"+host+"/two",new Metadata()).getStatusCode());
+                for(Attempt a:wire.await(2)){assertEquals(3,a.type);assertEquals(host,a.host);assertEquals(80,a.port);}
+                assertEquals(2,wire.authenticated);wire.assertNoFurtherConnection();
+            }finally{p.cleanup();}
+        }
+    }
+
     @Test public void diagnosticOutputHasHardPerClientRecordCap() throws Exception {
         String host=TorPolicyTest.onion(4);
         String[] replies=new String[35];Arrays.fill(replies,reply(200,"ok"));
@@ -608,10 +638,17 @@ public class TorProtocolTest {
         final List<Attempt> observed = new ArrayList<>();
         volatile boolean closed;
         final byte[][] replies;
+        final boolean userPass;
+        volatile int authenticated;
         SocksWire(String... replies) throws IOException {
             this(Arrays.stream(replies).map(value -> value.getBytes(StandardCharsets.UTF_8)).toArray(byte[][]::new));
         }
-        SocksWire(byte[][] replies) throws IOException {
+        SocksWire(boolean userPass,String... replies) throws IOException {
+            this(Arrays.stream(replies).map(v->v.getBytes(StandardCharsets.UTF_8)).toArray(byte[][]::new),userPass);
+        }
+        SocksWire(byte[][] replies) throws IOException { this(replies,false); }
+        SocksWire(byte[][] replies,boolean userPass) throws IOException {
+            this.userPass=userPass;
             this.replies = replies;
             server = new ServerSocket(0, 10, InetAddress.getLoopbackAddress());
             server.setSoTimeout(100);
@@ -626,7 +663,16 @@ public class TorProtocolTest {
                     DataInputStream in = new DataInputStream(socket.getInputStream());
                     OutputStream out = socket.getOutputStream();
                     if (in.readUnsignedByte() != 5) throw new IOException("Not SOCKS5 greeting");
-                    in.readNBytes(in.readUnsignedByte()); out.write(new byte[]{5,0}); out.flush();
+                    byte[] methods=in.readNBytes(in.readUnsignedByte());
+                    if(userPass && !java.util.stream.IntStream.range(0,methods.length).anyMatch(i->methods[i]==2))
+                        throw new IOException("USER_PASSW not offered");
+                    out.write(new byte[]{5,(byte)(userPass?2:0)});out.flush();
+                    if(userPass) {
+                        if(in.readUnsignedByte()!=1)throw new IOException("Invalid auth version");
+                        in.readNBytes(in.readUnsignedByte()); // Discard, never record credentials.
+                        in.readNBytes(in.readUnsignedByte());
+                        out.write(new byte[]{1,0});out.flush();authenticated++;
+                    }
                     if (in.readUnsignedByte() != 5 || in.readUnsignedByte() != 1 || in.readUnsignedByte() != 0)
                         throw new IOException("Not SOCKS5 connect");
                     Attempt attempt = new Attempt(); attempt.type = in.readUnsignedByte();
