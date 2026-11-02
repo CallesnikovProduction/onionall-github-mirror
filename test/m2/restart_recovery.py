@@ -55,6 +55,7 @@ def main():
     runner.save('host-before.json', before)
     try:
         runner.validate_toolchain()
+        runner.environment['M2_TOR_DIAGNOSTICS'] = '1'
         dc(['--profile', 'tools', 'config', '--quiet'], 'config')
         runner.started = True
         dc(['up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120',
@@ -103,7 +104,7 @@ def main():
             result['recovery_exercised'] = False
             raise RuntimeError('Unassisted restart succeeded; replacement path not exercised')
         result['recovery_exercised'] = True
-        result['recovery'] = recover(runner.project, path)
+        result['recovery'] = recover(runner.project, path, diagnostics=True)
         check(result['recovery']['passed'], 'Bounded gateway replacement failed')
         state = runner.command(['docker', 'inspect', '--format', '{{json .State}}', subject], capture=True)
         consumer_state = json.loads(state.stdout)
@@ -113,14 +114,22 @@ def main():
         a, b = [json.loads((path / name).read_text())['entries'] for name in ('before.json', 'after.json')]
         check(a == b and len(a) == 1, 'Replacement changed pending frontier')
         runner.command(['docker', 'rm', '-f', subject], 'consumer-cleanup.log')
-        dc(['run', '--rm', '--no-deps', '-e', 'M2_CRAWL_TTL=45', 'crawler'], 'crawl-resumed', timeout=120)
+        # Outer orchestration budget includes the existing finite 160s series budget;
+        # individual SOCKS/HTTP deadlines remain 20s and failed requests are not retried.
+        dc(['run', '--rm', '--no-deps', '-e', 'M2_CRAWL_TTL=45', '-e', 'M2_VERIFY_BEFORE_CRAWL=1',
+            '-e', 'M2_TOR_DIAGNOSTICS=1', '-e', 'M2_SERIES_OUTPUT=resumed-series.json', 'crawler'], 'crawl-resumed', timeout=120 + 160)
         dc(['run', '--rm', '--no-deps', 'probe', 'snapshot', 'resumed.json'], 'frontier-resumed')
+        same_container = json.loads((path / 'resumed-series.json').read_text())
+        check(same_container.get('passed') is True and same_container.get('completed') == ['/robots.txt', '/health']*3,
+            'Same-container readiness series missing or failed')
+        result['same_container_series_passed'] = True
         end = json.loads((path / 'resumed.json').read_text())
         check('M2_PENDING_MARKER' in (path / 'crawl-resumed.log').read_text(), 'Pending content did not resume')
         check(len(end['entries']) == 1 and end['entries'][0]['refetch'] > end['captured_at_epoch'] + 3600,
             'Pending URL was not successfully rescheduled')
         dc(['run', '--rm', '--no-deps', 'probe', 'seed', 'root'], 'seed-root-series')
-        dc(['run', '--rm', '--no-deps', '-e', 'M2_CRAWL_TTL=60', 'crawler'], 'crawl-series', timeout=150)
+        dc(['run', '--rm', '--no-deps', '-e', 'M2_CRAWL_TTL=60', '-e', 'M2_VERIFY_BEFORE_CRAWL=1',
+            '-e', 'M2_TOR_DIAGNOSTICS=1', '-e', 'M2_SERIES_OUTPUT=continued-series.json', 'crawler'], 'crawl-series', timeout=150 + 160)
         content=(path / 'crawl-series.log').read_text()
         check(all(marker in content for marker in ('M2_ROOT_MARKER','M2_A_MARKER','M2_B_MARKER')),
             'Sequential actual Storm fetch series incomplete')

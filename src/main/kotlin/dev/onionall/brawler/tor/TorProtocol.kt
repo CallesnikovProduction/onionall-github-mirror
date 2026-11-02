@@ -3,6 +3,8 @@ package dev.onionall.brawler.tor
 import crawlercommons.robots.BaseRobotRules
 import crawlercommons.robots.SimpleRobotRulesParser
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.EventListener
+import okhttp3.Connection
 import okhttp3.Call
 import okhttp3.ConnectionPool
 import okhttp3.Dns
@@ -85,6 +87,7 @@ class TorProtocol : Protocol {
      * Используется в заголовке User-Agent и при разборе `robots.txt`.
      */
     private lateinit var agent: String
+    private var trace: TorTrace? = null
 
     /**
      * Максимальный допустимый размер тела HTTP-ответа в байтах.
@@ -198,7 +201,9 @@ class TorProtocol : Protocol {
         // Сетевой транспорт Onionall:
         // принудительно направляются запросы через SOCKS-прокси
         // и минимизация неявного поведения HTTP-клиента
+        trace = if (conf["tor.diagnostics.enabled"] == true) TorTrace(timeout) else null
         client = OkHttpClient.Builder()
+            .eventListenerFactory { call -> trace?.listener(call) ?: EventListener.NONE }
             .proxy(
                 /*
                 * Допустим, конфигурация:
@@ -264,6 +269,7 @@ class TorProtocol : Protocol {
             )
             .build()
 
+        trace?.lifecycle("configured")
         // TODO(TPR-01): BLOCKED: controlled Tor end-to-end + resolver guard and outage denial must pass; local SOCKS tests alone are insufficient.
 
         // TODO(TPR-14): BLOCKED: controlled TLS/HTTP2/auth challenge fixtures must demonstrate bounded follow-ups on SOCKS only.
@@ -532,6 +538,7 @@ class TorProtocol : Protocol {
     override fun cleanup() {
         synchronized(lifecycle) {
             closed = true
+            trace?.lifecycle("cleanup")
             calls.forEach { it.cancel() }
             if (this::client.isInitialized) {
                 client.dispatcher.cancelAll()
@@ -542,5 +549,64 @@ class TorProtocol : Protocol {
         synchronized(this) {
             robots.clear()
         }
+    }
+}
+
+/** Opt-in fixed-schema diagnostics. No URL path/query, auth, header or exception message. */
+private class TorTrace(private val timeout: Long) {
+    private val client = ids.incrementAndGet()
+    private val emitted = java.util.concurrent.atomic.AtomicInteger()
+    private fun emit(fields: Map<String, Any>) {
+        // Diagnostic output itself is bounded, including concurrent callbacks.
+        if (emitted.getAndUpdate { current -> if (current < 256) current + 1 else current } < 256) {
+            val record = linkedMapOf<String, Any>("client" to client, "jvm" to jvm, "timeout_ms" to timeout,
+                "at_utc" to java.time.Instant.now().toString(), "thread_id" to Thread.currentThread().threadId(),
+                "thread_kind" to when {
+                    Thread.currentThread().name.startsWith("OkHttp") -> "okhttp"
+                    Thread.currentThread().name.startsWith("Okio") -> "okio"
+                    else -> "application"
+                })
+            record.putAll(fields)
+            System.err.println("TOR_TRACE " + json.writeValueAsString(record))
+        }
+    }
+    fun lifecycle(event: String) = emit(mapOf("event" to event))
+    fun listener(call: Call): EventListener {
+        val request = ids.incrementAndGet()
+        val started = System.nanoTime()
+        val hostHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(call.request().url.host.toByteArray(Charsets.US_ASCII))
+            .take(8).joinToString("") { "%02x".format(it.toInt() and 255) }
+        return object : EventListener() {
+            @Volatile private var connected = false
+            private fun event(name: String, extra: Map<String, Any> = emptyMap()) = emit(
+                mapOf("event" to name, "request" to request, "host_hash" to hostHash,
+                    "elapsed_ms" to (System.nanoTime() - started) / 1_000_000) + extra)
+            override fun callStart(call: Call) = event("call_start")
+            override fun connectStart(call: Call, address: InetSocketAddress, proxy: Proxy) {
+                connected = true
+                // OkHttp's callback encompasses TCP and native JDK SOCKS negotiation;
+                // it cannot distinguish greeting/authentication/CONNECT reply reads.
+                event("socks_connect_start", mapOf("proxy_type" to proxy.type().name))
+            }
+            override fun connectEnd(call: Call, address: InetSocketAddress, proxy: Proxy, protocol: okhttp3.Protocol?) = event("socks_connect_end")
+            override fun connectFailed(call: Call, address: InetSocketAddress, proxy: Proxy, protocol: okhttp3.Protocol?, ioe: IOException) =
+                event("socks_connect_failed", mapOf("error_type" to ioe.javaClass.simpleName))
+            override fun secureConnectStart(call: Call) = event("tls_start")
+            override fun secureConnectEnd(call: Call, handshake: okhttp3.Handshake?) = event("tls_end")
+            override fun connectionAcquired(call: Call, connection: Connection) = event("connection_acquired",
+                mapOf("new_connection" to connected, "connection" to System.identityHashCode(connection)))
+            override fun connectionReleased(call: Call, connection: Connection) = event("connection_released")
+            override fun requestHeadersStart(call: Call) = event("request_headers_start")
+            override fun responseHeadersStart(call: Call) = event("response_headers_start")
+            override fun callEnd(call: Call) = event("call_end")
+            override fun callFailed(call: Call, ioe: IOException) = event("call_failed", mapOf("error_type" to ioe.javaClass.simpleName))
+            override fun canceled(call: Call) = event("canceled")
+        }
+    }
+    companion object {
+        private val jvm = java.util.UUID.randomUUID().toString()
+        private val ids = java.util.concurrent.atomic.AtomicLong()
+        private val json = com.fasterxml.jackson.databind.ObjectMapper()
     }
 }

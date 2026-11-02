@@ -26,7 +26,7 @@ def connect_failure(document):
                     and row.get('socks_reply_code') != 0 for row in attempts))
 
 
-def recover(project, path, detection='recovery-detection.json'):
+def recover(project, path, detection='recovery-detection.json', diagnostics=None):
     if not re.fullmatch(r'onionall-brawler-m2-[a-f0-9]{12}', project):
         raise ValueError('Recovery requires an isolated M2 project name')
     path = Path(path).resolve()
@@ -116,7 +116,9 @@ def recover(project, path, detection='recovery-detection.json'):
                 or observed.get('http_status') != 200 or observed.get('health_body') != 'ready'
                 or observed.get('socks_atyp') != 3 or observed.get('remote_hostname_sent') is not True):
             raise RuntimeError('Replacement did not restore controlled onion HTTP; quarantine retained')
-        command(compose + ['run', '--rm', '--no-deps', '--entrypoint', 'java', 'probe',
+        diagnostic_args = ['-e', 'M2_TOR_DIAGNOSTICS=1'] if (diagnostics is True or
+            diagnostics is None and environment.get('M2_TOR_DIAGNOSTICS') == '1') else []
+        command(compose + ['run', '--rm', '--no-deps'] + diagnostic_args + ['--entrypoint', 'java', 'probe',
             '-cp', '/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar',
             'dev.onionall.brawler.m2.RecoverySeriesProbe'], 'series', 160)
         series = json.loads((path / 'recovery-series.json').read_text())

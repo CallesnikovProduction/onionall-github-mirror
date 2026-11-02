@@ -49,8 +49,14 @@ Backport serializes Nimbus cleanup on submitLock and drains active cleanup befor
 closing its timer/ZK dependencies; genuine ERROR logging/assertions unchanged.
 Hash-pinned source and original server JAR, deterministic real Nimbus/StormTimer
 regressions: docker/storm-lifecycle/README.md. M2_STORM_IMAGE propagates to M1 child.
-M2/M3 remain BLOCKED; same-container Tor readiness experiment is pending real
-verification, not a production recovery guarantee. Tor security pin unchanged.
+M2/M3 remain BLOCKED. Target19aa14dfd670: initialhealth/identity preserved;
+post-restart CONNECT timeout; gateway restart restores Python canary but first
+standalone JVM robots times out20s before HTTP. Consumer never resumed; cleanup
+retains all volumes. Same-container readiness variant remains UNVERIFIED.
+Opt-in bounded TOR_TRACE uses JVM/request IDs, hashedhost and fixed thread_kind
+(no raw thread names, which can embed URLs). No transport policy change.
+Tor security pin unchanged; signed metadata obtained but Packages delivery timed
+out. ADR0003 proposed only; CLI admission remains disabled.
 
 ## Recovery closure — 2026-11-02
 

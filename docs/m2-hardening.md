@@ -4,6 +4,72 @@ Historical audit records accompany bridge integration. The 2026-11-02 closure
 request authorizes committing/pushing independently verified harness fixes,
 without claiming failed acceptance gates have passed.
 
+## Implementation pass — 2026-11-02
+
+Afterc99064f, Nimbus source and installed bytecode confirm two independent
+lifecycle races. LocalFsBlobStore publishes key/meta before data commit, while
+cleanup reads it outside the existing submission lock. The first backport
+serializes doCleanup on submitLock: fresh M193e27294af36 passes, but repeat
+fcab856c3399 catches a separate shutdown interruption in cleanupTimer.close.
+Revision2 publishes a stop flag, drains active cleanup on the same lock, then
+closes the timer outside the lock before disconnecting dependencies. Real Nimbus
+lock and real StormTimer shutdown probes fail baseline and pass the corrected
+code; late cleanup performs no dependency I/O. No ERROR handling/timers/assertions
+are disabled. See docker/storm-lifecycle/README.md and build-storm-lifecycle.sh.
+Both original images and cleanup1 remain available; cleanup2 is explicit via
+M1_STORM_IMAGE/M2_STORM_IMAGE, with actual image IDs recorded by harnesses.
+
+M2 now has opt-in bounded redacted TOR_TRACE (256 events/client, JVM/request IDs,
+UTC/thread, hashed host, connect/TLS/acquire/cancel/close). Native SOCKS subphases
+are not inferred from EventListener. Standalone verification uses a different
+container/client address from the next crawler; Tor's default IsolateClientAddr
+means it cannot establish that crawler's circuit readiness. The targeted variant
+therefore runs one finite verification series inside the actual crawler container
+before Storm, without changing isolation or retry/network deadlines. This remains
+an experiment until actual resumed crawler/pending assertions pass; defaults and
+standalone variant are preserved. Outer command budgets include the added finite
+series time, rather than changing the20s network deadline.
+
+Revision2 M1 repeatability:25da2046fecb andd927d1d8835e PASS (strict original
+verifier, zero ERROR/FATAL, six records, pending recovery, cleanup and retained
+volumes). Commitb8ee0da pushed to Entire. No default image pin changed; explicitly
+select onionall-storm:3.1.0-jre25-cleanup2 using M1_STORM_IMAGE/M2_STORM_IMAGE.
+
+New targeted19aa14dfd670 FAIL before the same-container variant could execute:
+initial owned health succeeds9.835s; keys unchanged; post-service-restart SOCKS
+CONNECT times out30.018s; one gateway restart restores Python HTTP health7.086s.
+The first standalone Java robots call emits socks_connect_start, then watchdog
+cancellation at20004ms and call_failed at20006ms, with no acquired connection or
+HTTP event. Controller closes gateway, never resumes the consumer, and cleanup
+retains all three volumes. Same-container readiness remains UNVERIFIED, not an
+established fix. No identical retry or dependent full M2 was launched. M2
+repeatability requirement of three passing runs remains unsatisfied.
+
+Live tracing exposed an instrumentation privacy defect: sanitized/truncated
+OkHttp thread names still include partial URL-derived content. The deliverable
+uses only thread_id plus fixed thread_kind categories; regression checks schema.
+Previously captured traces stay ignored as potentially sensitive diagnostics.
+No URL, path, query, auth or raw thread names are exported by the corrected trace.
+This is opt-in diagnostic code, not proof of DNS isolation or a transport fix.
+
+Final checks: Java25 Maven82, Python M282/M131+1skip/M32, CLI/PTY15 pass.
+All seven new volumes retained; no remaining containers/networks for these runs.
+Target before/after protected host state matches, but the final cross-session
+comparison detects changed routes/resolver (rules unchanged). No host mutation
+commands were executed; origin of the later change is not established. Do not
+restore host settings; capture fresh read-only preflight before any new Tor run.
+Final evidence summary: .runtime/recovery-implementation-20261102/summary.json.
+
+ADR0003 is a concrete PROPOSED additive Frontier service/storage contract, not
+an activated admission implementation. CLI admission remains disabled. Full M3
+requires server-source/storage work and real-onion verification after M2 passes.
+
+Tor delivery recheck: official InRelease and signing key downloaded over ordinary
+HTTPS and signature/fingerprint verified. Packages connection timed out5s; no
+retry, package download, candidate build, default pin or host network change.
+Exact manual bundle procedure/result: ignored recovery-implementation-20261102/security.
+Tor stays0.4.9.11; production-ready remains false.
+
 ## Recovery closure attempt — 2026-11-02
 
 Branch migration/java25-storm31, starting checkpoint0998050. Existing M1/M2/M3

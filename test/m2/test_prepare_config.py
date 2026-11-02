@@ -22,7 +22,7 @@ class MetadataPrefixTest(unittest.TestCase):
             evidence = root / '.runtime/m2/config-test'
             evidence.mkdir(parents=True)
             (evidence / 'onion-hostname.txt').write_text('a' * 56 + '.onion', encoding='utf-8')
-            with patch.object(prepare, 'ROOT', root):
+            with patch.object(prepare, 'ROOT', root), patch.dict(prepare.os.environ, {'M2_TOR_DIAGNOSTICS':'0'}):
                 prepare.prepare(evidence)
             for name in ('crawler-conf.yaml', 'crawler-outage-conf.yaml'):
                 values = re.findall(r'^\s+protocol\.md\.prefix:\s*(.+)$',
@@ -30,6 +30,19 @@ class MetadataPrefixTest(unittest.TestCase):
                 self.assertEqual(['"protocol."'], values)
                 self.assertIn('    - protocol.tor.category', (evidence / name).read_text())
                 self.assertNotIn('    - tor.category', (evidence / name).read_text())
+    def test_diagnostics_are_explicit_opt_in_in_both_topologies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            (root/'test/m1').mkdir(parents=True)
+            for name in ('crawler.flux','test/m1/crawler-conf.yaml'):
+                (root/name).write_text((ROOT/name).read_text())
+            for enabled in ('0','1'):
+                evidence=root/'.runtime/m2'/('config-'+enabled);evidence.mkdir(parents=True)
+                (evidence/'onion-hostname.txt').write_text('a'*56+'.onion')
+                with patch.object(prepare,'ROOT',root), patch.dict(prepare.os.environ,{'M2_TOR_DIAGNOSTICS':enabled}):
+                    prepare.prepare(evidence)
+                for name in ('crawler-conf.yaml','crawler-outage-conf.yaml'):
+                    self.assertEqual(enabled=='1','tor.diagnostics.enabled: true' in (evidence/name).read_text())
 
 
 if __name__ == '__main__':

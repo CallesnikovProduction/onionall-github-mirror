@@ -19,6 +19,48 @@ public class TorProtocolTest {
         return protocol;
     }
 
+    @Test public void optInDiagnosticsExposeBoundedLifecycleWithoutSensitiveUrls() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        ByteArrayOutputStream output=new ByteArrayOutputStream();PrintStream previous=System.err;
+        try(SocksWire wire=new SocksWire(reply(200,"ok"),reply(200,"ok"))) {
+            Config conf=TorPolicyTest.configuration(host,wire.port());conf.put("tor.diagnostics.enabled",true);
+            TorProtocol protocol=new TorProtocol();
+            try {
+                System.setErr(new PrintStream(output,true,StandardCharsets.UTF_8));
+                protocol.configure(conf);
+                protocol.getProtocolOutput("http://"+host+"/private-path?credential=never-log",new Metadata());
+                protocol.getProtocolOutput("http://"+host+"/second",new Metadata());
+            } finally {protocol.cleanup();System.setErr(previous);}
+            String text=output.toString(StandardCharsets.UTF_8);
+            assertFalse(text.contains(host));assertFalse(text.contains("private-path"));assertFalse(text.contains("credential"));
+            assertTrue(text.contains("socks_connect_start"));assertTrue(text.contains("socks_connect_end"));
+            assertTrue(text.contains("\"new_connection\":true"));assertFalse(text.contains("\"new_connection\":false"));
+            assertTrue(text.contains("configured"));assertTrue(text.contains("cleanup"));
+            for(String line:text.lines().toList()) if(line.startsWith("TOR_TRACE ")) {
+                var record=new com.fasterxml.jackson.databind.ObjectMapper().readTree(line.substring(10));
+                assertTrue(record.has("client"));assertTrue(record.has("timeout_ms"));assertTrue(record.has("event"));
+                assertFalse(record.has("thread"));
+                assertTrue(java.util.Set.of("okhttp","okio","application").contains(record.path("thread_kind").asText()));
+            }
+        } finally {System.setErr(previous);}
+    }
+
+    @Test public void diagnosticOutputHasHardPerClientRecordCap() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        String[] replies=new String[35];Arrays.fill(replies,reply(200,"ok"));
+        ByteArrayOutputStream output=new ByteArrayOutputStream();PrintStream previous=System.err;
+        try(SocksWire wire=new SocksWire(replies)) {
+            Config conf=TorPolicyTest.configuration(host,wire.port());conf.put("tor.diagnostics.enabled",true);
+            TorProtocol protocol=new TorProtocol();
+            try {
+                System.setErr(new PrintStream(output,true,StandardCharsets.UTF_8));protocol.configure(conf);
+                for(int i=0;i<35;i++)assertEquals(200,protocol.getProtocolOutput("http://"+host+"/",new Metadata()).getStatusCode());
+                wire.await(35);
+            } finally {protocol.cleanup();System.setErr(previous);}
+            assertEquals(256,output.toString(StandardCharsets.UTF_8).lines().filter(line->line.startsWith("TOR_TRACE ")).count());
+        } finally {System.setErr(previous);}
+    }
+
     @Test public void cleanupIsTerminalAndIdempotentWithoutNewSockets() throws Exception {
         String host=TorPolicyTest.onion(4);
         try (SocksWire wire=new SocksWire(reply(200,"ok"))) {
