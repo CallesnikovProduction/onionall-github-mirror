@@ -40,6 +40,19 @@ Rendering verification69 JVM/14 CLI tests: docs/cli-rendering.md.
 
 ## SOCKS incident — 2026-11-02
 
+2026-11-03 continuation: robots cache TPR-02 now uses per-origin single-flight
+loading and short shared-cache critical sections; no network I/O holds the global
+cache monitor. Six deterministic regressions cover cross-origin progress, duplicate
+misses, TTL, failure, eviction and cleanup; offline Java25 verify90 and Python
+M2 85 / CLI-PTY16 pass. Public no-arg protocol construction remains compatible.
+Controlled incident c8d4cc4db8e8 passed actual Storm robots/pending; cold-state
+fallback was not exercised. Fresh original target9560fd480748 failed after the
+one gateway restart at CONNECT reply30s, before HTTP/JVM series. Quarantine and
+cleanup pass, three volumes retained, host baseline unchanged. Full M2 not run;
+no M2/M3 status upgrade. Current evidence/next step:
+docs/engineering/recovery-execution-ledger.md. Preserve the user's in-progress
+documentation consolidation; do not stage its deletions/new files as recovery work.
+
 Same-namespace controlled comparison: Python NO_AUTH/USER_PASSW, native JDK and
 TorProtocol can all stall after owned onion restart and recover after gateway
 restart. Storm is not a necessary cause; exact Tor/path cause remains unproven.

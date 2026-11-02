@@ -41,3 +41,40 @@ unchanged within the run. No larger timeouts or isolation changes.
 Next: finish regression for confirmed cross-origin robots head-of-line blocking,
 then fresh Maven verify and run original targeted restart recovery. Stop on first
 failure and retain evidence; full M2 remains conditional on targeted success.
+
+## Checkpoint2: robots isolation, resumed 2026-11-03
+
+Preserved uncommitted TorProtocol/cache regression work from the interrupted
+session. Offline `ONIONALL_OFFLINE=1 bash scripts/build-cli.sh` finished successfully
+in saved `maven-cache-fix.log`: **90 tests, zero failures/errors/skips**. The former
+global-monitor HOL regression fails before the fix (`robots-cache/before.log`);
+the six cache cases plus 35 surrounding protocol cases pass (`after.log`).
+Python `-B -m unittest discover -s test/m2`: **85 PASS**; CLI/PTY suite: **16 PASS**.
+Logs: `.runtime/autonomous-recovery/{python-m2,cli}-20261103.log`.
+
+Original `test/m2/restart_recovery.py` launched once on the packaged artifact,
+explicit cleanup2 image, JDK25 and cached repository; no timeout/assertion changes.
+Driver: `.runtime/autonomous-recovery/targeted-resume-20261103.log`.
+Project: `onionall-brawler-m2-9560fd480748`. **FAIL**, exit1. Initial health and
+identity persistence pass; after service restart the one allowed gateway restart
+also fails at SOCKS CONNECT reply (30.006s), before HTTP. Real JVM series/crawler
+not launched. Quarantine retained, gateway stopped, containers/networks removed,
+all three volumes retained, host routes/rules/resolver unchanged. Source of truth:
+`restart-recovery.json`, `gateway-recovery.json`, `recovery-health.json` in that
+project. No full M2 launched: prerequisite failed. `m2_verified=false`.
+This runner takes read-only host-route/rules/resolver snapshots around its own
+isolated Compose project and retains all persistent volumes.
+
+User documentation consolidation is separate work: tracked Markdown deletions,
+new summary Markdown, `docs/m2-docs.zip` and `scripts/AGENTS.md` appeared while
+paused. They are preserved, excluded from recovery commits, and not restored or
+removed. New scripts instructions have been read; public entrypoints retained.
+
+Next distinguishing experiment (one run only): existing
+`socks_incident.py --cold-gateway-on-failure`, same JDK25/cleanup2 artifact. The
+earlier c8 run never exercised cold state. Compare four clients before/after
+service restart, then normal restart, and only if still blocked use a new Tor
+client directory in the retained volume. Driver:
+`.runtime/autonomous-recovery/cold-comparison-20261103.log`. Do not infer a
+persistent-state cause unless the corresponding comparison actually executes;
+even cold success cannot exclude time-varying external-network effects.

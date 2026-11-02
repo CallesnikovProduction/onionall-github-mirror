@@ -4,6 +4,25 @@ Historical audit records accompany bridge integration. The 2026-11-02 closure
 request authorizes committing/pushing independently verified harness fixes,
 without claiming failed acceptance gates have passed.
 
+## Recovery continuation — 2026-11-03
+
+TPR-02 cross-origin robots head-of-line blocking is reproduced and fixed in the
+actual TorProtocol: per-origin loading, short shared-cache critical sections,
+successful-only publication, existing ten-minute TTL/16-entry bound and terminal
+cancellation. Public no-arg construction remains available. Offline Java25
+verify90, Python M2 85 and CLI/PTY16 pass. Before/after and exact commands:
+[execution ledger](engineering/recovery-execution-ledger.md).
+
+Original targeted9560fd480748 fails despite the earlier controlled same-context
+c8d4cc4db8e8 PASS. Initial onion health/identity pass, but the single gateway
+restart still leaves CONNECT reply unanswered for30s; no JVM/crawler resume.
+Quarantine/cleanup work, all three volumes survive, host baseline unchanged.
+Full M2 is not launched after this failed prerequisite. M2/M3 remain BLOCKED;
+Tor security delivery is independently BLOCKED on official-host DNS resolution.
+No larger deadlines, log suppression, scope relaxation or host network changes.
+Written control flow and production boundary:
+[implementation review](engineering/recovery-implementation-review.md).
+
 ## Implementation pass — 2026-11-02
 
 Afterc99064f, Nimbus source and installed bytecode confirm two independent

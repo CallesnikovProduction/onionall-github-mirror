@@ -55,7 +55,9 @@ import java.util.concurrent.TimeUnit
  * @author Stephan Kolesnikov
  * @author Codex (gpt-6.1-sol-medium)
  */
-class TorProtocol : Protocol {
+class TorProtocol @JvmOverloads constructor(
+    private val nanoTime: java.util.function.LongSupplier = java.util.function.LongSupplier { System.nanoTime() }
+) : Protocol {
 
     /**
      * Политика допустимости целевых URL и метаданных.
@@ -107,16 +109,20 @@ class TorProtocol : Protocol {
      * Ключ: базовый URL вида `scheme://authority`.
      *
      * Значение:
-     * - время загрузки по [System.nanoTime];
+     * - монотонное время завершения загрузки;
      * - разобранные правила `BaseRobotRules`.
      *
      * Время жизни записи: `10 минут`.
      *
      * Максимальное количество записей: `16`.
      *
-     * TODO(TPR-02): BLOCKED: verify TTL expiry and concurrent misses with a deterministic clock test before changing cache synchronization.
+     * TPR-02: кеш защищён коротким monitor; загрузки одного origin сериализованы
+     * отдельно. Медленный origin не удерживает monitor кеша во время HTTP.
      */
     private val robots = LinkedHashMap<String, Pair<Long, BaseRobotRules>>()
+    // Policy admits at most 16 hosts × HTTP/HTTPS × absent/default explicit port.
+    // Keep load locks after cache eviction to preserve one-loader ownership.
+    private val robotLoads = HashMap<String, Any>()
 
     /**
      * Инициализирует сетевой протокол.
@@ -437,8 +443,8 @@ class TorProtocol : Protocol {
      * отсутствие доступного `robots.txt` не считается
      * автоматическим разрешением обхода.
      *
-     * Метод синхронизирован для последовательного
-     * доступа к общему кешу правил.
+     * Загрузки одного origin сериализованы; общий monitor удерживается только
+     * для чтения/изменения кеша и карты origin-locks, никогда во время HTTP.
      *
      * @param url URL ресурса, для которого нужны правила.
      * @return разобранные правила `robots.txt`.
@@ -451,17 +457,25 @@ class TorProtocol : Protocol {
      *  Пустой robots и отсутствие подходящей UA-группы допускаются parser.
      * Malformed UTF-8/BOM-selected UTF-16 and parser runtime errors fail closed.
      */
-    @Synchronized
     override fun getRobotRules(url: String): BaseRobotRules {
         if (closed) throw IOException("PROTOCOL_CLOSED")
         val safe = URI(policy.normalize(url))
         val base = "${safe.scheme}://${safe.rawAuthority}"
 
-        robots[base]?.let {
-            if (System.nanoTime() - it.first < TimeUnit.MINUTES.toNanos(10))
-                return it.second
+        val loadLock = synchronized(robots) {
+            if (closed) throw IOException("PROTOCOL_CLOSED")
+            robotLoads.getOrPut(base) { Any() }
         }
+        return synchronized(loadLock) {
+            val cached = synchronized(robots) {
+                if (closed) throw IOException("PROTOCOL_CLOSED")
+                robots[base]?.takeIf { nanoTime.asLong - it.first < TimeUnit.MINUTES.toNanos(10) }?.second
+            }
+            cached ?: loadRobotRules(base)
+        }
+    }
 
+    private fun loadRobotRules(base: String): BaseRobotRules {
         val response = try {
             getProtocolOutput("$base/robots.txt",Metadata())
         } catch (e: IOException) {
@@ -511,14 +525,11 @@ class TorProtocol : Protocol {
                 throw IOException("ROBOTS_UNAVAILABLE", e)
             }
 
-        if (closed) throw IOException("PROTOCOL_CLOSED")
-        if (robots.size >= 16) robots.remove(robots.keys.first())
-
-        robots[base] = Pair(
-            System.nanoTime(),
-            rules
-        )
-
+        synchronized(robots) {
+            if (closed) throw IOException("PROTOCOL_CLOSED")
+            if (robots.size >= 16) robots.remove(robots.keys.first())
+            robots[base] = Pair(nanoTime.asLong, rules)
+        }
         return rules
     }
 
@@ -548,8 +559,9 @@ class TorProtocol : Protocol {
                 client.dispatcher.executorService.shutdownNow()
             }
         }
-        synchronized(this) {
+        synchronized(robots) {
             robots.clear()
+            robotLoads.clear()
         }
     }
 }
