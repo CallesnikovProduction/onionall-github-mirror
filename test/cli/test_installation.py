@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 @unittest.skipUnless(os.name == 'posix' and (ROOT/'target/onionall/.files').is_file(), 'Build the Linux CLI first')
 class InstallationTest(unittest.TestCase):
     def invoke(self, script, env, *args):
-        return subprocess.run(['bash', str(ROOT/'scripts'/script), *args], env=env,
+        return subprocess.run(['bash', str(ROOT/'scripts/cli'/script), *args], env=env,
                               cwd=ROOT, capture_output=True, text=True, timeout=30)
 
     def environment(self, base):
