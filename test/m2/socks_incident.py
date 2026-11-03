@@ -141,7 +141,7 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
         dc(['run','--rm','--no-deps','probe','ready'],'frontier-ready')
         dc(['run','--rm','--no-deps','probe','seed','pending'],'seed-pending')
         r.command(['docker','exec','-e','M2_CRAWL_TTL=45',subject,'bash',
-            '/workspace/scripts/run-tor-crawl-container.sh'],'crawler-path.log',timeout=130)
+            '/workspace/scripts/runners/run-tor-crawl-container.sh'],'crawler-path.log',timeout=130)
         dc(['run','--rm','--no-deps','probe','snapshot','crawler-final.json'],'frontier-final')
         snapshot=json.loads((p/'crawler-final.json').read_text())
         entries=snapshot['entries']

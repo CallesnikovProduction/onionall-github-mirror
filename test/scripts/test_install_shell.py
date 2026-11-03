@@ -16,8 +16,10 @@ class InstallShellTest(unittest.TestCase):
         self.root = Path(self.temp.name) / 'repository with spaces'
         scripts = self.root / 'scripts'
         scripts.mkdir(parents=True)
+        (scripts / 'cli').mkdir()
         self.script = scripts / 'install-cli.sh'
         shutil.copy2(ROOT / 'scripts/install-cli.sh', self.script)
+        shutil.copy2(ROOT / 'scripts/cli/install-cli.sh', scripts / 'cli/install-cli.sh')
         (scripts / 'build-cli.sh').write_text('printf invoked > "$(dirname "$0")/build-called"\n')
         bundle = self.root / 'target/onionall'
         (bundle / 'bin').mkdir(parents=True)
@@ -65,6 +67,7 @@ class InstallShellTest(unittest.TestCase):
 
     def test_build_cleanup_preserves_packaging_failure(self):
         shutil.copy2(ROOT / 'scripts/build-cli.sh', self.root / 'scripts/build-cli.sh')
+        shutil.copy2(ROOT / 'scripts/cli/build-cli.sh', self.root / 'scripts/cli/build-cli.sh')
         for package in ('cli', 'tor', 'tools', 'discovery', 'archive', 'admission'):
             (self.root / 'target/classes/dev/onionall/brawler' / package).mkdir(parents=True)
         tools = Path(self.temp.name) / 'build tools'

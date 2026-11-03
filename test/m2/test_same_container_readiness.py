@@ -21,7 +21,7 @@ class SameContainerReadinessTest(unittest.TestCase):
             env = dict(os.environ, PATH=str(root), TRACE=str(trace), STUB_STATUS=str(code),
                        M2_RUN_REL='.runtime/m2/fixture', M2_VERIFY_BEFORE_CRAWL=str(enabled),
                        M2_SERIES_OUTPUT='resumed-series.json')
-            result = subprocess.run(['/bin/bash', str(ROOT / 'scripts/run-tor-crawl-container.sh')], env=env,
+            result = subprocess.run(['/bin/bash', str(ROOT / 'scripts/runners/run-tor-crawl-container.sh')], env=env,
                                     capture_output=True, text=True, timeout=3)
             return result.returncode, trace.read_text().splitlines() if trace.exists() else []
 

@@ -1,8 +1,22 @@
 # Script map
 
-Use descriptive names below for new commands. The directory remains flat: public
-paths are stable, and compatibility wrappers contain no second implementation.
+Use descriptive names below for new commands. Public paths remain stable as thin wrappers; implementations are grouped by
+responsibility, with no second implementation in compatibility aliases.
 `m0`/`m1`/`m2` identify evidence/acceptance milestones, not the command to remember.
+
+## Layout
+
+| Directory | Implementations |
+|---|---|
+| `cli/` | CLI packaging, installation, launcher and project build |
+| `runners/` | Startup, controlled/Tor acceptance, fetch smoke, container helpers and volume initialization |
+| `recovery/` | Gateway recovery and bounded runtime supervision |
+| `security/` | Tor connectivity and artifact verification |
+| `patches/` | Pinned Storm lifecycle patch build |
+
+Top-level files are stable public/legacy wrappers. Compose mounts container
+implementations directly. Tests stay under `test/`; there is no new test tree
+inside operational tooling. `lib/` and `legacy/` are not created without content.
 
 ## Public commands
 

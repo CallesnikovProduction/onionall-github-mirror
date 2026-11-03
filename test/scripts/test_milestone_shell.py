@@ -21,6 +21,8 @@ class RunnerShellTest(unittest.TestCase):
                 (root / 'target/onionall-brawler-0.1.0-SNAPSHOT.jar').write_bytes(b'fixture')
                 script = root / 'scripts' / name
                 shutil.copy2(ROOT / 'scripts' / name, script)
+                (root / 'scripts/runners').mkdir()
+                shutil.copy2(ROOT / 'scripts/runners' / name, root / 'scripts/runners' / name)
                 script.chmod(0o644)
                 tools = root / 'fake tools'
                 tools.mkdir()
@@ -72,13 +74,13 @@ if 'down' in a: sys.exit(43)
                     self.assertTrue(result.stdout.strip())
 
     def test_powershell_source_contract_not_a_runtime_claim(self):
-        source = (ROOT / 'scripts/run-controlled-crawl.ps1').read_text()
+        source = (ROOT / 'scripts/runners/run-controlled-crawl.ps1').read_text()
         self.assertLess(source.index('$env:M1_RUN_DIR = $runDir'), source.index("Invoke-M1Compose -DockerArgs @('config'"))
         self.assertLess(source.index('$env:M1_RUN_REL = $relative'), source.index("Invoke-M1Compose -DockerArgs @('config'"))
         self.assertIn('retained-volume.json', source)
         self.assertIn('Secondary M1 cleanup failure', source)
         self.assertIn('@PSBoundParameters', (ROOT / 'scripts/m1.ps1').read_text())
-        self.assertIn('--cached-images', (ROOT / 'scripts/run-tor-acceptance.ps1').read_text())
+        self.assertIn('--cached-images', (ROOT / 'scripts/runners/run-tor-acceptance.ps1').read_text())
         for name in ('m2.ps1', 'm2-preflight.ps1'):
             self.assertTrue((ROOT / 'scripts' / name).read_text().rstrip().endswith('exit $LASTEXITCODE'))
 

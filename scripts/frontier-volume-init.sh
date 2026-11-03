@@ -1,8 +1,5 @@
 #!/bin/sh
+# Public compatibility entrypoint; Compose mounts the implementation directly.
 set -eu
-# Only prepare the mounted volume directories, never delete/rewrite database files.
-# Resolve the account from the exact same image used by the non-root service.
-owner="$(id -u urlfrontier):$(id -g urlfrontier)"
-chown "$owner" /crawldir
-mkdir -p /crawldir/rocksdb
-chown "$owner" /crawldir/rocksdb
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+exec sh "$script_dir/runners/frontier-volume-init.sh" "$@"

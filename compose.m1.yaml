@@ -11,7 +11,7 @@ services:
       - tr -d '\r' < /tests/frontier-volume-init.sh > /tmp/frontier-volume-init.sh; exec /bin/sh /tmp/frontier-volume-init.sh
     volumes:
       - frontier-data:/crawldir
-      - ./scripts/frontier-volume-init.sh:/tests/frontier-volume-init.sh:ro
+      - ./scripts/runners/frontier-volume-init.sh:/tests/frontier-volume-init.sh:ro
     network_mode: none
 
   frontier:
@@ -60,7 +60,7 @@ services:
     entrypoint:
       - /bin/sh
       - -ec
-      - tr -d '\r' < /workspace/scripts/run-controlled-crawl-container.sh > /tmp/m1-container.sh; exec /bin/bash /tmp/m1-container.sh
+      - tr -d '\r' < /workspace/scripts/runners/run-controlled-crawl-container.sh > /tmp/m1-container.sh; exec /bin/bash /tmp/m1-container.sh
     networks: [controlled]
     stop_grace_period: 60s
 

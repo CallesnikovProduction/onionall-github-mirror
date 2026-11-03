@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Public entrypoint; implementation grouped by responsibility.
 set -Eeuo pipefail
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-exec "${PYTHON:-python3}" "$root/scripts/tor_acceptance_runner.py" "$@"
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+exec bash "$script_dir/runners/run-tor-acceptance.sh" "$@"

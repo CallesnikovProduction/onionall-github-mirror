@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[2]
-spec=importlib.util.spec_from_file_location('m2_runner',ROOT/'scripts/tor_acceptance_runner.py')
+spec=importlib.util.spec_from_file_location('m2_runner',ROOT/'scripts/runners/tor_acceptance_runner.py')
 m2_runner=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m2_runner)
 
@@ -145,8 +145,8 @@ class M1RegressionContractTest(unittest.TestCase):
     @unittest.skipIf(os.name == 'nt', 'Bash runner test; Windows regex parity checked separately')
     def test_unsafe_compose_project_names_are_rejected_before_any_docker_operation(self):
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory);(root/'scripts').mkdir();(root/'target').mkdir()
-            (root/'scripts/run-controlled-crawl.sh').write_text((ROOT/'scripts/run-controlled-crawl.sh').read_text())
+            root=Path(directory);(root/'scripts/runners').mkdir(parents=True);(root/'target').mkdir()
+            (root/'scripts/runners/run-controlled-crawl.sh').write_text((ROOT/'scripts/runners/run-controlled-crawl.sh').read_text())
             (root/'target/onionall-brawler-0.1.0-SNAPSHOT.jar').write_bytes(b'test-only')
             tools=root/'tools';tools.mkdir()
             for command in ('docker','javac','jar'):
@@ -159,13 +159,13 @@ class M1RegressionContractTest(unittest.TestCase):
                          JAVA_HOME=str(root),PATH=str(tools)+os.pathsep+os.environ.get('PATH',''))
                 # Select tools from PATH, not inherited JAVA_HOME.
                 env.pop('JAVA_HOME',None)
-                result=subprocess.run(['bash',str(root/'scripts/run-controlled-crawl.sh')],env=env,capture_output=True,text=True,timeout=3)
+                result=subprocess.run(['bash',str(root/'scripts/runners/run-controlled-crawl.sh')],env=env,capture_output=True,text=True,timeout=3)
                 self.assertEqual(2,result.returncode,result.stderr)
                 self.assertIn('Invalid M1_PROJECT_NAME',result.stderr)
                 self.assertNotIn('unexpected-tool-execution',result.stderr)
 
     def test_both_platforms_use_narrow_project_names_and_cached_pull_policy(self):
-        bash=(ROOT/'scripts/run-controlled-crawl.sh').read_text();powershell=(ROOT/'scripts/run-controlled-crawl.ps1').read_text()
+        bash=(ROOT/'scripts/runners/run-controlled-crawl.sh').read_text();powershell=(ROOT/'scripts/runners/run-controlled-crawl.ps1').read_text()
         expected='^onionall-brawler-(m1-[a-f0-9]{12}|m2-[a-f0-9]{12}-m1)$'
         self.assertIn(expected,bash);self.assertIn(expected,powershell)
         self.assertIn('M1_CACHED_IMAGES',bash);self.assertIn('M1_CACHED_IMAGES',powershell)
