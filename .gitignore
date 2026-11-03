@@ -67,3 +67,6 @@ docker-compose.override.yaml
 *.class
 *.hprof
 *.jfr
+
+# Common
+assets/
