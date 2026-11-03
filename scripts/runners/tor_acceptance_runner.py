@@ -196,9 +196,9 @@ class Runner:
         if os.name == 'nt':
             shell = shutil.which('pwsh') or shutil.which('powershell')
             if not shell: raise RuntimeError('PowerShell required for Windows M1 regression')
-            args = [shell, '-NoProfile', '-File', str(ROOT / 'scripts/run-controlled-crawl.ps1')]
+            args = [shell, '-NoProfile', '-File', str(ROOT / 'scripts/runners/run-controlled-crawl.ps1')]
         else:
-            args = ['bash', 'scripts/run-controlled-crawl.sh']
+            args = ['bash', 'scripts/runners/run-controlled-crawl.sh']
         record = dict(exit_code=None, evidence_directory=str(evidence),
                       log=str(self.path / 'm1-regression.log'), cached_images=self.cached_images)
         self.save('m1-regression.json', record)

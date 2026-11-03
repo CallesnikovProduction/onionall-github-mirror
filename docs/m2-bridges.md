@@ -64,13 +64,13 @@ docker build -f docker/m2/Dockerfile -t onionall-brawler-tor:0.4.9.11-obfs4-deb1
 Linux:
 
 ```sh
-bash scripts/m2-preflight.sh
+bash scripts/security/check-tor-connectivity.sh
 ```
 
 Windows PowerShell:
 
 ```powershell
-./scripts/m2-preflight.ps1 -Python python
+./scripts/security/check-tor-connectivity.ps1 -Python python
 ```
 
 The shared preflight requires valid config, current authenticated bootstrap100,
@@ -88,20 +88,20 @@ image layer or verification JSON. Both secret directories are Git/Docker ignored
 After connectivity succeeds:
 
 ```sh
-bash scripts/m2.sh
+bash scripts/runners/run-tor-acceptance.sh
 ```
 
 Or native Windows PowerShell:
 
 ```powershell
-./scripts/m2.ps1 -Python python
+./scripts/runners/run-tor-acceptance.ps1 -Python python
 ```
 
-Both delegate to `scripts/m2.py`; there are no duplicated platform orchestration
+Both delegate to `scripts/runners/tor_acceptance_runner.py`; there are no duplicated platform orchestration
 implementations. Java classpaths use the host separator; M1 regression selects
 the existing Bash or PowerShell runner. `JAVA_HOME` selects the JDK; optional
 `M2_MAVEN_REPOSITORY` selects a writable dependency cache.
-Windows Git Bash can use `PYTHON=python bash scripts/m2.sh` when python3 is not
+Windows Git Bash can use `PYTHON=python bash scripts/runners/run-tor-acceptance.sh` when python3 is not
 available; native PowerShell is the preferred Windows entrypoint. This documents
 implementation support, not a claim that Windows runtime tests were executed.
 

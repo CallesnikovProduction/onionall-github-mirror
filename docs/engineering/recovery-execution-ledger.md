@@ -45,7 +45,7 @@ failure and retain evidence; full M2 remains conditional on targeted success.
 ## Checkpoint2: robots isolation, resumed 2026-11-03
 
 Preserved uncommitted TorProtocol/cache regression work from the interrupted
-session. Offline `ONIONALL_OFFLINE=1 bash scripts/build-cli.sh` finished successfully
+session. Offline `ONIONALL_OFFLINE=1 bash scripts/cli/build-cli.sh` finished successfully
 in saved `maven-cache-fix.log`: **90 tests, zero failures/errors/skips**. The former
 global-monitor HOL regression fails before the fix (`robots-cache/before.log`);
 the six cache cases plus 35 surrounding protocol cases pass (`after.log`).
@@ -145,7 +145,7 @@ M2_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 \
 python3 -B test/m2/socks_incident.py --compare-fresh-context
 M2_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 \
 python3 -B test/m2/frontier_lifecycle.py
-M1_CACHED_IMAGES=1 M1_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 bash scripts/m1.sh
+M1_CACHED_IMAGES=1 M1_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 bash scripts/runners/run-controlled-crawl.sh
 python3 -B -m unittest discover -s test/m2
 M1_HTTP_SMOKE=1 python3 -B -m unittest discover -s test/m1
 python3 -B -m unittest discover -s test/m3

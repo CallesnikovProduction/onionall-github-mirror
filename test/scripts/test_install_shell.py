@@ -17,10 +17,9 @@ class InstallShellTest(unittest.TestCase):
         scripts = self.root / 'scripts'
         scripts.mkdir(parents=True)
         (scripts / 'cli').mkdir()
-        self.script = scripts / 'install-cli.sh'
-        shutil.copy2(ROOT / 'scripts/install-cli.sh', self.script)
-        shutil.copy2(ROOT / 'scripts/cli/install-cli.sh', scripts / 'cli/install-cli.sh')
-        (scripts / 'build-cli.sh').write_text('printf invoked > "$(dirname "$0")/build-called"\n')
+        self.script = scripts / 'cli/install-cli.sh'
+        shutil.copy2(ROOT / 'scripts/cli/install-cli.sh', self.script)
+        (scripts / 'cli/build-cli.sh').write_text('printf invoked > "$(dirname "$0")/build-called"\n')
         bundle = self.root / 'target/onionall'
         (bundle / 'bin').mkdir(parents=True)
         (bundle / 'lib').mkdir()
@@ -38,10 +37,10 @@ class InstallShellTest(unittest.TestCase):
     def test_invalid_arguments_rejected_before_build(self):
         for args in [('',), ('', 'extra'), ('--unknown',), ('--no-build', 'extra')]:
             with self.subTest(args=args):
-                (self.root / 'scripts/build-called').unlink(missing_ok=True)
+                (self.root / 'scripts/cli/build-called').unlink(missing_ok=True)
                 result = self.run_script(*args)
                 self.assertEqual(2, result.returncode, result.stderr)
-                self.assertFalse((self.root / 'scripts/build-called').exists())
+                self.assertFalse((self.root / 'scripts/cli/build-called').exists())
                 self.assertFalse(Path(self.environment['XDG_DATA_HOME']).exists())
 
     def test_spaces_other_cwd_and_missing_executable_bit(self):
@@ -66,7 +65,6 @@ class InstallShellTest(unittest.TestCase):
         self.assertIn('Installation cleanup failed (exit 41)', result.stderr)
 
     def test_build_cleanup_preserves_packaging_failure(self):
-        shutil.copy2(ROOT / 'scripts/build-cli.sh', self.root / 'scripts/build-cli.sh')
         shutil.copy2(ROOT / 'scripts/cli/build-cli.sh', self.root / 'scripts/cli/build-cli.sh')
         for package in ('cli', 'tor', 'tools', 'discovery', 'archive', 'admission'):
             (self.root / 'target/classes/dev/onionall/brawler' / package).mkdir(parents=True)
@@ -81,7 +79,7 @@ class InstallShellTest(unittest.TestCase):
             command.chmod(0o755)
         self.environment.pop('JAVA_HOME', None)
         self.environment['PATH'] = str(tools) + os.pathsep + os.environ['PATH']
-        result = subprocess.run(['bash', str(self.root / 'scripts/build-cli.sh')], cwd='/',
+        result = subprocess.run(['bash', str(self.root / 'scripts/cli/build-cli.sh')], cwd='/',
                                 env=self.environment, capture_output=True, text=True, timeout=10)
         self.assertEqual(37, result.returncode, result.stderr)
         self.assertIn('CLI staging cleanup failed', result.stderr)

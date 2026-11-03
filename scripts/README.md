@@ -1,7 +1,7 @@
 # Script map
 
-Use descriptive names below for new commands. Public paths remain stable as thin wrappers; implementations are grouped by
-responsibility, with no second implementation in compatibility aliases.
+Use descriptive names below for new commands. Implementations live only in their responsibility directories. Root-level
+wrappers and milestone aliases were removed; use the direct paths below.
 `m0`/`m1`/`m2` identify evidence/acceptance milestones, not the command to remember.
 
 ## Layout
@@ -14,7 +14,7 @@ responsibility, with no second implementation in compatibility aliases.
 | `security/` | Tor connectivity and artifact verification |
 | `patches/` | Pinned Storm lifecycle patch build |
 
-Top-level files are stable public/legacy wrappers. Compose mounts container
+Only AGENTS.md and README.md remain as tracked root files. Compose mounts container
 implementations directly. Tests stay under `test/`; there is no new test tree
 inside operational tooling. `lib/` and `legacy/` are not created without content.
 
@@ -22,15 +22,15 @@ inside operational tooling. `lib/` and `legacy/` are not created without content
 
 | Script | Platform | Purpose / inputs | Safe to rerun |
 |---|---|---|---|
-| `build-cli.sh` | Linux/Bash | Verify and package CLI; no arguments | Yes; replaces managed `target/onionall` |
-| `install-cli.sh` | Linux/Bash | Build then install CLI; `--no-build` uses existing bundle | Yes for recognized managed installation |
-| `uninstall-cli.sh` | Linux/Bash | Remove managed CLI files; no arguments | Yes; preserves user-added files, archive and downloads |
-| `build-project.ps1` | Windows/PowerShell | Maven package; `-JdkHome`, `-Maven`, `-Repository`, `-Offline` | Yes; Maven clean replaces `target`, `.runtime/build.log` |
-| `run-startup-check.sh`, `run-startup-check.ps1` | Linux / Windows | Empty-frontier startup (M0); no arguments | Sequential only; fixed project and overwritten `.runtime/m0-*.log` |
-| `run-controlled-crawl.sh`, `run-controlled-crawl.ps1` | Linux / Windows | Controlled fixture + persistence assertions (M1); PS `-JdkHome`, `-Python` | Fresh project/evidence only; reuse refused; volume retained |
-| `run-tor-acceptance.sh`, `run-tor-acceptance.ps1` | Linux / Windows | Full Tor acceptance (M2); `--cached-images`, PS `-CachedImages`, `-Python`, `-Help` and remaining runner arguments | Fresh project per run; real Tor and retained volumes |
-| `check-tor-connectivity.sh`, `check-tor-connectivity.ps1` | Linux / Windows | Bounded real Tor probe; `--seconds N`, PS `-Seconds N`, `-Python` (default 180s) | Sequential only; fixed `.runtime/m2/connectivity-preflight` evidence |
-| `check-onion-fetch.sh` | Linux/Bash | Fixed permitted Ahmia fetch through existing Tor SOCKS; no arguments | Repeats network fetch; overwrites `.runtime/downloads/ahmia-*.log` |
+| `cli/build-cli.sh` | Linux/Bash | Verify and package CLI; no arguments | Yes; replaces managed `target/onionall` |
+| `cli/install-cli.sh` | Linux/Bash | Build then install CLI; `--no-build` uses existing bundle | Yes for recognized managed installation |
+| `cli/uninstall-cli.sh` | Linux/Bash | Remove managed CLI files; no arguments | Yes; preserves user-added files, archive and downloads |
+| `cli/build-project.ps1` | Windows/PowerShell | Maven package; `-JdkHome`, `-Maven`, `-Repository`, `-Offline` | Yes; Maven clean replaces `target`, `.runtime/build.log` |
+| `runners/run-startup-check.sh`, `runners/run-startup-check.ps1` | Linux / Windows | Empty-frontier startup (M0); no arguments | Sequential only; fixed project and overwritten `.runtime/m0-*.log` |
+| `runners/run-controlled-crawl.sh`, `runners/run-controlled-crawl.ps1` | Linux / Windows | Controlled fixture + persistence assertions (M1); PS `-JdkHome`, `-Python` | Fresh project/evidence only; reuse refused; volume retained |
+| `runners/run-tor-acceptance.sh`, `runners/run-tor-acceptance.ps1` | Linux / Windows | Full Tor acceptance (M2); `--cached-images`, PS `-CachedImages`, `-Python`, `-Help` and remaining runner arguments | Fresh project per run; real Tor and retained volumes |
+| `security/check-tor-connectivity.sh`, `security/check-tor-connectivity.ps1` | Linux / Windows | Bounded real Tor probe; `--seconds N`, PS `-Seconds N`, `-Python` (default 180s) | Sequential only; fixed `.runtime/m2/connectivity-preflight` evidence |
+| `runners/check-onion-fetch.sh` | Linux/Bash | Fixed permitted Ahmia fetch through existing Tor SOCKS; no arguments | Repeats network fetch; overwrites `.runtime/downloads/ahmia-*.log` |
 
 Bash host commands can be called with `bash` without an executable bit, from any
 working directory (use an absolute script path outside the checkout). PowerShell
@@ -41,20 +41,20 @@ Bash build/install/uninstall/startup/controlled/fetch commands expose `--help`;
 Tor wrappers pass help through to Python. Help does not start Docker or a build.
 
 ```sh
-bash scripts/build-cli.sh
-bash scripts/install-cli.sh --no-build
-bash scripts/run-startup-check.sh
-M1_CACHED_IMAGES=1 bash scripts/run-controlled-crawl.sh
-bash scripts/check-tor-connectivity.sh --seconds 180
-bash scripts/run-tor-acceptance.sh --cached-images
+bash scripts/cli/build-cli.sh
+bash scripts/cli/install-cli.sh --no-build
+bash scripts/runners/run-startup-check.sh
+M1_CACHED_IMAGES=1 bash scripts/runners/run-controlled-crawl.sh
+bash scripts/security/check-tor-connectivity.sh --seconds 180
+bash scripts/runners/run-tor-acceptance.sh --cached-images
 ```
 
 ```powershell
-./scripts/build-project.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
-./scripts/run-startup-check.ps1
-./scripts/run-controlled-crawl.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
-./scripts/check-tor-connectivity.ps1 -Seconds 180
-./scripts/run-tor-acceptance.ps1 -CachedImages
+./scripts/cli/build-project.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
+./scripts/runners/run-startup-check.ps1
+./scripts/runners/run-controlled-crawl.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
+./scripts/security/check-tor-connectivity.ps1 -Seconds 180
+./scripts/runners/run-tor-acceptance.ps1 -CachedImages
 ```
 
 These are usage examples, not an instruction to run all acceptance suites.
@@ -64,8 +64,8 @@ These are usage examples, not an instruction to run all acceptance suites.
 - Builds require JDK 25+ and Maven. `JAVA_HOME` selects Java. CLI build accepts
   `ONIONALL_OFFLINE=1` and reuses `.runtime/maven-linux-repository` when present.
   Install/uninstall use absolute `XDG_DATA_HOME` / `XDG_BIN_HOME` (defaults
-  `$HOME/.local/share` / `$HOME/.local/bin`). Install calls `build-cli.sh` unless
-  `--no-build`; it installs `cli-launcher.sh` and refuses unrelated destinations.
+  `$HOME/.local/share` / `$HOME/.local/bin`). Install calls `cli/build-cli.sh` unless
+  `--no-build`; it installs `cli/cli-launcher.sh` and refuses unrelated destinations.
 - M0 requires Docker/Compose and the prebuilt application JAR. It owns fixed
   Compose project `onionall-brawler-m0`, temporary Frontier storage, and two logs.
   Do not overlap runs or use that project for another workload. Exit zero still
@@ -77,7 +77,7 @@ These are usage examples, not an instruction to run all acceptance suites.
   before Compose and retain `.runtime/m1/<project>/` and `<project>_frontier-data`.
   They call `test/m1/prepare.py`, probe/fixture helpers and `test/m1/verify.py`;
   only verified assertions AND cleanup produce `result.json`.
-- M2 host wrappers call `tor_acceptance_runner.py` (also directly runnable with
+- M2 host wrappers call `runners/tor_acceptance_runner.py` (also directly runnable with
   Python, `--cached-images` / `--help`). It requires Python, Docker/Compose,
   JDK 25+, Maven, private bridges (`M2_BRIDGES_FILE`, default
   `.secrets/m2/bridges.conf`), and real Tor access. Optional settings are
@@ -96,15 +96,15 @@ These are usage examples, not an instruction to run all acceptance suites.
 
 | Script | Platform | Inputs / responsibility / dependencies | Safe to rerun / effects |
 |---|---|---|---|
-| `cli-launcher.sh` | Linux/Bash, installed only | CLI arguments forwarded to Java; `JAVA_HOME`; reads installed `lib/*` | Depends on CLI command; launcher itself only starts Java |
-| `run-startup-container.sh` | Linux container/Bash | No arguments; `/workspace` JAR, Python TCP readiness, Storm | Compose-owned; temporary M0 state |
-| `run-controlled-crawl-container.sh` | Linux container/Bash | No arguments; `M1_RUN_REL`, Storm/JAR | Compose-owned bounded 45s crawl; run-specific evidence |
-| `run-tor-crawl-container.sh` | Linux container/Bash | No arguments; `M2_RUN_REL`, optional `M2_VERIFY_BEFORE_CRAWL`, `M2_SERIES_OUTPUT`, `M2_TOPOLOGY`, `M2_CRAWL_TTL`; Java/Storm | Compose-owned; optional verification before bounded crawl |
-| `frontier-volume-init.sh` | Linux container/POSIX sh | No arguments; image account `urlfrontier`, mounted `/crawldir` | Idempotent directory creation/ownership; never removes DB files |
-| `recover_tor_gateway.py` | Python/Linux or Windows | `project run_dir`; existing scoped stack, private bridges; optional `M2_TOR_DIAGNOSTICS=1`; imports M2 harness | One recovery journal, not replayable; scoped gateway restart/quarantine; volumes retained |
-| `supervise_local_crawl.py` | Python/Linux or Windows | `project run_dir`; existing stack/JAR; calls `recover_tor_gateway.py` and M2 readiness helpers | One supervision journal, not replayable; at most two batches and one recovery |
-| `verify_tor_candidate.py` | Python + GnuPG | `bundle destination`; local artifact/signature/hash-chain verification, no environment settings | New destination only; offline evidence, no installation/update |
-| `build-storm-lifecycle.sh` | Linux/Bash | No arguments; JDK25, Docker, Python, patch/hash/tar tools, curl if source absent | Sequential build only; writes `.runtime/storm-lifecycle-build-cleanup<N>`, builds local image; no user volumes |
+| `cli/cli-launcher.sh` | Linux/Bash, installed only | CLI arguments forwarded to Java; `JAVA_HOME`; reads installed `lib/*` | Depends on CLI command; launcher itself only starts Java |
+| `runners/run-startup-container.sh` | Linux container/Bash | No arguments; `/workspace` JAR, Python TCP readiness, Storm | Compose-owned; temporary M0 state |
+| `runners/run-controlled-crawl-container.sh` | Linux container/Bash | No arguments; `M1_RUN_REL`, Storm/JAR | Compose-owned bounded 45s crawl; run-specific evidence |
+| `runners/run-tor-crawl-container.sh` | Linux container/Bash | No arguments; `M2_RUN_REL`, optional `M2_VERIFY_BEFORE_CRAWL`, `M2_SERIES_OUTPUT`, `M2_TOPOLOGY`, `M2_CRAWL_TTL`; Java/Storm | Compose-owned; optional verification before bounded crawl |
+| `runners/frontier-volume-init.sh` | Linux container/POSIX sh | No arguments; image account `urlfrontier`, mounted `/crawldir` | Idempotent directory creation/ownership; never removes DB files |
+| `recovery/recover_tor_gateway.py` | Python/Linux or Windows | `project run_dir`; existing scoped stack, private bridges; optional `M2_TOR_DIAGNOSTICS=1`; imports M2 harness | One recovery journal, not replayable; scoped gateway restart/quarantine; volumes retained |
+| `recovery/supervise_local_crawl.py` | Python/Linux or Windows | `project run_dir`; existing stack/JAR; calls `recovery/recover_tor_gateway.py` and M2 readiness helpers | One supervision journal, not replayable; at most two batches and one recovery |
+| `security/verify_tor_candidate.py` | Python + GnuPG | `bundle destination`; local artifact/signature/hash-chain verification, no environment settings | New destination only; offline evidence, no installation/update |
+| `patches/build-storm-lifecycle.sh` | Linux/Bash | No arguments; JDK25, Docker, Python, patch/hash/tar tools, curl if source absent | Sequential build only; writes `.runtime/storm-lifecycle-build-cleanup<N>`, builds local image; no user volumes |
 
 Container helpers deliberately use Compose's `/workspace` working directory:
 they are copied into `/tmp`, so deriving checkout location from their own path
@@ -120,33 +120,18 @@ alone fails the command. Nonzero exit means failure, never accepted recovery.
 See [M1 evidence contract](../docs/m1-controlled.md) and
 [M2 bridge setup and limits](../docs/m2-bridges.md).
 
-## Compatibility paths
+## Direct paths
 
-| Previous name | Canonical name |
-|---|---|
-| `build.ps1` | `build-project.ps1` |
-| `m0.ps1` | `run-startup-check.ps1` |
-| `m0-container.sh` | `run-startup-container.sh` |
-| `m1.sh`, `m1.ps1` | `run-controlled-crawl.sh`, `run-controlled-crawl.ps1` |
-| `m1-container.sh` | `run-controlled-crawl-container.sh` |
-| `m2.sh`, `m2.ps1` | `run-tor-acceptance.sh`, `run-tor-acceptance.ps1` |
-| `m2-preflight.sh`, `m2-preflight.ps1` | `check-tor-connectivity.sh`, `check-tor-connectivity.ps1` |
-| `m2-container.sh` | `run-tor-crawl-container.sh` |
-| `m2.py` | `tor_acceptance_runner.py` |
-| `m2_recovery.py` | `recover_tor_gateway.py` |
-| `m2_supervise.py` | `supervise_local_crawl.py` |
-| `onion-smoke.sh` | `check-onion-fetch.sh` |
-
-Old paths delegate arguments and failures to canonical implementations; old
-Python imports resolve to the same module. Historical documents remain usable.
-Active README/Compose/test callers use descriptive paths. No image tags,
-application behavior, acceptance assertions or evidence schemas changed.
+All commands use their directory paths: `scripts/cli/`, `scripts/runners/`,
+`scripts/recovery/`, `scripts/security/` or `scripts/patches/`. Previous root-level
+and milestone aliases have been removed. There is one executable body per script.
+Repository callers and documented commands now refer to these direct paths.
 
 ## Verification and remaining boundaries
 
 `python3 -B -m unittest discover -s test/scripts` checks installation and fake-tool
 failure paths (spaces, another cwd, no executable bit, primary vs cleanup error,
-M1 environment ordering, aliases/help). `test/m2` owns Python orchestration tests;
+M1 environment ordering and direct-entrypoint help). `test/m2` owns Python orchestration tests;
 `test/m1` owns deterministic fixture assertions. These are not real Docker/Tor
 acceptance. Windows source-contract checks do not replace PowerShell parsing or
 native Windows execution. PowerShell and ShellCheck must be run where installed.

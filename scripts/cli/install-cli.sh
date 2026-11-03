@@ -2,13 +2,13 @@
 set -Eeuo pipefail
 
 if [[ ${1:-} == --help ]]; then
-    printf '%s\n' 'Install the managed CLI in XDG_DATA_HOME / XDG_BIN_HOME. Usage: bash scripts/install-cli.sh [--no-build].'
+    printf '%s\n' 'Install the managed CLI in XDG_DATA_HOME / XDG_BIN_HOME. Usage: bash scripts/cli/install-cli.sh [--no-build].'
     exit 0
 fi
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 case "$#:${1:-}" in
     1:--no-build) ;;
-    0:) bash "$root/scripts/build-cli.sh" ;;
+    0:) bash "$root/scripts/cli/build-cli.sh" ;;
     *) echo 'Usage: install-cli.sh [--no-build]' >&2; exit 2 ;;
 esac
 source_dir="$root/target/onionall"

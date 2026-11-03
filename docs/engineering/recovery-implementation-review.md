@@ -34,7 +34,7 @@ against an unverified replacement IP.
 
 ## Local recovery boundary
 
-`scripts/m2_recovery.py::recover` accepts only its exact isolated M2 project and
+`scripts/recovery/recover_tor_gateway.py::recover` accepts only its exact isolated M2 project and
 evidence path. Exclusive journal creation bounds execution to one attempt and
 prevents parallel owners/repeated restart loops. Only a recorded failure after
 SOCKS greeting qualifies. It pauses project crawler consumers, stops/restarts
@@ -43,7 +43,7 @@ onion HTTP200/ready over ATYP3 and three JVM robots/health pairs before unpausin
 Any intermediate failure retains quarantine and stops the gateway. Bootstrap100
 alone does not pass. Persistent state is neither replaced nor deleted.
 
-`scripts/m2_supervise.py::supervise` owns at most two finite local crawler batches
+`scripts/recovery/supervise_local_crawl.py::supervise` owns at most two finite local crawler batches
 and one recovery. Failed JVM exits precede recovery; a new batch gets fresh
 protocol/cache state and existing frontier scheduling, without reseed. Existing
 quarantine prevents launch. SIGTERM is handled by the CLI wrapper and stops its

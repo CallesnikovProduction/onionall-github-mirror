@@ -42,10 +42,10 @@ sleep, log-level change or timer suppression is introduced.
 Select Java25 via JAVA_HOME and run:
 
 ```sh
-bash scripts/build-storm-lifecycle.sh
-M1_CACHED_IMAGES=1 M1_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 bash scripts/m1.sh
+bash scripts/patches/build-storm-lifecycle.sh
+M1_CACHED_IMAGES=1 M1_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 bash scripts/runners/run-controlled-crawl.sh
 # Preserve/reproduce the first publication-only candidate independently:
-# STORM_LIFECYCLE_REVISION=1 bash scripts/build-storm-lifecycle.sh
+# STORM_LIFECYCLE_REVISION=1 bash scripts/patches/build-storm-lifecycle.sh
 ```
 
 The builder requires the existing local baseline image, copies only its library

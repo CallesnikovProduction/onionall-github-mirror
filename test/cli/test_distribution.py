@@ -99,7 +99,7 @@ class SocksFixture:
         self.close()
 
 
-@unittest.skipUnless(BUNDLE.is_file(), 'Build target/onionall first with scripts/build-cli.sh')
+@unittest.skipUnless(BUNDLE.is_file(), 'Build target/onionall first with scripts/cli/build-cli.sh')
 class DistributionTransportTest(unittest.TestCase):
     def args(self, port, output, url=URL, timeout=1500):
         return [str(BUNDLE), 'fetch', url, '--socks-port', str(port), '--timeout-ms', str(timeout),

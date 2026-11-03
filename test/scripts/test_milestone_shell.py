@@ -19,10 +19,9 @@ class RunnerShellTest(unittest.TestCase):
                 (root / 'scripts').mkdir(parents=True)
                 (root / 'target').mkdir()
                 (root / 'target/onionall-brawler-0.1.0-SNAPSHOT.jar').write_bytes(b'fixture')
-                script = root / 'scripts' / name
-                shutil.copy2(ROOT / 'scripts' / name, script)
                 (root / 'scripts/runners').mkdir()
-                shutil.copy2(ROOT / 'scripts/runners' / name, root / 'scripts/runners' / name)
+                script = root / 'scripts/runners' / name
+                shutil.copy2(ROOT / 'scripts/runners' / name, script)
                 script.chmod(0o644)
                 tools = root / 'fake tools'
                 tools.mkdir()
@@ -62,16 +61,17 @@ if 'down' in a: sys.exit(43)
                             self.assertEqual(str(root / row['relative']), row['directory'])
                     self.assertIn('Cleanup could not be verified', result.stderr)
 
-    def test_help_and_legacy_aliases_do_not_start_tools(self):
-        pairs = [('m1.sh', 'run-controlled-crawl.sh'), ('m2.sh', 'run-tor-acceptance.sh'),
-                 ('m2-preflight.sh', 'check-tor-connectivity.sh'), ('onion-smoke.sh', 'check-onion-fetch.sh')]
-        for old, new in pairs:
-            for name in (old, new):
-                with self.subTest(name=name):
-                    result = subprocess.run(['bash', str(ROOT / 'scripts' / name), '--help'], cwd='/',
-                                            capture_output=True, text=True, timeout=10)
-                    self.assertEqual(0, result.returncode, result.stderr)
-                    self.assertTrue(result.stdout.strip())
+    def test_help_does_not_start_tools(self):
+        names = ['runners/run-controlled-crawl.sh', 'runners/run-startup-check.sh',
+                 'runners/run-tor-acceptance.sh', 'security/check-tor-connectivity.sh',
+                 'runners/check-onion-fetch.sh', 'cli/build-cli.sh', 'cli/install-cli.sh',
+                 'cli/uninstall-cli.sh', 'patches/build-storm-lifecycle.sh']
+        for name in names:
+            with self.subTest(name=name):
+                result = subprocess.run(['bash', str(ROOT / 'scripts' / name), '--help'], cwd='/',
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertTrue(result.stdout.strip())
 
     def test_powershell_source_contract_not_a_runtime_claim(self):
         source = (ROOT / 'scripts/runners/run-controlled-crawl.ps1').read_text()
@@ -79,43 +79,15 @@ if 'down' in a: sys.exit(43)
         self.assertLess(source.index('$env:M1_RUN_REL = $relative'), source.index("Invoke-M1Compose -DockerArgs @('config'"))
         self.assertIn('retained-volume.json', source)
         self.assertIn('Secondary M1 cleanup failure', source)
-        self.assertIn('@PSBoundParameters', (ROOT / 'scripts/m1.ps1').read_text())
         self.assertIn('--cached-images', (ROOT / 'scripts/runners/run-tor-acceptance.ps1').read_text())
-        for name in ('m2.ps1', 'm2-preflight.ps1'):
+        for name in ('runners/run-tor-acceptance.ps1', 'security/check-tor-connectivity.ps1'):
             self.assertTrue((ROOT / 'scripts' / name).read_text().rstrip().endswith('exit $LASTEXITCODE'))
 
 
-class CompatibilityTest(unittest.TestCase):
-    def test_shell_alias_forwards_spaced_arguments_and_exit_code(self):
-        pairs = [('m1.sh', 'run-controlled-crawl.sh'), ('m2.sh', 'run-tor-acceptance.sh'),
-                 ('m2-preflight.sh', 'check-tor-connectivity.sh'), ('onion-smoke.sh', 'check-onion-fetch.sh'),
-                 ('m0-container.sh', 'run-startup-container.sh'),
-                 ('m1-container.sh', 'run-controlled-crawl-container.sh'),
-                 ('m2-container.sh', 'run-tor-crawl-container.sh')]
-        for old, new in pairs:
-            with self.subTest(name=old), tempfile.TemporaryDirectory(prefix='aliases with spaces ') as tmp:
-                root = Path(tmp)
-                shutil.copyfile(ROOT / 'scripts' / old, root / old)
-                (root / new).write_text('#!/bin/bash\n[[ "$#" == 2 && "$1" == "one two" && "$2" == "three" ]] || exit 2\nexit 37\n')
-                result = subprocess.run(['bash', str(root / old), 'one two', 'three'], cwd='/',
-                                        capture_output=True, text=True, timeout=5)
-                self.assertEqual(37, result.returncode, result.stderr)
-
-    def test_legacy_python_import_identity_and_help(self):
-        code = """
-import sys
-sys.path.insert(0, sys.argv[1])
-import m2, tor_acceptance_runner
-import m2_recovery, recover_tor_gateway
-import m2_supervise, supervise_local_crawl
-assert m2 is tor_acceptance_runner
-assert m2_recovery is recover_tor_gateway
-assert m2_supervise is supervise_local_crawl
-"""
-        result = subprocess.run([sys.executable, '-B', '-c', code, str(ROOT / 'scripts')], cwd='/',
-                                capture_output=True, text=True, timeout=5)
-        self.assertEqual(0, result.returncode, result.stderr)
-        for name in ('m2.py', 'm2_recovery.py', 'm2_supervise.py'):
+class DirectEntrypointTest(unittest.TestCase):
+    def test_python_help_from_other_directory(self):
+        for name in ('runners/tor_acceptance_runner.py', 'recovery/recover_tor_gateway.py',
+                     'recovery/supervise_local_crawl.py', 'security/verify_tor_candidate.py'):
             result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts' / name), '--help'], cwd='/',
                                     capture_output=True, text=True, timeout=5)
             self.assertEqual(0, result.returncode, result.stderr)

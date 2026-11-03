@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-: "${M2_RUN_REL:?Use scripts/run-tor-acceptance.sh}"
+: "${M2_RUN_REL:?Use scripts/runners/run-tor-acceptance.sh}"
 [[ ${M2_VERIFY_BEFORE_CRAWL:-0} == 0 || ${M2_VERIFY_BEFORE_CRAWL:-0} == 1 ]] || { echo 'M2_VERIFY_BEFORE_CRAWL must be 0 or 1' >&2; exit 2; }
 # Verify from this exact container/client-address isolation context, not a
 # different Compose probe. One finite series; any failure prevents Storm start.

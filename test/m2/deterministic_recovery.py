@@ -16,7 +16,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from tor_acceptance_runner import Runner
+from runners.tor_acceptance_runner import Runner
 from restart_recovery import host_state
 
 

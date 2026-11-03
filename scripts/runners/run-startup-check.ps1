@@ -5,7 +5,7 @@ $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Push-Location $root
 try {
     if (-not (Test-Path target/onionall-brawler-0.1.0-SNAPSHOT.jar)) {
-        throw 'Build first with scripts/build-project.ps1 or mvn clean package'
+        throw 'Build first with scripts/cli/build-project.ps1 or mvn clean package'
     }
     & docker info *> $null
     if ($LASTEXITCODE -ne 0) {

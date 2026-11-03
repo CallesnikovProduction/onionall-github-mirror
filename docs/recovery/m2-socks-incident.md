@@ -94,7 +94,7 @@ CONNECT/HTTP. Existing NO_AUTH acceptance behavior is unchanged.
 Select JDK25 and existing approved local images/private bridge file, then:
 
 ```sh
-ONIONALL_OFFLINE=1 bash scripts/build-cli.sh
+ONIONALL_OFFLINE=1 bash scripts/cli/build-cli.sh
 python3 -B -m unittest discover -s test/m2
 M2_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 python3 -B test/m2/socks_incident.py
 ```

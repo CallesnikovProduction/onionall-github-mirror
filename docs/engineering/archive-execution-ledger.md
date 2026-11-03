@@ -32,7 +32,7 @@ for unavailable ADR0002 admission; approval is not an admitted/running job.
 Manual import records HTTP0/unknown and MANUAL_IMPORT, never fake Tor/robots.
 Ahmia support is an encoded official link plus manual import assistance only.
 
-`JAVA_HOME=<selected JDK25> ONIONALL_OFFLINE=1 bash scripts/build-cli.sh`:
+`JAVA_HOME=<selected JDK25> ONIONALL_OFFLINE=1 bash scripts/cli/build-cli.sh`:
 105 JVM tests PASS, zero failures/errors/skips, full packaged/shaded build PASS.
 Evidence `.runtime/archive/build-cli-verified.log`. Additional pipeline tests
 cover commit-before-return, catalog failure and real scheduler terminal outcomes.

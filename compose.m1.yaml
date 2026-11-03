@@ -38,7 +38,7 @@ services:
     command: ["python", "-u", "/tests/fixture.py", "--log", "/evidence/requests.jsonl"]
     volumes:
       - ./test/m1:/tests:ro
-      - ${M1_RUN_DIR:?Use scripts/run-controlled-crawl.sh or scripts/run-controlled-crawl.ps1}:/evidence
+      - ${M1_RUN_DIR:?Use scripts/runners/run-controlled-crawl.sh or scripts/runners/run-controlled-crawl.ps1}:/evidence
     networks:
       controlled:
         ipv4_address: 172.30.71.10
@@ -56,7 +56,7 @@ services:
     volumes:
       - .:/workspace:ro
     environment:
-      M1_RUN_REL: ${M1_RUN_REL:?Use scripts/run-controlled-crawl.sh or scripts/run-controlled-crawl.ps1}
+      M1_RUN_REL: ${M1_RUN_REL:?Use scripts/runners/run-controlled-crawl.sh or scripts/runners/run-controlled-crawl.ps1}
     entrypoint:
       - /bin/sh
       - -ec
@@ -71,7 +71,7 @@ services:
     working_dir: /workspace
     volumes:
       - .:/workspace:ro
-      - ${M1_RUN_DIR:?Use scripts/run-controlled-crawl.sh or scripts/run-controlled-crawl.ps1}:/evidence
+      - ${M1_RUN_DIR:?Use scripts/runners/run-controlled-crawl.sh or scripts/runners/run-controlled-crawl.ps1}:/evidence
     entrypoint: ["java", "-cp", "/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m1.jar", "dev.onionall.brawler.m1.FrontierProbe"]
     networks: [controlled]
 

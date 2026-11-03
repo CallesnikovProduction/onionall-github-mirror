@@ -14,8 +14,8 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from tor_acceptance_runner import Runner
-from recover_tor_gateway import recover
+from runners.tor_acceptance_runner import Runner
+from recovery.recover_tor_gateway import recover
 
 
 def host_state():
@@ -43,7 +43,7 @@ def restore_transport(project, path, code, observation, recover_gateway=None):
                     assisted_recovery='NOT_EXERCISED', recovery_exercised=False)
     if code == 0 or observation.get('passed') is not False:
         raise ValueError('Contradictory or incomplete controlled health evidence')
-    from recover_tor_gateway import connect_failure
+    from recovery.recover_tor_gateway import connect_failure
     if not connect_failure(observation):
         raise ValueError('No qualifying SOCKS CONNECT failure; no replacement attempted')
     recovery = (recover_gateway or recover)(project, path, diagnostics=True)

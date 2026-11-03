@@ -1,6 +1,6 @@
 """Controlled local crawl→archive vertical, explicitly NOT durable admission/Tor acceptance.
 
-Run after scripts/build-cli.sh with JDK25 and M2_STORM_IMAGE=...cleanup2.
+Run after scripts/cli/build-cli.sh with JDK25 and M2_STORM_IMAGE=...cleanup2.
 Uses actual CLI approval, StormCrawler/TorProtocol/Frontier and an internal SOCKS
 fixture. Only local-test discovery is enabled; no external Tor or host ports.
 """
@@ -17,7 +17,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
-from tor_acceptance_runner import Runner
+from runners.tor_acceptance_runner import Runner
 from restart_recovery import host_state
 from deterministic_recovery import cleanup_project
 

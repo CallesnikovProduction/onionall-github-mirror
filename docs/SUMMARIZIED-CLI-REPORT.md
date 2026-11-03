@@ -861,13 +861,13 @@ CLI упакован в отдельный дистрибутив.
 При выбранном JDK 25:
 
 ```
-ONIONALL_OFFLINE=1 ./scripts/build-cli.sh
+ONIONALL_OFFLINE=1 ./scripts/cli/build-cli.sh
 
 python3 -B -m unittest discover \
   -s test/cli \
   -p 'test*.py'
 
-./scripts/install-cli.sh --no-build
+./scripts/cli/install-cli.sh --no-build
 
 onionall --help
 ```

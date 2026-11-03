@@ -22,6 +22,13 @@ Follow the root `AGENTS.md`. These rules add requirements specific to `scripts/`
 
 **Rule:** Never create a new top-level category without demonstrating that existing categories are insufficient.
 
+## Current layout
+
+The user explicitly approved removing root-level wrappers and milestone aliases.
+Executable bodies live only in the responsibility directories above; use direct
+paths and update callers when relocating scripts. Keep the root for this file
+and README.md. Do not recreate compatibility wrappers for removed aliases.
+
 ## Placement Rules
 
 1. Place scripts according to responsibility, not programming language.

@@ -18,7 +18,7 @@ Docker registry and the public Tor network is necessary for a fresh run.
 
 ```sh
 mvn -B clean verify
-bash scripts/m2.sh
+bash scripts/runners/run-tor-acceptance.sh
 ```
 
 An optional `M2_MAVEN_REPOSITORY` chooses an alternate writable Maven cache.
@@ -200,7 +200,7 @@ docker build -f docker/m2/Dockerfile -t onionall-brawler-tor:0.4.9.11-deb12u1 .
 python3 -B test/m2/tor_preflight.py .runtime/m2/connectivity-preflight
 ```
 
-Only after preflight succeeds run `bash scripts/m2.sh`. Do not repeatedly start
+Only after preflight succeeds run `bash scripts/runners/run-tor-acceptance.sh`. Do not repeatedly start
 360s full-stack waits while preflight is failing. Diagnostic logs and temporary
 native Tor data remain ignored; no runtime data is committed.
 

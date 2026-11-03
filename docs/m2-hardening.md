@@ -439,7 +439,7 @@ confirms version0.4.9.15-1~d12.bookworm+1 and SHA256
 The [official repository instructions](https://support.torproject.org/little-t-tor/getting-started/installing/)
 publish repository key fingerprint `A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89`.
 Previous checksum-only remote ADD did not authenticate the APT metadata chain.
-It is superseded by `scripts/verify_tor_candidate.py` and a local COPY candidate
+It is superseded by `scripts/security/verify_tor_candidate.py` and a local COPY candidate
 Dockerfile. Production Compose/default version remains unchanged.
 
 ### Manual transfer, without changing this host's network policy
@@ -464,7 +464,7 @@ Transfer exactly these four files via an approved file-transfer channel into
 bridges or Tor state. From the repository root:
 
 ```sh
-python3 -B scripts/verify_tor_candidate.py .runtime/m2/tor-security/incoming .runtime/m2/tor-security/verified-build
+python3 -B scripts/security/verify_tor_candidate.py .runtime/m2/tor-security/incoming .runtime/m2/tor-security/verified-build
 docker build --network=none --pull=false -t onionall-brawler-tor:0.4.9.15-compat .runtime/m2/tor-security/verified-build
 docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --entrypoint /usr/bin/tor onionall-brawler-tor:0.4.9.15-compat --version
 ```
@@ -526,7 +526,7 @@ required by the verifier; missing/extra/malformed traffic fails. Recovery-agent
 traffic is checked separately from the unchanged main-crawl counts and security
 scenario requests. Raw failed detection is never rewritten as success.
 
-`scripts/m2_supervise.py` is an opt-in actual local Compose process owner, not
+`scripts/recovery/supervise_local_crawl.py` is an opt-in actual local Compose process owner, not
 just a test result generator: one bounded crawler batch; detect persisted log
 categories REQUEST_TIMEOUT/SOCKS_FAILURE/ONION_UNREACHABLE/ROBOTS_UNAVAILABLE;
 one recovery and one new JVM at most. It refuses existing quarantine, never
@@ -537,7 +537,7 @@ not prove content fetched. Prerequisites are an already prepared isolated M2
 project, evidence JAR containing the probes, and the owned canary fixture:
 
 ```sh
-python3 -B scripts/m2_supervise.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+python3 -B scripts/recovery/supervise_local_crawl.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
 ```
 
 This is **not yet independently deployable general production runtime**: it
@@ -622,13 +622,13 @@ bridge bootstrap, controlled onion/recovery and full M2/M1; none is claimed for
 
 ### Single-cycle recovery contract
 
-`scripts/m2_recovery.py` is a local Compose operator/controller, not a production
+`scripts/recovery/recover_tor_gateway.py` is a local Compose operator/controller, not a production
 watchdog or a fix to Tor's internal cache. It accepts only an isolated M2 project
 and its exact local evidence directory. Run it only while the owning harness
 or operator has exclusive control of crawler launches for that project:
 
 ```sh
-python3 -B scripts/m2_recovery.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+python3 -B scripts/recovery/recover_tor_gateway.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
 ```
 
 1. Detect a failed own-fixture SOCKS CONNECT after successful greeting. A fresh
@@ -720,7 +720,7 @@ host-after.json is a fresh post-full-run read-only measurement. This is a
 snapshot comparison, not a continuous packet/VPN monitor.
 
 Execution: JDK17, MAVEN_ARGS=-o, M2_MAVEN_REPOSITORY set to the existing writable
-`.runtime/maven-linux-repository`, `bash scripts/m2.sh`. Maven verify26pass;
+`.runtime/maven-linux-repository`, `bash scripts/runners/run-tor-acceptance.sh`. Maven verify26pass;
 Python M2:57pass; Python M1:31pass/1optional skip. git diff --check passes.
 No host/VPN settings, Kotlin source, dependency defaults, volumes or keys changed.
 No commit/push after checkpoint1180512. No identical full retry was launched.

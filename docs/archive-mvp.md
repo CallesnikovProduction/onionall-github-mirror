@@ -95,7 +95,7 @@ subsequent ACK. Finite retry policies are unchanged.
 
 ## CLI
 
-Build with JDK25: `ONIONALL_OFFLINE=1 bash scripts/build-cli.sh`.
+Build with JDK25: `ONIONALL_OFFLINE=1 bash scripts/cli/build-cli.sh`.
 `onionall` below means `target/onionall/bin/onionall` or its installed equivalent.
 Use `--archive-dir PATH` or ONIONALL_ARCHIVE_DIR; default is the XDG data directory.
 `--json`, NO_COLOR and noninteractive output follow the existing CLI contract.

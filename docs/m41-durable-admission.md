@@ -6,7 +6,7 @@ than count-before-put. Use the versioned owning server in `frontier-server/`.
 
 ## Runtime and CLI
 
-Build the application with JDK25 (`ONIONALL_OFFLINE=1 bash scripts/build-cli.sh`)
+Build the application with JDK25 (`ONIONALL_OFFLINE=1 bash scripts/cli/build-cli.sh`)
 and build the server with `bash frontier-server/build.sh --test`; see its README
 for the pinned baseline JAR. Deploy the candidate on a fresh isolated volume and
 internal crawler network without publishing ports. Set a private32..256 character
