@@ -3,6 +3,7 @@ package dev.onionall.brawler.cli;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.onionall.brawler.archive.ArchiveStore;
 import dev.onionall.brawler.archive.SearchProvider;
+import dev.onionall.brawler.admission.CrawlExecution;
 import dev.onionall.brawler.tor.TorPolicy;
 import java.net.URI;
 import java.io.*;
@@ -16,7 +17,7 @@ import picocli.CommandLine.*;
 public final class ArchiveCommands {
     private ArchiveCommands() { }
     private static ArchiveStore store(Onionall root) throws IOException { return new ArchiveStore(root.archiveDirectory()); }
-    private static final String ADMISSION_BLOCKER = "ADR-0002: atomic server-owned reservation/quota/enqueue is unavailable; automatic Frontier admission remains disabled";
+    private static final String ADMISSION_BLOCKER = "Configure a compatible durable Frontier server and pass --runtime with --admission-token-file; stock Frontier has no safe admission fallback";
 
     private static List<Map<String,Object>> manualLinks(byte[] html, String source) throws IOException {
         URI base = URI.create(source);
@@ -43,7 +44,7 @@ public final class ArchiveCommands {
     }
 
     @Command(name="crawl", mixinStandardHelpOptions=true,
-            description="Create, inspect and approve bounded plans. Automatic admission is disabled.",
+            description="Create, approve and execute bounded plans through a configured durable Frontier.",
             subcommands={Plan.class, ShowPlan.class, Approve.class, Start.class, Status.class})
     public static final class Crawl implements Callable<Integer> {
         @ParentCommand Onionall root;
@@ -92,21 +93,30 @@ public final class ArchiveCommands {
         @Parameters(index="0") String id;
         public Integer call() throws Exception { try(var archive=store(parent.root)) { parent.root.print(archive.approvePlan(id)); } return 0; }
     }
-    @Command(name="start", mixinStandardHelpOptions=true, description="Report the durable Frontier-admission prerequisite; no job is silently started.")
+    @Command(name="start", mixinStandardHelpOptions=true, description="Commit approved seeds through durable Frontier admission and run a bounded Storm worker.")
     public static final class Start implements Callable<Integer> {
         @ParentCommand Crawl parent;
         @Option(names="--plan", required=true) String id;
+        @Option(names="--runtime", description="Operator-provided local Storm runtime JSON.") Path runtime;
+        @Option(names="--admission-token-file", description="Private admission capability file.") Path token;
         public Integer call() throws Exception {
+            if(runtime != null) {
+                var result=CrawlExecution.start(parent.root.archiveDirectory(),id,runtime,token);
+                parent.root.print(result);
+                return Boolean.TRUE.equals(result.get("passed")) ? 0 : 6;
+            }
             try(var archive=store(parent.root)) { archive.job(id); }
             parent.root.print(Map.of("passed",false,"exit_code",7,"plan_id",id,"admission","BLOCKED","blocker",ADMISSION_BLOCKER,"network_requests",0));
             return 7;
         }
     }
-    @Command(name="status", mixinStandardHelpOptions=true, description="Read catalog job progress and bounded failure outcomes, without Tor.")
+    @Command(name="status", mixinStandardHelpOptions=true, description="Read catalog outcomes and optional authoritative Frontier admission; never accesses Tor.")
     public static final class Status implements Callable<Integer> {
         @ParentCommand Crawl parent;
         @Parameters(index="0") String id;
-        public Integer call() throws Exception { try(var archive=store(parent.root)) { parent.root.print(archive.job(id)); } return 0; }
+        @Option(names="--runtime") Path runtime;
+        @Option(names="--admission-token-file") Path token;
+        public Integer call() throws Exception { parent.root.print(CrawlExecution.status(parent.root.archiveDirectory(),id,runtime,token)); return 0; }
     }
     @Command(name="pages", mixinStandardHelpOptions=true, description="List locally archived snapshots; never opens or renders HTML.")
     public static final class Pages implements Callable<Integer> {

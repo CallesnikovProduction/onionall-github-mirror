@@ -237,3 +237,13 @@ M0/M1 runners remain supported. Native Windows M2 execution is not yet verified.
 - [Official Storm image](https://hub.docker.com/_/storm)
 - [URLFrontier service and RocksDB configuration](https://github.com/crawler-commons/url-frontier/blob/master/service/README.md)
 - [URLFrontier image tags](https://hub.docker.com/r/crawlercommons/url-frontier/tags)
+
+## Bounded local research workflow
+
+Configured M4.1 supports approved plan → durable Frontier admission → bounded
+Storm/TorProtocol crawl → archive → local search. The versioned server must run
+on an isolated fresh volume; stock Frontier is not a fallback. See
+[CLI/runtime setup](docs/m41-durable-admission.md),
+[server contract and rollback](frontier-server/README.md), and
+[executed verification](docs/engineering/m41-execution-ledger.md).
+Real-Tor M2/M3 qualification remains separate from the controlled local fixture.

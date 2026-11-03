@@ -1,6 +1,9 @@
 # ADR 0003 — Additive durable admission inside URLFrontier
 
-Status: **PROPOSED, not implemented or accepted for activation** (2026-11-02).
+Status: historical typed-RPC proposal (2026-11-02). The M4.1 implementation uses
+a versioned protobuf BytesValue envelope with bounded JSON instead of these
+proposed generated message types; see [actual interface](../../frontier-server/README.md).
+The remaining text preserves the original proposal, not current activation status.
 Refines ADR0002; does not supersede its fail-closed boundary. CLI admission stays
 disabled and production/durable planner mode remains rejected.
 

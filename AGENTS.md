@@ -14,8 +14,9 @@ SOCKS19050, HTML-only128KiB, finite30s call, no redirects/retries/DIRECT fallbac
 inspect is offline; status is local TCP only, never Tor-readiness proof.
 Offline discover reuses JSoup/TorPolicy and the planner metadata-only rule; no
 transport/Frontier calls. Limit4MiB/1000 anchors/2048 URL chars, deterministic JSON
-and explicit atomic JSONL export (no overwrite). Automatic admission is unavailable per ADR0002; crawl plan/show/approve/status
-and local archive commands are available, while crawl start fails closed.
+and explicit atomic JSONL export (no overwrite). Configured M4.1 durable admission is available through the versioned Frontier
+candidate; stock Frontier and unconfigured crawl start remain fail-closed.
+See docs/m41-durable-admission.md and its execution ledger before crawl changes.
 Menu/status presentation styles trusted rows after clipping; status is TCP-only.
 Discovery contracts/tests: docs/cli-discovery.md.
 2026-11-02 offline Java25 verify80 tests and CLI/PTY15 pass. Installed discover
@@ -521,3 +522,15 @@ Storm/TorProtocol/Frontier A→B→C/retry/archive/reopen and Recovery evidence:
 docs/engineering/archive-execution-ledger.md.105 JVM/113 M2/16 CLI/2 fixture tests
 pass; durable admission and M2/M3 qualification remain blocked. Existing RocksDB
 volumes are not migrated and no external Tor experiment is repeated here.
+
+## M4.1 durable admission — 2026-11-03
+
+Configured start now uses the versioned owning Frontier server (frontier-server/)
+for sync-WAL reservation+quota+enqueue; no stock API/local-counter fallback.
+DurableDiscoveryFilter preserves rejected graph edges; H2 schemaV2 is catalog
+only. Child-owned archive-wide runtime lock/deadline survives CLI termination.
+Routing: docs/m41-durable-admission.md (CLI/deployment), frontier-server/README.md
+(server/schema/rollback), docs/engineering/m41-execution-ledger.md (executed tests).
+Packaged controlled acceptance a7c09e2448f4 passes, as does actual Recovery
+7d7260899b6d. Real-Tor M2/M3 remain blocked. Preserve user .gitignore changes.
+No push is authorized for this task.

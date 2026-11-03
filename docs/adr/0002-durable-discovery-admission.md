@@ -1,6 +1,8 @@
 # ADR 0002 — Durable discovery admission stays fail-closed
 
-Status: accepted design direction; implementation BLOCKED (2026-11-01).
+Status: implemented by the versioned M4.1 Frontier candidate for the controlled
+local workflow (2026-11-03). Stock Frontier remains fail-closed. Real-Tor
+qualification is separate. See [current contract](../engineering/m41-admission-contract.md).
 
 ## Evidence
 
@@ -42,6 +44,7 @@ server/API change, not implemented by this application-only iteration.
 
 Tests before activation: concurrent limit boundary, duplicate workers, restart,
 commit-success/ACK-loss, retries without second enqueue/count, and seed accounting.
-Keep discovery.budget.mode=local-test as the only currently supported mode.
-Production/global mode remains rejected; no in-memory counter is advertised as
-durable. crawlID can namespace a session but does not implement reservation.
+The original DiscoveryParseFilter remains local-test only. M4.1 uses a separate
+DurableDiscoveryFilter with explicit durable-v1 mode and authenticated candidate
+capability. No in-memory counter is advertised as durable; unsupported servers
+remain rejected. crawlID alone is not a reservation.

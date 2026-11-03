@@ -55,7 +55,7 @@ public final class ArchiveStore implements AutoCloseable {
         try (Statement statement = db.createStatement()) {
             statement.execute("CREATE TABLE IF NOT EXISTS schema_version (version INT PRIMARY KEY)");
             try (ResultSet rs = statement.executeQuery("SELECT MAX(version) FROM schema_version")) {
-                rs.next(); if (rs.getInt(1) > 1) throw new IOException("Archive schema is newer than this application");
+                rs.next(); if (rs.getInt(1) > 2) throw new IOException("Archive schema is newer than this application");
             }
             statement.execute("CREATE TABLE IF NOT EXISTS catalog_guard (id INT PRIMARY KEY)");
             statement.execute("MERGE INTO catalog_guard KEY(id) VALUES (1)");
@@ -63,11 +63,19 @@ public final class ArchiveStore implements AutoCloseable {
             statement.execute("CREATE TABLE IF NOT EXISTS pages (id VARCHAR(36) PRIMARY KEY, job_id VARCHAR(36) NOT NULL REFERENCES crawl_plans(id), canonical_url VARCHAR(2048) NOT NULL, latest_snapshot VARCHAR(36), last_seen VARCHAR(40), UNIQUE(job_id,canonical_url))");
             statement.execute("CREATE TABLE IF NOT EXISTS snapshots (id VARCHAR(36) PRIMARY KEY, page_id VARCHAR(36) NOT NULL REFERENCES pages(id), content_hash VARCHAR(64) NOT NULL, content_size INT NOT NULL CHECK(content_size BETWEEN 1 AND 131072), http_status INT NOT NULL CHECK(http_status=0 OR http_status BETWEEN 200 AND 299), content_type VARCHAR(64) NOT NULL, fetched_at VARCHAR(40), recorded_at VARCHAR(40) NOT NULL, source_kind VARCHAR(16) NOT NULL, discovery_depth INT NOT NULL CHECK(discovery_depth BETWEEN 0 AND 5), source_url VARCHAR(2048) NOT NULL, title VARCHAR(2048) NOT NULL, extracted_text CLOB NOT NULL, UNIQUE(page_id,content_hash,source_kind))");
             statement.execute("CREATE TABLE IF NOT EXISTS page_links (snapshot_id VARCHAR(36) NOT NULL REFERENCES snapshots(id), ordinal INT NOT NULL, source_url VARCHAR(2048) NOT NULL, target_url VARCHAR(2048) NOT NULL, disposition VARCHAR(64) NOT NULL, PRIMARY KEY(snapshot_id,ordinal))");
+            statement.execute("CREATE TABLE IF NOT EXISTS admission_observations (job_id VARCHAR(36) PRIMARY KEY REFERENCES crawl_plans(id), observation_json CLOB NOT NULL, observed_at VARCHAR(40) NOT NULL)");
             statement.execute("CREATE TABLE IF NOT EXISTS failures (id VARCHAR(36) PRIMARY KEY, job_id VARCHAR(36) NOT NULL REFERENCES crawl_plans(id), canonical_url VARCHAR(2048) NOT NULL, category VARCHAR(64) NOT NULL, occurred_at VARCHAR(40) NOT NULL, UNIQUE(job_id,canonical_url,category))");
             statement.execute("CREATE INDEX IF NOT EXISTS pages_job_idx ON pages(job_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS snapshots_page_idx ON snapshots(page_id,recorded_at)");
             statement.execute("CREATE INDEX IF NOT EXISTS failures_job_idx ON failures(job_id,occurred_at)");
-            statement.execute("MERGE INTO schema_version KEY(version) VALUES(1)");
+            // H2 DDL commits independently: each migration step must be restart-idempotent.
+            // Legacy edges have no original discovery clock. Retain their snapshot's
+            // recorded time explicitly as an approximation instead of fabricating one.
+            statement.execute("ALTER TABLE page_links ADD COLUMN IF NOT EXISTS discovered_at VARCHAR(40)");
+            statement.execute("ALTER TABLE page_links ADD COLUMN IF NOT EXISTS discovery_time_basis VARCHAR(32)");
+            statement.execute("UPDATE page_links l SET discovered_at=(SELECT s.recorded_at FROM snapshots s WHERE s.id=l.snapshot_id), discovery_time_basis='SNAPSHOT_RECORDED' WHERE discovered_at IS NULL");
+            statement.execute("CREATE INDEX IF NOT EXISTS links_target_idx ON page_links(target_url)");
+            statement.execute("MERGE INTO schema_version KEY(version) VALUES(2)");
         }
     }
     private void capacity() throws IOException {
@@ -147,8 +155,35 @@ public final class ArchiveStore implements AutoCloseable {
             update.setString(1,id); update.executeUpdate(); return plan(id);
         } catch (SQLException e) { throw failure(e); }
     }
+    /** A cached observation only: Frontier remains authoritative after any unknown RPC outcome. */
+    public synchronized void recordAdmission(String id, Map<String,Object> observation) throws IOException {
+        Map<String,Object> plan = plan(id);
+        if (!Boolean.TRUE.equals(plan.get("approved"))) throw new IOException("Plan is not approved");
+        if (observation.keySet().stream().anyMatch(k -> Set.of("approved","origin","seeds","max_pages","depth","job_id","scope").contains(k)))
+            throw new IOException("Admission observations cannot change plan authority");
+        if (observation.containsKey("session_id") && !id.equals(observation.get("session_id")))
+            throw new IOException("Admission session mismatch");
+        String value = JSON.writeValueAsString(observation);
+        if(value.length()>16384) throw new IOException("Admission observation exceeds bound");
+        try(PreparedStatement st=db.prepareStatement("MERGE INTO admission_observations(job_id,observation_json,observed_at) KEY(job_id) VALUES(?,?,?)")) {
+            st.setString(1,id);st.setString(2,value);st.setString(3,Instant.now().toString());st.executeUpdate();
+        } catch(SQLException e) { throw failure(e); }
+    }
+    public synchronized Map<String,Object> admissionObservation(String id) throws IOException {
+        identifier(id);
+        try(PreparedStatement st=db.prepareStatement("SELECT observation_json,observed_at FROM admission_observations WHERE job_id=?")) {
+            st.setString(1,id);
+            try(ResultSet rs=st.executeQuery()) {
+                if(!rs.next()) return Map.of();
+                Map<String,Object> value=JSON.readValue(rs.getString(1),new TypeReference<Map<String,Object>>(){});
+                value.put("admission_observed_at",rs.getString(2));value.put("admission_authority","URLFrontier");
+                return value;
+            }
+        } catch(SQLException e) { throw failure(e); }
+    }
     public synchronized Map<String,Object> job(String id) throws IOException {
         Map<String,Object> result = new LinkedHashMap<>(plan(id));
+        result.putAll(admissionObservation(id));
         try {
             result.put("archived_pages", count("SELECT COUNT(*) FROM pages WHERE job_id=?", id));
             result.put("snapshots",count("SELECT COUNT(*) FROM snapshots s JOIN pages p ON p.id=s.page_id WHERE p.job_id=?",id));
@@ -220,7 +255,16 @@ public final class ArchiveStore implements AutoCloseable {
             String disposition=Objects.toString(link.getOrDefault("disposition",link.getOrDefault("result","OBSERVED")),"OBSERVED");
             bounded(target,2048,"link target");
             if(!disposition.matches("[A-Za-z0-9_-]{1,64}")) throw new IOException("Invalid link disposition");
-            safeLinks.add(Map.of("source_url",url,"target_url",target,"disposition",disposition));
+            String observed = Objects.toString(link.getOrDefault("discovered_at", link.getOrDefault("discoveredAt", "")), "");
+            String timeBasis = observed.isEmpty() ? "ARCHIVE_OBSERVED" : "DISCOVERY_REPORTED";
+            if (observed.isEmpty()) observed = Instant.now().toString();
+            else {
+                bounded(observed,40,"link discovery time");
+                try { observed = Instant.parse(observed).toString(); }
+                catch(java.time.format.DateTimeParseException e) { throw new IOException("Invalid link discovery time",e); }
+            }
+            safeLinks.add(Map.of("source_url",url,"target_url",target,"disposition",disposition,
+                "discovered_at",observed,"discovery_time_basis",timeBasis));
         }
         String digest=hash(html), pageId=null, snapshotId=UUID.randomUUID().toString();
         var document=Jsoup.parse(new String(html,java.nio.charset.StandardCharsets.UTF_8),url);
@@ -247,7 +291,14 @@ public final class ArchiveStore implements AutoCloseable {
                 insert.setString(1,snapshotId);insert.setString(2,pageId);insert.setString(3,digest);insert.setInt(4,html.length);insert.setInt(5,status);insert.setString(6,"text/html");insert.setString(7,manual?null:Instant.now().toString());insert.setString(8,Instant.now().toString());insert.setString(9,manual?"MANUAL_IMPORT":"CRAWLER");insert.setInt(10,depth);insert.setString(11,source);insert.setString(12,title);insert.setString(13,text);insert.executeUpdate();
             }
             int ordinal=0;
-            try(PreparedStatement insert=db.prepareStatement("INSERT INTO page_links(snapshot_id,ordinal,source_url,target_url,disposition) VALUES(?,?,?,?,?)")) {for(Map<String,String> link:safeLinks){insert.setString(1,snapshotId);insert.setInt(2,ordinal++);insert.setString(3,link.get("source_url"));insert.setString(4,link.get("target_url"));insert.setString(5,link.get("disposition"));insert.addBatch();}insert.executeBatch();}
+            try(PreparedStatement insert=db.prepareStatement("INSERT INTO page_links(snapshot_id,ordinal,source_url,target_url,disposition,discovered_at,discovery_time_basis) VALUES(?,?,?,?,?,?,?)")) {
+                for(Map<String,String> link:safeLinks) {
+                    insert.setString(1,snapshotId);insert.setInt(2,ordinal++);insert.setString(3,link.get("source_url"));
+                    insert.setString(4,link.get("target_url"));insert.setString(5,link.get("disposition"));
+                    insert.setString(6,link.get("discovered_at"));insert.setString(7,link.get("discovery_time_basis"));insert.addBatch();
+                }
+                insert.executeBatch();
+            }
             try(PreparedStatement update=db.prepareStatement("UPDATE pages SET latest_snapshot=?,last_seen=? WHERE id=?")){update.setString(1,snapshotId);update.setString(2,Instant.now().toString());update.setString(3,pageId);update.executeUpdate();}
             db.commit();db.setAutoCommit(true);return page(pageId);
         } catch(SQLException | IOException e) {
@@ -283,11 +334,45 @@ public final class ArchiveStore implements AutoCloseable {
                 List<Map<String,Object>> history=new ArrayList<>();
                 try(PreparedStatement versions=db.prepareStatement("SELECT id,content_hash,recorded_at FROM snapshots WHERE page_id=? ORDER BY recorded_at,id")){versions.setString(1,pageId);try(ResultSet rows=versions.executeQuery()){while(rows.next())history.add(Map.of("snapshot_id",rows.getString(1),"content_hash",rows.getString(2),"recorded_at",rows.getString(3)));}}
                 result.put("history",history);
-                List<Map<String,Object>> links=new ArrayList<>();
-                try(PreparedStatement edges=db.prepareStatement("SELECT source_url,target_url,disposition FROM page_links WHERE snapshot_id=? ORDER BY ordinal")){edges.setString(1,(String)result.get("snapshot_id"));try(ResultSet rows=edges.executeQuery()){while(rows.next())links.add(Map.of("source_url",rows.getString(1),"target_url",rows.getString(2),"disposition",rows.getString(3)));}}
-                result.put("links",links);return result;
+                result.put("links",readLinks(" WHERE l.snapshot_id=? ORDER BY l.ordinal LIMIT 100",(String)result.get("snapshot_id"),100));
+                return result;
             }
         } catch(SQLException e){throw failure(e);}
+    }
+    private static String hostOf(String url) {
+        try { return Objects.toString(URI.create(url).getHost(), ""); }
+        catch(IllegalArgumentException e) { return ""; }
+    }
+    private List<Map<String,Object>> readLinks(String suffix,String id,int limit) throws SQLException {
+        List<Map<String,Object>> result=new ArrayList<>();
+        // Resolve against the same job at read time: a later archived target
+        // becomes navigable without mutating immutable snapshot observations.
+        String sql="SELECT l.*,s.page_id source_page_id,p.job_id,t.id target_page_id FROM page_links l "
+            + "JOIN snapshots s ON s.id=l.snapshot_id JOIN pages p ON p.id=s.page_id "
+            + "LEFT JOIN pages t ON t.job_id=p.job_id AND t.canonical_url=l.target_url";
+        try(PreparedStatement query=db.prepareStatement(sql+suffix)) {
+            query.setString(1,id);
+            if(suffix.endsWith("LIMIT ?"))query.setInt(2,limit);
+            try(ResultSet rows=query.executeQuery()) {
+                while(rows.next()) {
+                    Map<String,Object> edge=new LinkedHashMap<>();
+                    for(String key:List.of("snapshot_id","source_page_id","job_id","source_url","target_url",
+                            "disposition","discovered_at","discovery_time_basis","target_page_id"))
+                        edge.put(key,rows.getString(key));
+                    edge.put("ordinal",rows.getInt("ordinal"));
+                    edge.put("source_host",hostOf(rows.getString("source_url")));
+                    edge.put("target_host",hostOf(rows.getString("target_url")));
+                    result.add(edge);
+                }
+            }
+        }
+        return result;
+    }
+    /** Bounded historical directed edges, including rejected/foreign targets. */
+    public synchronized Map<String,Object> links(String jobId,int limit) throws IOException {
+        bound(limit);plan(jobId);
+        try { return Map.of("job_id",jobId,"links",readLinks(" WHERE p.job_id=? ORDER BY l.discovered_at,l.snapshot_id,l.ordinal LIMIT ?",jobId,limit),"limit",limit); }
+        catch(SQLException e) { throw failure(e); }
     }
     public synchronized Map<String,Object> search(String query,String jobId,int limit) throws IOException {
         bound(limit);bounded(query,256,"search query");if(query.isBlank())throw new IOException("Search query is empty");if(jobId!=null)plan(jobId);
@@ -300,7 +385,7 @@ public final class ArchiveStore implements AutoCloseable {
         }catch(SQLException e){throw failure(e);}
     }
     public synchronized Map<String,Object> exportSummary(String jobId,int limit) throws IOException {
-        return Map.of("job",job(jobId),"pages",pages(jobId,limit).get("pages"),"limit",limit);
+        return Map.of("job",job(jobId),"pages",pages(jobId,limit).get("pages"),"links",links(jobId,limit).get("links"),"limit",limit);
     }
     public synchronized Map<String,Object> recordFailure(String jobId,String url,String category) throws IOException {
         capacity();

@@ -1,5 +1,10 @@
 # Local research archive MVP
 
+This document records the admission-disabled MVP baseline. M4.1 now provides
+configured durable start; current deployment/CLI contracts are in
+[m41-durable-admission.md](m41-durable-admission.md). Historical results below
+remain attributed to their original local-test diagnostic.
+
 This increment adds offline approved plans, a durable document catalog, HTML
 snapshots, provenance, local search and a controlled crawl-to-archive diagnostic.
 It does **not** enable automatic production Frontier admission or qualify M2/M3.

@@ -120,4 +120,96 @@ public class ArchiveStoreTest {
             assertEquals(1L,store.job(job).get("failures"));assertEquals("FETCH_ERROR",list(store.job(job),"failure_records").getFirst().get("category"));
         }
     }
+    @Test public void graphEdgesRetainTimeHostsDispositionAndResolveWithinJobAfterReopen() throws Exception {
+        Path root=Files.createTempDirectory("archive-graph");String job,page,targetPage;
+        String at="2026-11-03T12:00:00Z";
+        byte[] body=html("links");
+        try(ArchiveStore store=new ArchiveStore(root)) {
+            job=plan(store,2,3);
+            String other=plan(store,2,3);
+            store.archive(other,URL+"b",1,URL,200,"text/html",body,List.of());
+            var first=store.archive(job,URL,0,URL,200,"text/html",body,List.of(
+                Map.of("target_url",URL+"b","disposition","RESERVED","discoveredAt",at),
+                Map.of("target_url","https://outside.example/path","disposition","SCOPE_REJECTED","discovered_at",at)));
+            page=(String)first.get("page_id");
+            var links=list(first,"links");
+            assertNull(links.getFirst().get("target_page_id"));
+            assertEquals(job,links.getFirst().get("job_id"));
+            assertEquals(page,links.getFirst().get("source_page_id"));
+            assertEquals(HOST,links.getFirst().get("source_host"));
+            assertEquals(HOST,links.getFirst().get("target_host"));
+            assertEquals("outside.example",links.get(1).get("target_host"));
+            assertEquals("SCOPE_REJECTED",links.get(1).get("disposition"));
+            assertEquals("https://outside.example/path",links.get(1).get("target_url"));
+            assertEquals(at,links.getFirst().get("discovered_at"));
+            assertEquals("DISCOVERY_REPORTED",links.getFirst().get("discovery_time_basis"));
+            targetPage=(String)store.archive(job,URL+"b",1,URL,200,"text/html",body,List.of()).get("page_id");
+            // Identical snapshot replay must not replace first edge observations.
+            store.archive(job,URL,0,URL,200,"text/html",body,List.of(
+                Map.of("target_url",URL+"c","disposition","RESERVED","discoveredAt","2026-11-03T13:00:00Z")));
+            assertEquals(2,list(store.links(job,100),"links").size());
+        }
+        try(ArchiveStore store=new ArchiveStore(root)) {
+            var edges=list(store.page(page),"links");
+            assertEquals(targetPage,edges.getFirst().get("target_page_id"));
+            assertEquals(at,edges.getFirst().get("discovered_at"));
+            assertEquals(2,list(store.exportSummary(job,100),"links").size());
+            assertEquals(1,list(store.links(job,1),"links").size());
+            assertThrows(IOException.class,()->store.links(job,101));
+        }
+    }
+    @Test public void schemaOneEdgesMigrateWithoutInventingDiscoveryClock() throws Exception {
+        Path root=Files.createTempDirectory("archive-graph-v1");String page,recorded;
+        try(ArchiveStore store=new ArchiveStore(root)) {
+            String job=plan(store,1,2);
+            var first=store.archive(job,URL,0,URL,200,"text/html",html("legacy"),List.of(Map.of("target_url",URL+"b","disposition","ADMITTED")));
+            page=(String)first.get("page_id");recorded=(String)first.get("recorded_at");
+            var field=ArchiveStore.class.getDeclaredField("db");field.setAccessible(true);Connection db=(Connection)field.get(store);
+            try(var statement=db.createStatement()) {
+                statement.execute("ALTER TABLE page_links DROP COLUMN discovered_at");
+                statement.execute("ALTER TABLE page_links DROP COLUMN discovery_time_basis");
+                statement.execute("DELETE FROM schema_version");
+                statement.execute("INSERT INTO schema_version VALUES(1)");
+            }
+        }
+        try(ArchiveStore store=new ArchiveStore(root)) {
+            var edge=list(store.page(page),"links").getFirst();
+            assertEquals(recorded,edge.get("discovered_at"));
+            assertEquals("SNAPSHOT_RECORDED",edge.get("discovery_time_basis"));
+            assertEquals(URL+"b",edge.get("target_url"));
+        }
+        // Restart-idempotent migration preserves its first backfill observation.
+        try(ArchiveStore store=new ArchiveStore(root)) {
+            assertEquals(recorded,list(store.page(page),"links").getFirst().get("discovered_at"));
+        }
+    }
+    @Test public void invalidReportedDiscoveryClockRejectsBeforeCatalogMutation() throws Exception {
+        try(ArchiveStore store=new ArchiveStore(Files.createTempDirectory("archive-graph-clock"))) {
+            String job=plan(store,1,2);
+            assertThrows(IOException.class,()->store.archive(job,URL,0,URL,200,"text/html",html("x"),List.of(
+                Map.of("target_url",URL+"b","disposition","RESERVED","discovered_at","invalid"))));
+            assertEquals(0L,store.job(job).get("archived_pages"));
+        }
+    }
+
+
+    @Test public void admissionObservationIsReconciledWithoutSchedulingOrChangingApproval() throws Exception {
+        Path root=Files.createTempDirectory("archive-admission");String id;
+        try(ArchiveStore store=new ArchiveStore(root)) {
+            id=(String)store.createPlan(List.of(URL),1,3,"test").get("plan_id");
+            String pending=id;
+            assertThrows(IOException.class,()->store.recordAdmission(pending,Map.of("state","ADMITTED")));
+            store.approvePlan(id);
+            store.recordAdmission(id,Map.of("state","ADMITTED","admission","COMMITTED","session_id",id));
+            store.recordAdmission(id,Map.of("state","WORKER_EXITED","admission","COMMITTED","session_id",id));
+            assertEquals("WORKER_EXITED",store.job(id).get("state"));
+            assertEquals(0L,store.job(id).get("archived_pages"));
+            assertThrows(IOException.class,()->store.recordAdmission(pending,Map.of("approved",false)));
+        }
+        try(ArchiveStore store=new ArchiveStore(root)) {
+            assertEquals("COMMITTED",store.job(id).get("admission"));
+            assertEquals("APPROVED",store.plan(id).get("state"));
+            assertEquals("URLFrontier",store.job(id).get("admission_authority"));
+        }
+    }
 }

@@ -60,6 +60,20 @@ public class ArchiveCommandsTest {
         assertNotEquals(0,run(archive,"crawl","plan","--seed","https://example.com/").code);
         assertNotEquals(0,run(archive,"crawl","plan","--seed",URL,"--max-pages","0").code);
     }
+    @Test public void runtimeStartRequiresApprovalBeforeAnyRpc()throws Exception {
+        Path directory=temporary.newFolder().toPath();Path archive=directory.resolve("catalog");String id=plan(archive);
+        Path runtime=directory.resolve("runtime.json");Files.writeString(runtime,"{}");
+        Result result=run(archive,"crawl","start","--plan",id,"--runtime",runtime.toString());
+        assertNotEquals(0,result.code);assertTrue(result.output.contains("approval"));
+        assertEquals("DRAFT",run(archive,"crawl","status",id).json.path("state").asText());
+    }
+    @Test public void invalidRuntimeCannotAdmitAnApprovedPlan()throws Exception {
+        Path directory=temporary.newFolder().toPath();Path archive=directory.resolve("catalog");String id=plan(archive);
+        run(archive,"crawl","approve",id);
+        Path runtime=directory.resolve("runtime.json");Files.writeString(runtime,"{}");
+        Result result=run(archive,"crawl","start","--plan",id,"--runtime",runtime.toString());
+        assertNotEquals(0,result.code);assertEquals("APPROVED",run(archive,"crawl","status",id).json.path("state").asText());
+    }
     @Test public void providerSearchOnlyReturnsAssistedOfficialUrl()throws Exception {
         Path archive=temporary.newFolder().toPath().resolve("catalog");
         Result result=run(archive,"search-provider","research & onions","--provider","ahmia");
