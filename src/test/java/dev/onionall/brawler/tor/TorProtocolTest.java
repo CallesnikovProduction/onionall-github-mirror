@@ -19,6 +19,78 @@ public class TorProtocolTest {
         return protocol;
     }
 
+    @Test public void optInDiagnosticsExposeBoundedLifecycleWithoutSensitiveUrls() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        ByteArrayOutputStream output=new ByteArrayOutputStream();PrintStream previous=System.err;
+        try(SocksWire wire=new SocksWire(reply(200,"ok"),reply(200,"ok"))) {
+            Config conf=TorPolicyTest.configuration(host,wire.port());conf.put("tor.diagnostics.enabled",true);
+            TorProtocol protocol=new TorProtocol();
+            try {
+                System.setErr(new PrintStream(output,true,StandardCharsets.UTF_8));
+                protocol.configure(conf);
+                protocol.getProtocolOutput("http://"+host+"/private-path?credential=never-log",new Metadata());
+                protocol.getProtocolOutput("http://"+host+"/second",new Metadata());
+            } finally {protocol.cleanup();System.setErr(previous);}
+            String text=output.toString(StandardCharsets.UTF_8);
+            assertFalse(text.contains(host));assertFalse(text.contains("private-path"));assertFalse(text.contains("credential"));
+            assertTrue(text.contains("socks_connect_start"));assertTrue(text.contains("socks_connect_end"));
+            assertTrue(text.contains("\"new_connection\":true"));assertFalse(text.contains("\"new_connection\":false"));
+            assertTrue(text.contains("configured"));assertTrue(text.contains("cleanup"));
+            for(String line:text.lines().toList()) if(line.startsWith("TOR_TRACE ")) {
+                var record=new com.fasterxml.jackson.databind.ObjectMapper().readTree(line.substring(10));
+                assertTrue(record.has("client"));assertTrue(record.has("timeout_ms"));assertTrue(record.has("event"));
+                assertFalse(record.has("thread"));
+                assertTrue(java.util.Set.of("okhttp","okio","application").contains(record.path("thread_kind").asText()));
+            }
+        } finally {System.setErr(previous);}
+    }
+
+    @Test public void configuredProxyHostnameIsFrozenAsNumericEndpointForNativeJdk() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try(SocksWire wire=new SocksWire(reply(200,"ok"))) {
+            Config c=TorPolicyTest.configuration(host,wire.port());c.put("tor.socks.host","localhost");
+            TorProtocol p=new TorProtocol();
+            try {
+                p.configure(c);
+                var field=TorProtocol.class.getDeclaredField("client");field.setAccessible(true);
+                var client=(okhttp3.OkHttpClient)field.get(p);
+                var address=(InetSocketAddress)client.proxy().address();
+                assertEquals(address.getAddress().getHostAddress(),address.getHostString());
+                assertEquals(200,p.getProtocolOutput("http://"+host+"/",new Metadata()).getStatusCode());
+                assertEquals(3,wire.await(1).get(0).type);
+            }finally{p.cleanup();}
+        }
+    }
+
+    @Test public void nativeJdkUserPassNegotiationKeepsRemoteDnsAndFreshConnections() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        try(SocksWire wire=new SocksWire(true,reply(200,"one"),reply(200,"two"))) {
+            TorProtocol p=protocol(host,wire.port());
+            try {
+                assertEquals(200,p.getProtocolOutput("http://"+host+"/one",new Metadata()).getStatusCode());
+                assertEquals(200,p.getProtocolOutput("http://"+host+"/two",new Metadata()).getStatusCode());
+                for(Attempt a:wire.await(2)){assertEquals(3,a.type);assertEquals(host,a.host);assertEquals(80,a.port);}
+                assertEquals(2,wire.authenticated);wire.assertNoFurtherConnection();
+            }finally{p.cleanup();}
+        }
+    }
+
+    @Test public void diagnosticOutputHasHardPerClientRecordCap() throws Exception {
+        String host=TorPolicyTest.onion(4);
+        String[] replies=new String[35];Arrays.fill(replies,reply(200,"ok"));
+        ByteArrayOutputStream output=new ByteArrayOutputStream();PrintStream previous=System.err;
+        try(SocksWire wire=new SocksWire(replies)) {
+            Config conf=TorPolicyTest.configuration(host,wire.port());conf.put("tor.diagnostics.enabled",true);
+            TorProtocol protocol=new TorProtocol();
+            try {
+                System.setErr(new PrintStream(output,true,StandardCharsets.UTF_8));protocol.configure(conf);
+                for(int i=0;i<35;i++)assertEquals(200,protocol.getProtocolOutput("http://"+host+"/",new Metadata()).getStatusCode());
+                wire.await(35);
+            } finally {protocol.cleanup();System.setErr(previous);}
+            assertEquals(256,output.toString(StandardCharsets.UTF_8).lines().filter(line->line.startsWith("TOR_TRACE ")).count());
+        } finally {System.setErr(previous);}
+    }
+
     @Test public void cleanupIsTerminalAndIdempotentWithoutNewSockets() throws Exception {
         String host=TorPolicyTest.onion(4);
         try (SocksWire wire=new SocksWire(reply(200,"ok"))) {
@@ -302,7 +374,7 @@ public class TorProtocolTest {
         }
     }
 
-    @Test public void robotsBomAndReplacementDecodingMatchCrawlerCommons16() throws Exception {
+    @Test public void robotsBomIsSupportedAndMalformedEncodingIsRejected() throws Exception {
         String host = TorPolicyTest.onion(9), base = "http://" + host;
         for (var charset : List.of(StandardCharsets.UTF_8, StandardCharsets.UTF_16LE, StandardCharsets.UTF_16BE)) {
             for (boolean html : List.of(false, true)) {
@@ -325,10 +397,32 @@ public class TorProtocolTest {
         try (SocksWire wire = new SocksWire(new byte[][]{replyBytes(malformed)})) {
             TorProtocol protocol = protocol(host, wire.port());
             try {
-                // The pinned parser replaces malformed input; it does not report a decoding error.
-                assertFalse(protocol.getRobotRules(base + "/").isAllowed(base + "/blocked"));
+                // Application policy rejects corruption before the replacement-decoding parser.
+                assertEquals("ROBOTS_UNAVAILABLE", assertThrows(IOException.class,
+                        () -> protocol.getRobotRules(base + "/")).getMessage());
                 wire.await(1); wire.assertNoFurtherConnection();
             } finally { protocol.cleanup(); }
+        }
+    }
+
+    @Test public void corruptedRobotsDirectiveIsNotCachedAndValidRetryIsParsed() throws Exception {
+        String host = TorPolicyTest.onion(9), base = "http://" + host;
+        for (byte[] malformed : List.of(
+                "User-agent: *\nDisallow: /blocked\uD800".getBytes(StandardCharsets.UTF_16),
+                new byte[]{(byte)0xff, (byte)0xfe, 65},
+                new byte[]{'U', 's', 'e', 'r', '-', 'a', 'g', 'e', 'n', 't', ':', ' ', (byte)0xc3})) {
+            // A Java encoder replaces an unpaired surrogate; use truncated bytes for UTF-16.
+            if (malformed.length > 20) malformed = java.util.Arrays.copyOf(malformed, malformed.length - 1);
+            try (SocksWire wire = new SocksWire(new byte[][]{replyBytes(malformed),
+                    replyBytes("User-agent: *\nDisallow: /blocked\n".getBytes(StandardCharsets.UTF_8))})) {
+                TorProtocol protocol = protocol(host, wire.port());
+                try {
+                    assertEquals("ROBOTS_UNAVAILABLE", assertThrows(IOException.class,
+                            () -> protocol.getRobotRules(base + "/")).getMessage());
+                    assertFalse(protocol.getRobotRules(base + "/").isAllowed(base + "/blocked"));
+                    wire.await(2); wire.assertNoFurtherConnection();
+                } finally { protocol.cleanup(); }
+            }
         }
     }
 
@@ -544,10 +638,17 @@ public class TorProtocolTest {
         final List<Attempt> observed = new ArrayList<>();
         volatile boolean closed;
         final byte[][] replies;
+        final boolean userPass;
+        volatile int authenticated;
         SocksWire(String... replies) throws IOException {
             this(Arrays.stream(replies).map(value -> value.getBytes(StandardCharsets.UTF_8)).toArray(byte[][]::new));
         }
-        SocksWire(byte[][] replies) throws IOException {
+        SocksWire(boolean userPass,String... replies) throws IOException {
+            this(Arrays.stream(replies).map(v->v.getBytes(StandardCharsets.UTF_8)).toArray(byte[][]::new),userPass);
+        }
+        SocksWire(byte[][] replies) throws IOException { this(replies,false); }
+        SocksWire(byte[][] replies,boolean userPass) throws IOException {
+            this.userPass=userPass;
             this.replies = replies;
             server = new ServerSocket(0, 10, InetAddress.getLoopbackAddress());
             server.setSoTimeout(100);
@@ -562,7 +663,16 @@ public class TorProtocolTest {
                     DataInputStream in = new DataInputStream(socket.getInputStream());
                     OutputStream out = socket.getOutputStream();
                     if (in.readUnsignedByte() != 5) throw new IOException("Not SOCKS5 greeting");
-                    in.readNBytes(in.readUnsignedByte()); out.write(new byte[]{5,0}); out.flush();
+                    byte[] methods=in.readNBytes(in.readUnsignedByte());
+                    if(userPass && !java.util.stream.IntStream.range(0,methods.length).anyMatch(i->methods[i]==2))
+                        throw new IOException("USER_PASSW not offered");
+                    out.write(new byte[]{5,(byte)(userPass?2:0)});out.flush();
+                    if(userPass) {
+                        if(in.readUnsignedByte()!=1)throw new IOException("Invalid auth version");
+                        in.readNBytes(in.readUnsignedByte()); // Discard, never record credentials.
+                        in.readNBytes(in.readUnsignedByte());
+                        out.write(new byte[]{1,0});out.flush();authenticated++;
+                    }
                     if (in.readUnsignedByte() != 5 || in.readUnsignedByte() != 1 || in.readUnsignedByte() != 0)
                         throw new IOException("Not SOCKS5 connect");
                     Attempt attempt = new Attempt(); attempt.type = in.readUnsignedByte();

@@ -61,7 +61,7 @@ services:
     command: [python, -u, /tests/fixture.py, --log, /evidence/requests.jsonl]
     volumes:
       - ./test/m2/fixture.py:/tests/fixture.py:ro
-      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
+      - ${M2_RUN_DIR:?Use scripts/runners/run-tor-acceptance.sh}:/evidence
     networks: [fixture]
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -82,7 +82,7 @@ services:
       - tr -d '\r' < /tests/frontier-volume-init.sh > /tmp/frontier-volume-init.sh; exec /bin/sh /tmp/frontier-volume-init.sh
     volumes:
       - frontier-data:/crawldir
-      - ./scripts/frontier-volume-init.sh:/tests/frontier-volume-init.sh:ro
+      - ./scripts/runners/frontier-volume-init.sh:/tests/frontier-volume-init.sh:ro
     network_mode: none
 
   frontier:
@@ -106,22 +106,22 @@ services:
 
   crawler:
     user: ${M2_RUNTIME_USER:-1000:1000}
-    image: storm:2.8.9-jre17
+    image: ${M2_STORM_IMAGE:-storm:3.1.0-jre25}
     profiles: [tools]
     working_dir: /workspace
     volumes:
-      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/workspace/${M2_RUN_REL:?Use scripts/m2.sh}:ro
+      - ${M2_RUN_DIR:?Use scripts/runners/run-tor-acceptance.sh}:/workspace/${M2_RUN_REL:?Use scripts/runners/run-tor-acceptance.sh}:ro
       - ./crawler-conf.yaml:/workspace/crawler-conf.yaml:ro
-      - ./scripts/m2-container.sh:/workspace/scripts/m2-container.sh:ro
+      - ./scripts/runners/run-tor-crawl-container.sh:/workspace/scripts/runners/run-tor-crawl-container.sh:ro
       - ./test/m2/network_probe.py:/workspace/test/m2/network_probe.py:ro
-      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
+      - ${M2_RUN_DIR:?Use scripts/runners/run-tor-acceptance.sh}:/evidence
     environment:
       HOME: /tmp
-      M2_RUN_REL: ${M2_RUN_REL:?Use scripts/m2.sh}
+      M2_RUN_REL: ${M2_RUN_REL:?Use scripts/runners/run-tor-acceptance.sh}
     entrypoint:
       - /bin/sh
       - -ec
-      - tr -d '\r' < /workspace/scripts/m2-container.sh > /tmp/m2-container.sh; exec /bin/bash /tmp/m2-container.sh
+      - tr -d '\r' < /workspace/scripts/runners/run-tor-crawl-container.sh > /tmp/m2-container.sh; exec /bin/bash /tmp/m2-container.sh
     networks: [crawler]
     dns: [127.0.0.1]
     cap_drop: [ALL]
@@ -135,12 +135,12 @@ services:
     user: ${M2_RUNTIME_USER:-1000:1000}
     environment:
       HOME: /tmp
-    image: storm:2.8.9-jre17
+    image: ${M2_STORM_IMAGE:-storm:3.1.0-jre25}
     profiles: [tools]
     working_dir: /workspace
     volumes:
-      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
-    entrypoint: [java, -cp, '/apache-storm/lib/*:/evidence/crawler-m2.jar', dev.onionall.brawler.m2.FrontierProbe]
+      - ${M2_RUN_DIR:?Use scripts/runners/run-tor-acceptance.sh}:/evidence
+    entrypoint: [java, -cp, '/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar', dev.onionall.brawler.m2.FrontierProbe]
     networks: [crawler]
     dns: [127.0.0.1]
     cap_drop: [ALL]
@@ -153,7 +153,7 @@ services:
     working_dir: /workspace
     volumes:
       - ./test/m2/network_probe.py:/workspace/test/m2/network_probe.py:ro
-      - ${M2_RUN_DIR:?Use scripts/m2.sh}:/evidence
+      - ${M2_RUN_DIR:?Use scripts/runners/run-tor-acceptance.sh}:/evidence
     entrypoint: [python, /workspace/test/m2/network_probe.py]
     networks: [crawler]
     dns: [127.0.0.1]

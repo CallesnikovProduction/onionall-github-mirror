@@ -26,6 +26,20 @@ class OnionReadinessTest(unittest.TestCase):
         self.assertEqual(b'\x05\x01\x00\x03', sock.sendall.call_args_list[1].args[0][:4])
         self.assertTrue(result['remote_hostname_sent'])
 
+    @unittest.skipIf(__import__('os').name == 'nt', 'Diagnostic account lookup runs inside Linux containers')
+    def test_jdk_auth_offer_has_separate_phase_and_never_sends_http_after_auth_failure(self):
+        from unittest.mock import MagicMock
+        sock=MagicMock();sock.__enter__.return_value=sock
+        sock.recv.side_effect=[b'\x05\x02',b'\x01\x01']
+        observation={}
+        with patch.object(network_probe.socket,'create_connection',return_value=sock):
+            with self.assertRaises(OSError):network_probe.remote_fetch('controlled.onion',observation=observation,jdk_auth=True)
+        self.assertEqual('socks_authentication',observation['phase'])
+        self.assertEqual(2,observation['socks_auth_method'])
+        self.assertEqual(b'\x05\x02\x00\x02',sock.sendall.call_args_list[0].args[0])
+        self.assertFalse(any(c.args[0].startswith(b'GET ') for c in sock.sendall.call_args_list))
+        self.assertNotIn('username',observation)
+
     def test_timeout_before_socks_connect_reply_is_not_reported_as_http(self):
         from unittest.mock import MagicMock
         sock = MagicMock()

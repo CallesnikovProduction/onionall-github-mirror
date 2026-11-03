@@ -56,8 +56,61 @@ class VerificationTest(unittest.TestCase):
                 self.requests = baseline + [dict(path='/loop-a', user_agent='OnionallBrawlerMTwoPolicy')] * count
                 self.write_requests()
                 result = self.result()
-                self.assertFalse(result['controlled_onion_fetch'])
+                self.assertTrue(result['controlled_onion_fetch'])
+                self.assertFalse(result['m2_verified'])
+                self.assertEqual('FAILED', result['stages']['policy_traffic']['status'])
+                self.assertEqual('PASS', result['stages']['crawl']['status'])
                 self.assertIn('Redirect loop probe must produce exactly one /loop-a request', result['blockers'])
+
+    def test_missing_evidence_is_distinguished_from_failed_assertion(self):
+        result = self.result()
+        self.assertEqual('EVIDENCE_MISSING', result['stages']['network']['status'])
+        (self.path / 'after.json').unlink()
+        result = self.result()
+        self.assertEqual('EVIDENCE_MISSING', result['stages']['crawl']['status'])
+        self.assertFalse(result['controlled_onion_fetch'])
+        self.assertFalse(result['m2_verified'])
+
+    def test_policy_scope_failure_remains_mandatory_when_crawl_passes(self):
+        self.requests.append(dict(path='/uncontrolled', user_agent='OnionallBrawlerMTwoPolicy'))
+        self.write_requests()
+        result = self.result()
+        self.assertTrue(result['controlled_onion_fetch'])
+        self.assertEqual('FAILED', result['stages']['policy_traffic']['status'])
+        self.assertIn('Negative probe escaped its controlled paths', result['blockers'])
+        self.assertFalse(result['m2_verified'])
+
+    def test_complete_synthetic_full_gate_still_rejects_missing_policy_traffic(self):
+        # A complete synthetic baseline isolates the newly separated predicate:
+        # the rejection must not depend on unrelated missing evidence.
+        self.outage_evidence()
+        self.write('network.json', dict(passed=True, direct_internet={'connected': False},
+            direct_fixture={'connected': False}, local_onion_dns={'completed': True, 'resolved': False},
+            public_dns_tcp={'connected': False}, public_dns_udp={'response_received': False},
+            onion_health={'socks_atyp': 3, 'http_status': 200}))
+        self.write('network-container-initial.json', [dict(Config={'Labels': {'com.docker.compose.service': 'crawler'}},
+            HostConfig={'Dns': ['127.0.0.1']}, NetworkSettings={'Networks': {'owned_crawler': {}}})])
+        self.write('network-config-initial.json', [dict(Internal=True, Name='owned_crawler')])
+        self.write('cleanup.json', self.cleanup_evidence())
+        m1 = self.path / 'm1'
+        m1.mkdir()
+        (m1 / 'verification.json').write_text(json.dumps(dict(assertions_passed=True, crawl_evidence_passed=True, runtime_verified=True)))
+        (m1 / 'result.json').write_text(json.dumps(dict(containers_removed=True)))
+        self.write('m1-regression.json', dict(exit_code=0, evidence_directory=str(m1)))
+        baseline = self.result()
+        self.assertTrue(baseline['m2_verified'], baseline['blockers'])
+        self.requests = [row for row in self.requests if row['path'] != '/loop-a']
+        self.write_requests()
+        failed = self.result()
+        self.assertTrue(all(failed[field] for field in verifier.FIELDS))
+        self.assertFalse(failed['m2_verified'])
+        self.assertEqual(['Redirect loop probe must produce exactly one /loop-a request'], failed['blockers'])
+
+    def test_malformed_evidence_is_distinct_from_missing_and_failed(self):
+        (self.path / 'after.json').write_text('{')
+        result = self.result()
+        self.assertEqual('EVIDENCE_INVALID', result['stages']['crawl']['status'])
+        self.assertFalse(result['m2_verified'])
 
     def result(self):
         return verifier.verify(self.path)

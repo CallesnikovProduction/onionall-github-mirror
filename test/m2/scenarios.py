@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-from m2_recovery import recover
+from recovery.recover_tor_gateway import recover
 
 REQUIRED = ['socks_port_unavailable','invalid_socks_endpoint','bootstrap_incomplete',
             'onion_unreachable','malformed_onion','out_of_scope_redirect','redirect_loop',
@@ -33,7 +33,7 @@ def run(project, path):
                     finished_at_utc=datetime.now(timezone.utc).isoformat(), exit_code=code))+'\n')
     def probe(name, host=None, background=False):
         args=compose+['run','--rm','--no-deps','--entrypoint','java','probe','-cp',
-                     '/apache-storm/lib/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.TorScenarioProbe',name]
+                     '/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.TorScenarioProbe',name]
         if host:
             args.append(host)
         if background:

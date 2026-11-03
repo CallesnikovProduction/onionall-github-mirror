@@ -39,7 +39,7 @@ def receive(sock, size, deadline=None):
     return result
 
 
-def remote_fetch(onion, deadline=None, observation=None, proxy_host='tor'):
+def remote_fetch(onion, deadline=None, observation=None, proxy_host='tor', jdk_auth=False):
     # Diagnostics may compare another isolated Tor gateway; acceptance uses 'tor'.
     observation = observation if observation is not None else {}
     started = time.monotonic()
@@ -51,8 +51,19 @@ def remote_fetch(onion, deadline=None, observation=None, proxy_host='tor'):
     with socket.create_connection((proxy_host, 9050), timeout=remaining(deadline, 5)) as sock:
         sock.settimeout(remaining(deadline, 45))
         phase('socks_greeting')
-        sock.sendall(b'\x05\x01\x00')
-        if receive(sock, 2, deadline) != b'\x05\x00':
+        sock.sendall(b'\x05\x02\x00\x02' if jdk_auth else b'\x05\x01\x00')
+        reply = receive(sock, 2, deadline)
+        observation['socks_auth_method'] = reply[1]
+        if reply == b'\x05\x02' and jdk_auth:
+            # Same OS account identity fallback as native JDK; never log auth bytes.
+            import pwd, os
+            username = pwd.getpwuid(os.getuid()).pw_name.encode('utf-8')
+            if not 1 <= len(username) <= 255: raise OSError('SOCKS account unavailable')
+            phase('socks_authentication')
+            sock.sendall(b'\x01' + bytes([len(username)]) + username + b'\x00')
+            if receive(sock, 2, deadline) != b'\x01\x00':
+                raise OSError('SOCKS authentication failed')
+        elif reply != b'\x05\x00':
             raise OSError('SOCKS authentication negotiation failed')
         host = onion.encode('ascii')
         phase('socks_connect_reply')

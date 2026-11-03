@@ -10,14 +10,15 @@ A true build or bootstrap check alone does not constitute M2 acceptance.
 
 ## Build and run on Omarchy
 
-Prerequisites: JDK 17+, Maven, Python 3.12+, Bash, Docker Engine and Compose.
-The actual development session uses JDK 21 targeting Java 17. The repository
-remains a single Maven module. Network access to Maven Central, Debian packages,
+Prerequisites on the migration branch: JDK25+, Maven, Python3.12+, Bash, Docker Engine and Compose.
+Storm3.1 uses JRE25; helpers compile with release25. The repository remains a single Maven module.
+Historical Java17 observations below are not current runtime requirements.
+See [the migration report](jvm25-storm31-migration.md) for scoped tests and blockers. Network access to Maven Central, Debian packages,
 Docker registry and the public Tor network is necessary for a fresh run.
 
 ```sh
 mvn -B clean verify
-bash scripts/m2.sh
+bash scripts/runners/run-tor-acceptance.sh
 ```
 
 An optional `M2_MAVEN_REPOSITORY` chooses an alternate writable Maven cache.
@@ -199,7 +200,7 @@ docker build -f docker/m2/Dockerfile -t onionall-brawler-tor:0.4.9.11-deb12u1 .
 python3 -B test/m2/tor_preflight.py .runtime/m2/connectivity-preflight
 ```
 
-Only after preflight succeeds run `bash scripts/m2.sh`. Do not repeatedly start
+Only after preflight succeeds run `bash scripts/runners/run-tor-acceptance.sh`. Do not repeatedly start
 360s full-stack waits while preflight is failing. Diagnostic logs and temporary
 native Tor data remain ignored; no runtime data is committed.
 

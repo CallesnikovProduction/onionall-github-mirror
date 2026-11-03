@@ -3,6 +3,8 @@ package dev.onionall.brawler.tor
 import crawlercommons.robots.BaseRobotRules
 import crawlercommons.robots.SimpleRobotRulesParser
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.EventListener
+import okhttp3.Connection
 import okhttp3.Call
 import okhttp3.ConnectionPool
 import okhttp3.Dns
@@ -53,7 +55,9 @@ import java.util.concurrent.TimeUnit
  * @author Stephan Kolesnikov
  * @author Codex (gpt-6.1-sol-medium)
  */
-class TorProtocol : Protocol {
+class TorProtocol @JvmOverloads constructor(
+    private val nanoTime: java.util.function.LongSupplier = java.util.function.LongSupplier { System.nanoTime() }
+) : Protocol {
 
     /**
      * Политика допустимости целевых URL и метаданных.
@@ -74,9 +78,7 @@ class TorProtocol : Protocol {
      * Настраивается один раз при [configure].
      * Автоматические редиректы и повторы запросов отключены.
      *
-     * TODO(TPR-01): Подтвердить интеграционными тестами,
-     *  что все обращения к onion-адресам проходят через SOCKS,
-     *  а локальное разрешение целевых hostname не выполняется.
+     * TODO(TPR-01): BLOCKED: controlled Tor end-to-end + resolver guard and outage denial must pass; local SOCKS tests alone are insufficient.
      */
     private lateinit var client: OkHttpClient
 
@@ -87,6 +89,7 @@ class TorProtocol : Protocol {
      * Используется в заголовке User-Agent и при разборе `robots.txt`.
      */
     private lateinit var agent: String
+    private var trace: TorTrace? = null
 
     /**
      * Максимальный допустимый размер тела HTTP-ответа в байтах.
@@ -106,17 +109,20 @@ class TorProtocol : Protocol {
      * Ключ: базовый URL вида `scheme://authority`.
      *
      * Значение:
-     * - время загрузки по [System.nanoTime];
+     * - монотонное время завершения загрузки;
      * - разобранные правила `BaseRobotRules`.
      *
      * Время жизни записи: `10 минут`.
      *
      * Максимальное количество записей: `16`.
      *
-     * TODO(TPR-02): Проверить поведение кеша при повторной
-     *  загрузке, истечении TTL и конкурентных обращениях.
+     * TPR-02: кеш защищён коротким monitor; загрузки одного origin сериализованы
+     * отдельно. Медленный origin не удерживает monitor кеша во время HTTP.
      */
     private val robots = LinkedHashMap<String, Pair<Long, BaseRobotRules>>()
+    // Policy admits at most 16 hosts × HTTP/HTTPS × absent/default explicit port.
+    // Keep load locks after cache eviction to preserve one-loader ownership.
+    private val robotLoads = HashMap<String, Any>()
 
     /**
      * Инициализирует сетевой протокол.
@@ -138,11 +144,9 @@ class TorProtocol : Protocol {
      *
      * TPR-03: configure и cleanup сериализованы отдельным lifecycle lock.
      * После cleanup экземпляр терминален; для restart нужен новый экземпляр.
-     * TODO(TPR-03): Проверить контракт Storm при частичной ошибке инициализации.
+     * TODO(TPR-03): BLOCKED: inject partial prepare failure in a real topology and prove cleanup of every created protocol instance.
      *
-     * TODO(TPR-04): Проверить, что запрет небезопасных
-     *  настроек нельзя обойти альтернативными конфигурациями
-     *  StormCrawler или сетевых компонентов.
+     * TODO(TPR-04): BLOCKED: enumerate upstream configuration aliases with negative tests before claiming complete bypass prevention.
      */
     override fun configure(conf: Config): Unit = synchronized(lifecycle) {
         check(!closed) { "Protocol closed" }
@@ -190,10 +194,7 @@ class TorProtocol : Protocol {
 
         require(agent.matches(Regex("[A-Za-z_-]+"))) { "Invalid crawler agent" }
 
-        // TODO(TPR-05): Проверить разрешение имени SOCKS gateway.
-        //  Здесь допускается DNS-разрешение самого прокси.
-        //  Целевые onion-hostname должны передаваться через SOCKS
-        //  без локального DNS-разрешения.
+        // TODO(TPR-05): BLOCKED: replacement test must prove a new protocol resolves the new gateway IP; existing instances intentionally retain their endpoint.
         val endpoint = InetSocketAddress(
             policy.proxyHost, // hostname
             policy.proxyPort             // port
@@ -206,7 +207,9 @@ class TorProtocol : Protocol {
         // Сетевой транспорт Onionall:
         // принудительно направляются запросы через SOCKS-прокси
         // и минимизация неявного поведения HTTP-клиента
+        trace = if (conf["tor.diagnostics.enabled"] == true) TorTrace(timeout) else null
         client = OkHttpClient.Builder()
+            .eventListenerFactory { call -> trace?.listener(call) ?: EventListener.NONE }
             .proxy(
                 /*
                 * Допустим, конфигурация:
@@ -217,7 +220,9 @@ class TorProtocol : Protocol {
                 * */
                 Proxy(
                     Proxy.Type.SOCKS,
-                    endpoint
+                    // Native JDK SOCKS retains getHostString and resolves it again.
+                    // A numeric spelling preserves the endpoint selected at configure.
+                    InetSocketAddress(endpoint.address.hostAddress, endpoint.port)
                 )
 
                 /*
@@ -234,7 +239,6 @@ class TorProtocol : Protocol {
                     TimeUnit.SECONDS
                 )
 
-                // todo: потенциально нужна изоляция (SOCKS-аутентификация и подтврждение поведения в тестах)
             )
             .dns(
                 /*
@@ -273,19 +277,10 @@ class TorProtocol : Protocol {
             )
             .build()
 
-        // TODO(TPR-01): Интеграционно подтвердить SOCKS-only маршрутизацию.
-        //  Проверить, что целевые onion-hostname не разрешаются локально
-        //  и что при недоступном SOCKS-прокси запрос завершается ошибкой.
+        trace?.lifecycle("configured")
+        // TODO(TPR-01): BLOCKED: controlled Tor end-to-end + resolver guard and outage denial must pass; local SOCKS tests alone are insufficient.
 
-        // TODO(TPR-12): Проверить стратегию переиспользования соединений.
-        //  maxIdleConnections=0 не гарантирует отдельный Tor circuit.
-        //  Определить требования к stream/circuit isolation.
-
-        // TODO(TPR-13): Разделить таймауты при необходимости.
-        //  Подобрать connect/read/call timeout по измерениям Tor latency.
-
-        // TODO(TPR-14): Проверить сетевые follow-up запросы OkHttp.
-        //  Учесть HTTP authentication, TLS и HTTP/2 multiplexing.
+        // TODO(TPR-14): BLOCKED: controlled TLS/HTTP2/auth challenge fixtures must demonstrate bounded follow-ups on SOCKS only.
     }
 
     /**
@@ -318,13 +313,11 @@ class TorProtocol : Protocol {
      * TPR-06: Дубли, пустой или отсутствующий Location отклоняются для redirect.
      *  Downstream получает только проверенный канонический target; 304 не требует Location.
      *
-     * TODO(TPR-07): Проверить классификацию исключений.
-     *  Сохранить диагностическую информацию и различать
-     *  ошибки политики, таймауты, SOCKS и TLS.
+     * TODO(TPR-07): BLOCKED: controlled TLS and every SOCKS reply-code test needed; ONION_UNREACHABLE retains cause, not a precise Tor diagnosis.
      *
      * TPR-08: Непустой protocol.md.prefix обязателен при configure;
      *  prefix добавляет SimpleFetcherBolt, а не этот протокол.
-     * TODO(TPR-08): Проверить ограничения размера заголовков на уровне OkHttp.
+     * TODO(TPR-08): BLOCKED: execute oversized aggregate-header tests against pinned OkHttp before claiming a header-memory bound.
      */
     override fun getProtocolOutput(
         url: String,
@@ -450,8 +443,8 @@ class TorProtocol : Protocol {
      * отсутствие доступного `robots.txt` не считается
      * автоматическим разрешением обхода.
      *
-     * Метод синхронизирован для последовательного
-     * доступа к общему кешу правил.
+     * Загрузки одного origin сериализованы; общий monitor удерживается только
+     * для чтения/изменения кеша и карты origin-locks, никогда во время HTTP.
      *
      * @param url URL ресурса, для которого нужны правила.
      * @return разобранные правила `robots.txt`.
@@ -462,20 +455,27 @@ class TorProtocol : Protocol {
      *
      * TPR-10: Размер ограничен транспортом, явно HTML отклоняется до parser.
      *  Пустой robots и отсутствие подходящей UA-группы допускаются parser.
-     * TODO(TPR-10): Определить политику повреждённых кодировок/прочих ошибок parser.
-     *  crawler-commons 1.6 использует replacement decoding, а не строгий UTF-8.
+     * Malformed UTF-8/BOM-selected UTF-16 and parser runtime errors fail closed.
      */
-    @Synchronized
     override fun getRobotRules(url: String): BaseRobotRules {
         if (closed) throw IOException("PROTOCOL_CLOSED")
         val safe = URI(policy.normalize(url))
         val base = "${safe.scheme}://${safe.rawAuthority}"
 
-        robots[base]?.let {
-            if (System.nanoTime() - it.first < TimeUnit.MINUTES.toNanos(10))
-                return it.second
+        val loadLock = synchronized(robots) {
+            if (closed) throw IOException("PROTOCOL_CLOSED")
+            robotLoads.getOrPut(base) { Any() }
         }
+        return synchronized(loadLock) {
+            val cached = synchronized(robots) {
+                if (closed) throw IOException("PROTOCOL_CLOSED")
+                robots[base]?.takeIf { nanoTime.asLong - it.first < TimeUnit.MINUTES.toNanos(10) }?.second
+            }
+            cached ?: loadRobotRules(base)
+        }
+    }
 
+    private fun loadRobotRules(base: String): BaseRobotRules {
         val response = try {
             getProtocolOutput("$base/robots.txt",Metadata())
         } catch (e: IOException) {
@@ -486,13 +486,20 @@ class TorProtocol : Protocol {
         if (response.statusCode != 200) throw IOException("ROBOTS_UNAVAILABLE")
 
         val content = response.content
-        // Match crawler-commons 1.6 BOM selection for HTML detection only.
-        // String decoding deliberately retains its replacement semantics.
+        // Match crawler-commons 1.6 BOM selection for validation and HTML detection.
+        // Reject malformed input before the parser can replace bytes in policy directives.
         val charset = if (content.size >= 2 && (
                 (content[0] == 0xff.toByte() && content[1] == 0xfe.toByte()) ||
                 (content[0] == 0xfe.toByte() && content[1] == 0xff.toByte())))
             Charsets.UTF_16 else Charsets.UTF_8
-        val text = content.toString(charset).removePrefix("\uFEFF")
+        val text = try {
+            charset.newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(content)).toString().removePrefix("\uFEFF")
+        } catch (e: java.nio.charset.CharacterCodingException) {
+            throw IOException("ROBOTS_UNAVAILABLE", e)
+        }
         val htmlType = response.metadata.getValues("content-type")?.any {
             it.substringBefore(';').trim().lowercase() in setOf("text/html", "application/xhtml+xml")
         } == true
@@ -508,22 +515,21 @@ class TorProtocol : Protocol {
 
         // TPR-15: Exact agent, wildcard and no matching group have local regressions.
         // RFC-wide compliance remains the dependency's contract.
-        val rules = SimpleRobotRulesParser()
+        val rules = try { SimpleRobotRulesParser()
             .parseContent(
                 "$base/robots.txt",
                 response.content,
                 "text/plain",
                 listOf(agent.lowercase())
-            )
+            ) } catch (e: RuntimeException) {
+                throw IOException("ROBOTS_UNAVAILABLE", e)
+            }
 
-        if (closed) throw IOException("PROTOCOL_CLOSED")
-        if (robots.size >= 16) robots.remove(robots.keys.first())
-
-        robots[base] = Pair(
-            System.nanoTime(),
-            rules
-        )
-
+        synchronized(robots) {
+            if (closed) throw IOException("PROTOCOL_CLOSED")
+            if (robots.size >= 16) robots.remove(robots.keys.first())
+            robots[base] = Pair(nanoTime.asLong, rules)
+        }
         return rules
     }
 
@@ -540,11 +546,12 @@ class TorProtocol : Protocol {
      * TPR-11: Локально проверены повторный cleanup, запрет новых вызовов
      * и отмена заблокированного SOCKS вызова. Call учитывается до execute,
      * поэтому cleanup отменяет и ещё не зарегистрированный в dispatcher Call.
-     * TODO(TPR-11): Подтвердить владение lifecycle при остановке Storm topology.
+     * TODO(TPR-11): BLOCKED: real Storm shutdown/partial-prepare test must prove ProtocolFactory ownership; unit cancellation alone is insufficient.
      */
     override fun cleanup() {
         synchronized(lifecycle) {
             closed = true
+            trace?.lifecycle("cleanup")
             calls.forEach { it.cancel() }
             if (this::client.isInitialized) {
                 client.dispatcher.cancelAll()
@@ -552,8 +559,68 @@ class TorProtocol : Protocol {
                 client.dispatcher.executorService.shutdownNow()
             }
         }
-        synchronized(this) {
+        synchronized(robots) {
             robots.clear()
+            robotLoads.clear()
         }
+    }
+}
+
+/** Opt-in fixed-schema diagnostics. No URL path/query, auth, header or exception message. */
+private class TorTrace(private val timeout: Long) {
+    private val client = ids.incrementAndGet()
+    private val emitted = java.util.concurrent.atomic.AtomicInteger()
+    private fun emit(fields: Map<String, Any>) {
+        // Diagnostic output itself is bounded, including concurrent callbacks.
+        if (emitted.getAndUpdate { current -> if (current < 256) current + 1 else current } < 256) {
+            val record = linkedMapOf<String, Any>("client" to client, "jvm" to jvm, "timeout_ms" to timeout,
+                "at_utc" to java.time.Instant.now().toString(), "thread_id" to Thread.currentThread().threadId(),
+                "thread_kind" to when {
+                    Thread.currentThread().name.startsWith("OkHttp") -> "okhttp"
+                    Thread.currentThread().name.startsWith("Okio") -> "okio"
+                    else -> "application"
+                })
+            record.putAll(fields)
+            System.err.println("TOR_TRACE " + json.writeValueAsString(record))
+        }
+    }
+    fun lifecycle(event: String) = emit(mapOf("event" to event))
+    fun listener(call: Call): EventListener {
+        val request = ids.incrementAndGet()
+        val started = System.nanoTime()
+        val hostHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(call.request().url.host.toByteArray(Charsets.US_ASCII))
+            .take(8).joinToString("") { "%02x".format(it.toInt() and 255) }
+        return object : EventListener() {
+            @Volatile private var connected = false
+            private fun event(name: String, extra: Map<String, Any> = emptyMap()) = emit(
+                mapOf("event" to name, "request" to request, "host_hash" to hostHash,
+                    "elapsed_ms" to (System.nanoTime() - started) / 1_000_000) + extra)
+            override fun callStart(call: Call) = event("call_start")
+            override fun connectStart(call: Call, address: InetSocketAddress, proxy: Proxy) {
+                connected = true
+                // OkHttp's callback encompasses TCP and native JDK SOCKS negotiation;
+                // it cannot distinguish greeting/authentication/CONNECT reply reads.
+                event("socks_connect_start", mapOf("proxy_type" to proxy.type().name))
+            }
+            override fun connectEnd(call: Call, address: InetSocketAddress, proxy: Proxy, protocol: okhttp3.Protocol?) = event("socks_connect_end")
+            override fun connectFailed(call: Call, address: InetSocketAddress, proxy: Proxy, protocol: okhttp3.Protocol?, ioe: IOException) =
+                event("socks_connect_failed", mapOf("error_type" to ioe.javaClass.simpleName))
+            override fun secureConnectStart(call: Call) = event("tls_start")
+            override fun secureConnectEnd(call: Call, handshake: okhttp3.Handshake?) = event("tls_end")
+            override fun connectionAcquired(call: Call, connection: Connection) = event("connection_acquired",
+                mapOf("new_connection" to connected, "connection" to System.identityHashCode(connection)))
+            override fun connectionReleased(call: Call, connection: Connection) = event("connection_released")
+            override fun requestHeadersStart(call: Call) = event("request_headers_start")
+            override fun responseHeadersStart(call: Call) = event("response_headers_start")
+            override fun callEnd(call: Call) = event("call_end")
+            override fun callFailed(call: Call, ioe: IOException) = event("call_failed", mapOf("error_type" to ioe.javaClass.simpleName))
+            override fun canceled(call: Call) = event("canceled")
+        }
+    }
+    companion object {
+        private val jvm = java.util.UUID.randomUUID().toString()
+        private val ids = java.util.concurrent.atomic.AtomicLong()
+        private val json = com.fasterxml.jackson.databind.ObjectMapper()
     }
 }

@@ -8,12 +8,12 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-import m2_recovery as recovery
+import recovery.recover_tor_gateway as recovery
 import outage_pipeline
 
 
 class GatewayRecoveryTest(unittest.TestCase):
-    def execute(self, health=True, fail=None, detection=None, journal_failure=False, malformed=None):
+    def execute(self, health=True, fail=None, detection=None, journal_failure=False, malformed=None, transport_failure=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             project = 'onionall-brawler-m2-123456abcdef'
@@ -29,9 +29,13 @@ class GatewayRecoveryTest(unittest.TestCase):
                     (path / 'recovery-health.json').write_text(json.dumps(dict(passed=health,
                         health=dict(http_status=200, health_body='ready', socks_atyp=3,
                                     remote_hostname_sent=True))))
+                    if transport_failure:
+                        (path / 'recovery-health.json').write_text(json.dumps(dict(passed=False,
+                            phase='socks_connect_reply', error_type='TimeoutError', elapsed_seconds=30.0)))
+                        code = 1
                     if malformed == 'health':
                         (path / 'recovery-health.json').write_text('[]')
-                    code = int(not health)
+                    code = int(not health or transport_failure)
                 if 'dev.onionall.brawler.m2.RecoverySeriesProbe' in args:
                     (path / 'recovery-series.json').write_text(json.dumps(dict(passed=True, completed=['/robots.txt','/health']*3)))
                 if malformed == 'series' and 'dev.onionall.brawler.m2.RecoverySeriesProbe' in args:
@@ -72,6 +76,15 @@ class GatewayRecoveryTest(unittest.TestCase):
         self.assertEqual('blocked', result['state'])
         self.assertFalse(any('unpause' in args for args in calls))
         self.assertIn('stop', calls[-1])
+
+    def test_flat_connect_timeout_is_failure_evidence_not_malformed_json(self):
+        result,calls=self.execute(transport_failure=True)
+        self.assertFalse(result['passed'])
+        self.assertEqual('socks_connect_reply',result['health_failure']['phase'])
+        self.assertEqual('TimeoutError',result['health_failure']['error_type'])
+        self.assertNotIn('Malformed',result['blocker'])
+        self.assertFalse(any('unpause' in args for args in calls))
+        self.assertIn('stop',calls[-1])
 
     def test_malformed_health_or_series_retains_quarantine(self):
         for document in ('health','series'):

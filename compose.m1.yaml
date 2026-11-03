@@ -2,6 +2,7 @@
 services:
   frontier-init:
     image: crawlercommons/url-frontier:2.4
+    pull_policy: ${M1_PULL_POLICY:-missing}
     user: "0:0"
     # Normalize a copy: bind mounts may come from a Windows CRLF checkout.
     entrypoint:
@@ -10,11 +11,12 @@ services:
       - tr -d '\r' < /tests/frontier-volume-init.sh > /tmp/frontier-volume-init.sh; exec /bin/sh /tmp/frontier-volume-init.sh
     volumes:
       - frontier-data:/crawldir
-      - ./scripts/frontier-volume-init.sh:/tests/frontier-volume-init.sh:ro
+      - ./scripts/runners/frontier-volume-init.sh:/tests/frontier-volume-init.sh:ro
     network_mode: none
 
   frontier:
     image: crawlercommons/url-frontier:2.4
+    pull_policy: ${M1_PULL_POLICY:-missing}
     command: ["rocksdb.path=/crawldir/rocksdb"]
     depends_on:
       frontier-init:
@@ -32,10 +34,11 @@ services:
 
   fixture:
     image: python:3.12-slim
+    pull_policy: ${M1_PULL_POLICY:-missing}
     command: ["python", "-u", "/tests/fixture.py", "--log", "/evidence/requests.jsonl"]
     volumes:
       - ./test/m1:/tests:ro
-      - ${M1_RUN_DIR:?Use scripts/m1.sh or scripts/m1.ps1}:/evidence
+      - ${M1_RUN_DIR:?Use scripts/runners/run-controlled-crawl.sh or scripts/runners/run-controlled-crawl.ps1}:/evidence
     networks:
       controlled:
         ipv4_address: 172.30.71.10
@@ -46,28 +49,30 @@ services:
       retries: 20
 
   crawler:
-    image: storm:2.8.9-jre17
+    image: ${M1_STORM_IMAGE:-storm:3.1.0-jre25}
+    pull_policy: ${M1_PULL_POLICY:-missing}
     profiles: [tools]
     working_dir: /workspace
     volumes:
       - .:/workspace:ro
     environment:
-      M1_RUN_REL: ${M1_RUN_REL:?Use scripts/m1.sh or scripts/m1.ps1}
+      M1_RUN_REL: ${M1_RUN_REL:?Use scripts/runners/run-controlled-crawl.sh or scripts/runners/run-controlled-crawl.ps1}
     entrypoint:
       - /bin/sh
       - -ec
-      - tr -d '\r' < /workspace/scripts/m1-container.sh > /tmp/m1-container.sh; exec /bin/bash /tmp/m1-container.sh
+      - tr -d '\r' < /workspace/scripts/runners/run-controlled-crawl-container.sh > /tmp/m1-container.sh; exec /bin/bash /tmp/m1-container.sh
     networks: [controlled]
     stop_grace_period: 60s
 
   probe:
-    image: storm:2.8.9-jre17
+    image: ${M1_STORM_IMAGE:-storm:3.1.0-jre25}
+    pull_policy: ${M1_PULL_POLICY:-missing}
     profiles: [tools]
     working_dir: /workspace
     volumes:
       - .:/workspace:ro
-      - ${M1_RUN_DIR:?Use scripts/m1.sh or scripts/m1.ps1}:/evidence
-    entrypoint: ["java", "-cp", "/apache-storm/lib/*:/evidence/crawler-m1.jar", "dev.onionall.brawler.m1.FrontierProbe"]
+      - ${M1_RUN_DIR:?Use scripts/runners/run-controlled-crawl.sh or scripts/runners/run-controlled-crawl.ps1}:/evidence
+    entrypoint: ["java", "-cp", "/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m1.jar", "dev.onionall.brawler.m1.FrontierProbe"]
     networks: [controlled]
 
 volumes:

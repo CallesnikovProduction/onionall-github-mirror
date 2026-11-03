@@ -42,11 +42,13 @@ class DiscoveryPlanner(config: Map<String, Any>, private val maxPages: Int,
             Edge(base, target, now, depth + 1, result)
         }
     }
-    private fun metadataOnly(url: String): Boolean {
+    companion object {
+    @JvmStatic fun metadataOnly(url: String): Boolean {
         val path = URI(url).path.lowercase()
         // Conservative extension gate; extensionless binary responses need a
         // separate pre-body MIME contract before live M3 can be accepted.
         val leaf = path.substringAfterLast('/')
         return '.' in leaf && !leaf.endsWith(".html") && !leaf.endsWith(".htm")
     }
+}
 }

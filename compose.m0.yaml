@@ -11,7 +11,7 @@ services:
     stop_grace_period: 30s
 
   crawler:
-    image: storm:2.8.9-jre17
+    image: storm:3.1.0-jre25
     depends_on:
       frontier:
         condition: service_started
@@ -20,7 +20,7 @@ services:
     working_dir: /workspace
     volumes:
       - .:/workspace:ro
-    entrypoint: ["/bin/bash", "/workspace/scripts/m0-container.sh"]
+    entrypoint: ["/bin/bash", "/workspace/scripts/runners/run-startup-container.sh"]
     stop_grace_period: 60s
 
 networks:

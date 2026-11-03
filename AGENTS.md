@@ -6,6 +6,146 @@ Onionall Brawler is an open-source-oriented, JVM-first project to build an indep
 
 Tor v3 has no global registry of onion services. Complete enumeration is not a realistic guarantee. Measure discovery and coverage of known, permitted sources instead of claiming comprehensive coverage.
 
+## Terminal CLI boundary
+
+Entrypoint dev.onionall.brawler.cli.Onionall (Picocli4.7.7), with separate Brand
+and HtmlFiles. fetch invokes existing TorProtocol: Ahmia allowlist only, local
+SOCKS19050, HTML-only128KiB, finite30s call, no redirects/retries/DIRECT fallback.
+inspect is offline; status is local TCP only, never Tor-readiness proof.
+Offline discover reuses JSoup/TorPolicy and the planner metadata-only rule; no
+transport/Frontier calls. Limit4MiB/1000 anchors/2048 URL chars, deterministic JSON
+and explicit atomic JSONL export (no overwrite). Configured M4.1 durable admission is available through the versioned Frontier
+candidate; stock Frontier and unconfigured crawl start remain fail-closed.
+See docs/m41-durable-admission.md and its execution ledger before crawl changes.
+Menu/status presentation styles trusted rows after clipping; status is TCP-only.
+Discovery contracts/tests: docs/cli-discovery.md.
+2026-11-02 offline Java25 verify80 tests and CLI/PTY15 pass. Installed discover
+works without Maven in PATH; controlled SOCKS fixture sees zero connections.
+M2/M3 remain BLOCKED; no live Tor or full milestone gate rerun in this pass.
+Build scripts/cli/build-cli.sh (Java25, ONIONALL_OFFLINE=1 for cached Maven); install
+scripts/cli/install-cli.sh; uninstall scripts/cli/uninstall-cli.sh. Thin target/onionall
+bundle contains API dependencies, no Flux/Tika/frontier services. XDG user install,
+checkout .runtime/downloads or XDG downloads; logs/evidence stay ignored.
+CLI tests: OnionallTest plus existing TorProtocol regressions; mvn verify.
+Packaged/installation/PTY tests: python3 -B -m unittest discover -s test/cli.
+Delivery66 JVM/9 packaged tests pass; installed Ahmia GET200/4735bytes passed.
+Evidence and precise limits: docs/cli-verification.md; M2/M3 still BLOCKED.
+Menu/spinner are real-TTY only; JSON/NO_COLOR never use colored branding.
+InteractiveSession owns a supported-TTY alternate screen with idempotent restore
+on Quit/EOF/SIGINT/handled errors, fixed-header ANSI viewport, read-only size polling and
+idempotent margin/cursor cleanup. Brand owns wordmark/palette/layouts; Mascot
+owns headless Java2D surfaces encoded as ANSI half-blocks (java.desktop required).
+No external image/font dependency; ASCII density fallback shares the same vector.
+NO_COLOR/--no-color keep the plain no-control stream, not a pinned viewport.
+Rendering verification69 JVM/14 CLI tests: docs/cli-rendering.md.
+
+## SOCKS incident — 2026-11-02
+
+2026-11-03 continuation: robots cache TPR-02 now uses per-origin single-flight
+loading and short shared-cache critical sections; no network I/O holds the global
+cache monitor. Six deterministic regressions cover cross-origin progress, duplicate
+misses, TTL, failure, eviction and cleanup; offline Java25 verify90 and Python
+M2 85 / CLI-PTY16 pass. Public no-arg protocol construction remains compatible.
+Controlled incident c8d4cc4db8e8 passed actual Storm robots/pending; cold-state
+fallback was not exercised. Fresh original target9560fd480748 failed after the
+one gateway restart at CONNECT reply30s, before HTTP/JVM series. Quarantine and
+cleanup pass, three volumes retained, host baseline unchanged. Full M2 not run;
+no M2/M3 status upgrade. Same-context52b269ed5fb1 passes actual Storm;8f2036152884
+fails four clients before fresh-context comparison can run. No more identical
+Tor retries. Frontier-only SIGKILL/lease/recreation1a7cb4b6f722 passes; this is
+not durable quota/ACK-loss admission. Fresh strict M136bf86224d74 passes six
+records/gap2.002960580s/cleanup. Python M2 now89, opt-in M1 32, M3 unit2 pass.
+Pinned upstream frontier compiles offline and nine storage tests pass; stock2.4
+refuses an added CF, so compatible rollback is required before migration.
+Fresh local M3f90ef8e542 passes five records/provenance/retry; transport is HTTP,
+not Tor. Final frontier timing-guard variante4b9595217a2 also passes. Cleanup
+audit: seven projects removed,13 expected volumes retained; protected host
+snapshot unchanged. M2/M3 VERIFIED and production-ready remain false.
+Current evidence/next step:
+docs/engineering/recovery-execution-ledger.md. Preserve the user's in-progress
+documentation consolidation; do not stage its deletions/new files as recovery work.
+
+Same-namespace controlled comparison: Python NO_AUTH/USER_PASSW, native JDK and
+TorProtocol can all stall after owned onion restart and recover after gateway
+restart. Storm is not a necessary cause; exact Tor/path cause remains unproven.
+TorProtocol now freezes the configured proxy as a numeric hostString: native JDK
+otherwise re-resolves a resolved-but-named InetSocketAddress. Regression failed
+before fix and passes after; this is separate from Tor network availability.
+New Linux diagnostic test/m2/socks_incident.py preserves one client namespace,
+20s deadlines, original isolation and volumes; original M2 gate unchanged.
+a3f5c6720038 incident PASS includes real Storm robots/pendingHTTP200 and retained
+frontier in that namespace. Fresh repeat b66bf31c112f FAIL: Python0/2 + nativeJDK
++ TorProtocol all time out beforeHTTP after gateway restart; crawler not started.
+M2 remains BLOCKED; endpoint fix is not a proved cure. Host baseline unchanged
+within all five experiments; no volumes removed.
+Details/CONFIRMED/FIXED/STILL BLOCKED/NEXT EXPERIMENT: docs/recovery/m2-socks-incident.md.
+
+## M1 lifecycle fix — 2026-11-02
+
+M1 now passes twice consecutively on explicit image
+onionall-storm:3.1.0-jre25-cleanup2:25da2046fecb andd927d1d8835e, all three
+verification flags true, six records, pending resume, zero ERROR/FATAL, cleanup
+and volume retention. Baseline and cleanup1 variants remain available.
+Build: JAVA_HOME=<jdk25> bash scripts/patches/build-storm-lifecycle.sh; run with
+M1_CACHED_IMAGES=1 M1_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2.
+Backport serializes Nimbus cleanup on submitLock and drains active cleanup before
+closing its timer/ZK dependencies; genuine ERROR logging/assertions unchanged.
+Hash-pinned source and original server JAR, deterministic real Nimbus/StormTimer
+regressions: docker/storm-lifecycle/README.md. M2_STORM_IMAGE propagates to M1 child.
+M2/M3 remain BLOCKED. Target19aa14dfd670: initialhealth/identity preserved;
+post-restart CONNECT timeout; gateway restart restores Python canary but first
+standalone JVM robots times out20s before HTTP. Consumer never resumed; cleanup
+retains all volumes. Same-container readiness variant remains UNVERIFIED.
+Opt-in bounded TOR_TRACE uses JVM/request IDs, hashedhost and fixed thread_kind
+(no raw thread names, which can embed URLs). No transport policy change.
+Tor security pin unchanged; signed metadata obtained but Packages delivery timed
+out. ADR0003 proposed only; CLI admission remains disabled.
+
+## Recovery closure — 2026-11-02
+
+M2/M3 remain BLOCKED. Fresh8b64cfc89746: controlled bootstrap/health, preserved
+identity, one gateway restart, JVM robots/health series and unchanged pending
+snapshot pass; resumed Storm robots times out in JDK SOCKS negotiation before
+HTTP. URL persists with error/backoff; target fails, full M2 not launched.
+No timeout/security changes. M3 lacks real-onion full runner and ADR0002 durable
+server admission; retain local HTTP variant and fail-closed production mode.
+M1 child now has deterministic isolated evidence/exit handling and propagated
+cached-image policy (M1_CACHED_IMAGES=1); no mtime scan or implicit pull in cached
+mode. Failed flat CONNECT health records preserve phase instead of “malformed”.
+Local M3 b62983d078 passes5 records/provenance/retry/retention (HTTP only).
+Checks: Java25 Maven80, Python M2 76/M1 31+1skip/M3 2, CLI15 pass.
+Details/current verification: docs/m2-hardening.md; ignored closure-20261102 summary.
+Fresh cached M1 ac0f49b9578d-m1 FAIL: six records/pending resume succeed, but
+strict no-ERROR gate catches Storm3.1 Nimbus cleanupTimer missing stormcode.ser
+during submission; no log whitelist or timer suppression. Parent preserves exit1.
+Tor pin0.4.9.11 unchanged; security update remains independent blocker.
+
+## Robots decoding contract — 2026-11-01
+
+TorProtocol rejects malformed UTF-8/BOM-selected UTF-16 robots before parser;
+parser runtime errors become ROBOTS_UNAVAILABLE with cause and are not cached.
+Empty robots and valid BOM files retain crawler-commons semantics. TODO inventory
+and remaining evidence contracts: docs/kotlin-todo-audit.md. No milestone upgrade.
+
+## JVM migration — current candidate, 2026-11-01
+
+On migration/java25-storm31, defaults are Java25 / Storm3.1.0;
+StormCrawler3.7, URLFrontier server/client2.4 and Kotlin2.3.21 remain.
+Select one JDK25 with JAVA_HOME/PATH; run Maven verify before M1/M3 helpers.
+Profiles java25/storm31 are aliases, not Java17 fallback. Main97b9da4 is retained.
+M1 e1c1f2931a8f passes all assertions/cleanup, six records, gap2.003810683s.
+G0/G1 pass47 JVM tests; G2/G3 real local Storm A/B/C passes (91c6025d49, five records,
+provenance,503 retry, robots and retention). Python M2 67/M3 2 pass.
+Java25 DNS guard uses a separate test-only resolver SPI service JAR,35 tests,
+zero application onion lookups; not system-wide DNS-leak proof. Probes require
+Storm3.1 lib-common on their classpath. Native Windows remains unverified.
+G4 blocked: local SOCKS19050 refused; no live Tor retries. Tor0.4.9.11 security
+and M2 recovery blockers persist. G5 blocked: no atomic global reservation in
+current API; ADR0002 selects a separate additive frontier-server contract.
+M2/M3 acceptance stays BLOCKED, production discovery admission fail-closed.
+Detailed gates, exact inputs, rollback and limitations:
+docs/jvm25-storm31-migration.md. Historical entries below describe prior runtimes.
+
 ## M3 offline discovery in progress — 2026-11-01
 
 M3 local vertical is verified, Tor acceptance remains BLOCKED. Discovery uses
@@ -123,7 +263,7 @@ succeeded. Pinned Tor image build passed. Fifteen JVM wire/policy tests and thir
 Python acceptance-gate tests pass. Full M1 Docker regression on the new JAR
 passed in `.runtime/m1/onionall-brawler-m1-f050361a4b55/` (minimum gap
 2.002163184s, all flags true, retained volume and cleanup). Native Linux runner
-`scripts/m2.sh` retains evidence under .runtime/m2 and includes actual crawler
+`scripts/runners/run-tor-acceptance.sh` retains evidence under .runtime/m2 and includes actual crawler
 network/DNS probes, real Tor failure matrix, and Storm outage/persisted retry.
 M2 evidence writers use host UID/GID with dropped capabilities; M2 mounts only
 necessary inputs rather than the entire repository. Both Tor daemons in real test
@@ -151,7 +291,7 @@ docs/m2-tor.md for observed dependency risks and current run evidence.
 
 ## Linux M1 port — 2026-10-31
 
-Run `bash scripts/m1.sh` from the repository root after building. Requires Bash,
+Run `bash scripts/runners/run-controlled-crawl.sh` from the repository root after building. Requires Bash,
 Python 3.12+, JDK 17+ and Docker Compose; optional JAVA_HOME / PYTHON select tools.
 It preserves the Windows sequence and verifier, unique `.runtime/m1/<project>/`
 evidence, two crawl exit records, snapshots and retained RocksDB volume. Cleanup
@@ -178,7 +318,7 @@ See docs/m1-controlled.md for the verification record.
 
 M1 is accepted on 2026-10-31 from the user-run Docker evidence `.runtime/m1/onionall-brawler-m1-df35366e0994/`, independently rechecked by the agent's offline verifier. All assertions, crawl evidence and both process exits pass; six frontier records persist across graceful recreation, pending work resumes, HTTP 404 is FETCH_ERROR, robots/deduplication/scope pass and minimum document gap is 2.00265402s. Both crawler logs contain zero ERROR/FATAL and 59 WARNs total: 12 unavailable cgroup metrics, two ZooKeeper defaults and 45 shutdown waits, all resolved. Backend logs have no WARN/ERROR. result.json records container removal and retained volume. Docker Engine was not rerun by the agent; evidence is host-run. M0 is unchanged. Tor, search/OpenSearch, crash recovery, distributed deployment and Tika document parsing are not verified. See docs/m1-controlled.md.
 
-This is a bootstrap-stage project generated from the Apache StormCrawler 3.7.0 Maven archetype, not yet an onion search engine. The repository contains a Flux topology and configuration, plus a new Kotlin M2 transport adapter; it has no search/domain application implementation. The topology declares URLFrontier input and status updates, fetching, sitemap/feed and HTML parsing, optional Tika parsing, and `StdOutIndexer` output. On 2026-10-30, Java 17.0.12 / Maven 3.9.16 built the shaded JAR successfully offline; Flux dry-run constructed one spout, nine bolts and 15 streams. The user then ran scripts/m0.ps1 on the Windows host. Reviewed service/console logs confirm all nine bolts prepared (including Tika configuration loading), the spout opened/activated, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on orchestrated SIGTERM (143); Compose container/network removal is user-reported. M0 is accepted for this empty-frontier local baseline. Actual fetching, document parsing, status writes, durable recovery and search remain unverified. `StdOutIndexer` is not a searchable index. See `docs/m0-baseline.md` for evidence, hashes, warning assessment and limits.
+This is a bootstrap-stage project generated from the Apache StormCrawler 3.7.0 Maven archetype, not yet an onion search engine. The repository contains a Flux topology and configuration, plus a new Kotlin M2 transport adapter; it has no search/domain application implementation. The topology declares URLFrontier input and status updates, fetching, sitemap/feed and HTML parsing, optional Tika parsing, and `StdOutIndexer` output. On 2026-10-30, Java 17.0.12 / Maven 3.9.16 built the shaded JAR successfully offline; Flux dry-run constructed one spout, nine bolts and 15 streams. The user then ran scripts/runners/run-startup-check.ps1 on the Windows host. Reviewed service/console logs confirm all nine bolts prepared (including Tika configuration loading), the spout opened/activated, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on orchestrated SIGTERM (143); Compose container/network removal is user-reported. M0 is accepted for this empty-frontier local baseline. Actual fetching, document parsing, status writes, durable recovery and search remain unverified. `StdOutIndexer` is not a searchable index. See `docs/m0-baseline.md` for evidence, hashes, warning assessment and limits.
 
 The default M0/M1 topology has no Tor transport. The separate M2 stack now has a bridge-enabled transport and v3 validation, but its full acceptance is BLOCKED. There is no accepted production fail-closed guarantee, autonomous cross-service discovery, search API, desktop interface, graph storage or AI integration. A standalone M1 test harness now exists under test/m1, with Python verifier/fixture tests and Java gRPC/filter probes; it is not wired into Maven test. Full controlled Docker runs are accepted on Windows and Omarchy Linux; this establishes only the synthetic M1 crawl and graceful recreation contract.
 
@@ -194,10 +334,10 @@ The user reports that the initial Maven build succeeded, Entire is enabled, Code
 - `src/main/resources/` — URL, regex, parse and JSoup filter configuration. M2 Kotlin transport lives under src/main/kotlin; these resource files remain shared.
 - `README.md` - project status, build and empty-frontier runtime instructions.
 - `compose.m0.yaml` - host-verified two-container empty-frontier M0 runtime; ephemeral RocksDB, internal network, no published ports.
-- `scripts/build.ps1` - verified Windows build helper; supports JDK selection, IntelliJ Maven discovery and offline cache.
-- `scripts/m0.ps1`, `scripts/m0-container.sh` - host-run baseline orchestration, readiness wait, bounded local run and cleanup; agent reviewed logs, not an agent runtime rerun.
+- `scripts/cli/build-project.ps1` - verified Windows build helper; supports JDK selection, IntelliJ Maven discovery and offline cache.
+- `scripts/runners/run-startup-check.ps1`, `scripts/runners/run-startup-container.sh` - host-run baseline orchestration, readiness wait, bounded local run and cleanup; agent reviewed logs, not an agent runtime rerun.
 - `docs/m0-baseline.md` - 2026-10-30 M0 acceptance evidence, warning assessment, limits and M1 checklist.
-- `compose.m1.yaml`, `scripts/m1.sh`, `scripts/m1.ps1`, `scripts/m1-container.sh`, `scripts/frontier-volume-init.sh` - controlled M1 orchestration; host verified; M1 accepted after volume ownership, pacing and verifier corrections.
+- `compose.m1.yaml`, `scripts/runners/run-controlled-crawl.sh`, `scripts/runners/run-controlled-crawl.ps1`, `scripts/runners/run-controlled-crawl-container.sh`, `scripts/runners/frontier-volume-init.sh` - controlled M1 orchestration; host verified; M1 accepted after volume ownership, pacing and verifier corrections.
 - `test/m1/` - synthetic Python HTTP fixture, M1-only settings/resources, Java frontier/filter checks and Python evidence verifier/tests. Test Java sources are not application code and are compiled by the M1 helper, not Maven.
 - `docs/m1-controlled.md` - M1 run command, evidence contract, observed local checks, retention and limits.
 - `.gitignore` — ignores Maven output, IDE files, common secrets and local crawl data.
@@ -224,7 +364,7 @@ mvn clean package
 
 The shade plugin packages `target/onionall-brawler-0.1.0-SNAPSHOT.jar` with Flux as the manifest main class. The README documents build and M0 commands. The host run verified `storm local ... --local-ttl 30` and URLFrontier on `localhost:7071` via a shared container network namespace. RocksDB initialized in temporary /crawldir/rocksdb; persistence across restarts is deliberately absent from M0 and remains M1 work. Seed injection has not been tested.
 
-On 2026-10-30 Maven 3.9.16 was found in IntelliJ IDEA 2026.2.3 and used with the installed Oracle JDK 17.0.12. Online resolution failed for repo.maven.apache.org. A workspace-local copy of the existing Maven cache enabled a fresh offline clean package (BUILD SUCCESS, 27.757 seconds), also verified through scripts/build.ps1 (19.071 seconds). At those M0 builds no repository-owned tests existed or ran; the later standalone M1 tests run separately from Maven. `.runtime/` is ignored and contains disposable dependencies and logs; the host cache was not modified. Record the command, environment and outcome whenever verification is performed.
+On 2026-10-30 Maven 3.9.16 was found in IntelliJ IDEA 2026.2.3 and used with the installed Oracle JDK 17.0.12. Online resolution failed for repo.maven.apache.org. A workspace-local copy of the existing Maven cache enabled a fresh offline clean package (BUILD SUCCESS, 27.757 seconds), also verified through scripts/cli/build-project.ps1 (19.071 seconds). At those M0 builds no repository-owned tests existed or ran; the later standalone M1 tests run separately from Maven. `.runtime/` is ignored and contains disposable dependencies and logs; the host cache was not modified. Record the command, environment and outcome whenever verification is performed.
 
 ### M0 gaps and resolved references
 
@@ -279,7 +419,7 @@ M0 is accepted based on the host-run evidence described above and in docs/m0-bas
 
 ## Current boundary
 
-M0 and M1 are accepted. M2 is now authorized and in progress; acceptance is pending. Repeat M1 on Linux with `bash scripts/m1.sh` or on Windows with `./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.
+M0 and M1 are accepted. M2 is now authorized and in progress; acceptance is pending. Repeat M1 on Linux with `bash scripts/runners/run-controlled-crawl.sh` or on Windows with `./scripts/runners/run-controlled-crawl.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"`; each run creates a fresh project and retains its volume. Keep raw evidence ignored, never weaken assertions, and never infer Tor/search readiness from this fixture run.
 
 ## M2 recovery preflight — 2026-10-31
 
@@ -287,7 +427,7 @@ Recovery remains BLOCKED. Bounded clean native Tor75s and outbound-container
 Tor95s both fail to finish bootstrap (host10%, container14%). TCP to sampled
 relay ports succeeds, normal HTTPS verifies, host NTP is synchronized. Exact
 host/upstream filtering cause is unproven; firewall inspection lacked privileges.
-No Kotlin, networking policy or TLS trust changes were made. scripts/m2.sh now
+No Kotlin, networking policy or TLS trust changes were made. scripts/runners/run-tor-acceptance.sh now
 runs test/m2/tor_preflight.py before Maven/full stack: existing pinned image,
 no ports/mounts, temporary state,90s bound, bootstrap100 gate and JSON cleanup
 result. Build image once if missing. Sixteen Python tests pass; JVM unchanged,
@@ -363,3 +503,34 @@ Windows and desktop notification delivery were not executed. No new commits
 were made after the explicit audit prohibition. Changes remain in the working
 tree. Full integration has real passed stages and preserved failures, not a
 passing M2 result. See docs/m2-hardening.md and ignored bridge-integration reports.
+
+## Recovery contract implementation — 2026-11-03
+
+Acceptance now attributes unassisted/assisted transport separately; the strict full M2 gate remains unchanged. Internal-only deterministic Storm/TorProtocol/Frontier recovery and three-error terminal metadata characterization pass in57fb824e2d5b; terminal reason is still discarded by stock Frontier. 43 targeted JVM/113 Python M2 tests pass. Single retained/cold attempt4c5fbf2c0766 ended INCONCLUSIVE before baseline: gateway startup health120s failed, pair0, cleanup/retention/host checks pass. Read the latest recovery-execution-ledger entry for commands and evidence. Full M2/M3 remain BLOCKED. Preserve user documentation consolidation.
+
+## Local archive MVP — 2026-11-03
+
+ArchiveStore owns H2 catalog/schemaV1 and SHA256 HTML objects, not scheduling.
+ArchiveParseFilter commits before parser emission; ArchiveStatusUpdaterBolt.store
+records the installed scheduler outcome before the normal Frontier write/ACK.
+CLI: crawl plan/show/approve/status, blocked start(exit7), archive import/export,
+pages/page show/search-local, assisted search-provider(no scraping). Plans are
+same-origin/depth0..5/pages1..100; approval is not admission. H2 is single-process
+embedded, callbacks open/close stores; concurrent CLI may report catalog busy.
+Source/runtime/CLI contracts: docs/archive-mvp.md. Exact successful local
+Storm/TorProtocol/Frontier A→B→C/retry/archive/reopen and Recovery evidence:
+docs/engineering/archive-execution-ledger.md.105 JVM/113 M2/16 CLI/2 fixture tests
+pass; durable admission and M2/M3 qualification remain blocked. Existing RocksDB
+volumes are not migrated and no external Tor experiment is repeated here.
+
+## M4.1 durable admission — 2026-11-03
+
+Configured start now uses the versioned owning Frontier server (frontier-server/)
+for sync-WAL reservation+quota+enqueue; no stock API/local-counter fallback.
+DurableDiscoveryFilter preserves rejected graph edges; H2 schemaV2 is catalog
+only. Child-owned archive-wide runtime lock/deadline survives CLI termination.
+Routing: docs/m41-durable-admission.md (CLI/deployment), frontier-server/README.md
+(server/schema/rollback), docs/engineering/m41-execution-ledger.md (executed tests).
+Packaged controlled acceptance a7c09e2448f4 passes, as does actual Recovery
+7d7260899b6d. Real-Tor M2/M3 remain blocked. Preserve user .gitignore changes.
+No push is authorized for this task.

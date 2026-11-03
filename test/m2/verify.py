@@ -13,7 +13,7 @@ FIELDS = ['real_tor_transport', 'controlled_onion_fetch', 'remote_onion_resoluti
 
 
 def verify(path):
-    result = dict(m2_verified=False, **{field: False for field in FIELDS}, evidence=[], blockers=[])
+    result = dict(m2_verified=False, **{field: False for field in FIELDS}, evidence=[], blockers=[], stages={})
     if (path/'runner-state.json').exists():
         state=json.loads((path/'runner-state.json').read_text())
         result['evidence'].append('runner-state.json')
@@ -29,12 +29,16 @@ def verify(path):
     def check(condition, message):
         if not condition:
             raise ValueError(message)
-    def stage(files, action):
+    def stage(name, files, action):
         try:
             action()
             result['evidence'].extend(files)
+            result['stages'][name] = {'status': 'PASS', 'evidence': files}
         except (OSError, ValueError, KeyError, TypeError) as error:
             result['blockers'].append(str(error))
+            result['stages'][name] = {'status': ('EVIDENCE_MISSING' if isinstance(error, FileNotFoundError) else
+                                                 'EVIDENCE_INVALID' if isinstance(error, (json.JSONDecodeError, KeyError, TypeError)) else 'FAILED'),
+                                      'reason': str(error), 'required_evidence': files}
     def network():
         evidence = load('network.json')
         container=load('network-container-initial.json')[0]
@@ -50,12 +54,19 @@ def verify(path):
         check(not evidence['public_dns_tcp']['connected'] and not evidence['public_dns_udp']['response_received'], 'Public DNS reachable')
         check(evidence['onion_health']['socks_atyp'] == 3 and evidence['onion_health']['http_status'] == 200, 'Real onion SOCKS request missing')
         result.update(real_tor_transport=True, no_direct_egress=True, remote_onion_resolution=True)
-    stage(['network.json','network-container-initial.json','network-config-initial.json'], network)
+    stage('network', ['network.json','network-container-initial.json','network-config-initial.json'], network)
     def policy():
         evidence = load('policy.json')
         check(evidence['passed'] and len(evidence['checks']) == 4 and all(row['blocked'] for row in evidence['checks']), 'Proxy bypass probe failed')
         result['proxy_bypass_blocked'] = True
-    stage(['policy.json'], policy)
+    stage('policy', ['policy.json'], policy)
+    def policy_traffic():
+        all_requests = [json.loads(line) for line in (path/'requests.jsonl').read_text().splitlines() if line]
+        policy_requests = [row for row in all_requests if row['user_agent'] == 'OnionallBrawlerMTwoPolicy']
+        check(all(row['path'] in {'/escape','/loop-a','/slow','/reset'} for row in policy_requests), 'Negative probe escaped its controlled paths')
+        check(sum(row['path'] == '/loop-a' for row in policy_requests) == 1,
+              'Redirect loop probe must produce exactly one /loop-a request')
+    stage('policy_traffic', ['requests.jsonl'], policy_traffic)
     def crawl():
         host = (path / 'onion-hostname.txt').read_text().strip()
         base = 'http://' + host
@@ -87,10 +98,6 @@ def verify(path):
         check(set(final) == set(before) and all(final[url] == before[url] for url in required), 'Second crawl unexpectedly revisited state')
         check(final[pending]['refetch'] > final_time + 3600 and not final[pending]['metadata'].get('fetch.error.count'), 'Pending work did not resume')
         all_requests = [json.loads(line) for line in (path/'requests.jsonl').read_text().splitlines() if line]
-        policy_requests = [row for row in all_requests if row['user_agent'] == 'OnionallBrawlerMTwoPolicy']
-        check(all(row['path'] in {'/escape','/loop-a','/slow','/reset'} for row in policy_requests), 'Negative probe escaped its controlled paths')
-        check(sum(row['path'] == '/loop-a' for row in policy_requests) == 1,
-              'Redirect loop probe must produce exactly one /loop-a request')
         requests = [row for row in all_requests if row['user_agent'] not in {'OnionallBrawlerMTwoPolicy', 'OnionallBrawlerMTwoOutage', 'OnionallBrawlerMTwoRecovery'}]
         recovery_requests = [row for row in all_requests if row['user_agent'] == 'OnionallBrawlerMTwoRecovery']
         check(all(row['path'] == '/robots.txt' and row.get('method') == 'GET' and row.get('status') == 200
@@ -125,7 +132,7 @@ def verify(path):
         check(load('crawl-runtime.json') == {'first_exit_code': 0, 'second_exit_code': 0}, 'Crawl process exits unavailable/nonzero')
         result.update(controlled_onion_fetch=True, robots_verified=True, crawl_delay_verified=True,
                       frontier_persistence_verified=True, frontier_records=len(final), minimum_observed_gap_seconds=min(gaps))
-    stage(['crawled.json','before.json','after.json','final.json','requests.jsonl','crawl-runtime.json'], crawl)
+    stage('crawl', ['crawled.json','before.json','after.json','final.json','requests.jsonl','crawl-runtime.json'], crawl)
     def outage():
         exits = load('scenario-exits.json')
         check(all(type(exits.get(key)) is int and exits[key] == 0
@@ -200,7 +207,7 @@ def verify(path):
         check([row['path'] for row in ordered] == ['/robots.txt', '/outage', '/robots.txt', '/outage'], 'Outage documents requested before robots')
         check(all(row['method'] == 'GET' and row['status'] == 200 and row['finished_ns'] >= row['started_ns'] for row in traffic), 'Unexpected outage fixture HTTP outcome')
         result['fail_closed_verified'] = True
-    stage(['scenario-exits.json','network-outage.json','security-scenarios.json','outage-pipeline.json','outage-failed.json','outage-recovered.json'], outage)
+    stage('outage', ['scenario-exits.json','network-outage.json','security-scenarios.json','outage-pipeline.json','outage-failed.json','outage-recovered.json'], outage)
     def regression():
         evidence = load('m1-regression.json')
         check(evidence['exit_code'] == 0, 'M1 regression failed')
@@ -210,7 +217,7 @@ def verify(path):
         cleanup = json.loads((m1/'result.json').read_text())
         check(all(verification.get(key) is True for key in ('assertions_passed','crawl_evidence_passed','runtime_verified')) and cleanup.get('containers_removed') is True, 'M1 regression evidence incomplete')
         result['m1_regression_passed'] = True
-    stage(['m1-regression.json'], regression)
+    stage('regression', ['m1-regression.json'], regression)
     def cleanup():
         evidence = load('cleanup.json')
         check(evidence['containers_removed'] is True and evidence['network_removed'] is True, 'Cleanup incomplete')
@@ -218,7 +225,7 @@ def verify(path):
         check(isinstance(volumes, dict) and
               all(volumes.get(name) is True for name in ('frontier-data', 'tor-state', 'onion-state')),
               'Cleanup retention of frontier-data, tor-state and onion-state not verified')
-    stage(['cleanup.json'], cleanup)
+    stage('cleanup', ['cleanup.json'], cleanup)
     result['m2_verified'] = all(result[field] for field in FIELDS) and not result['blockers']
     return result
 

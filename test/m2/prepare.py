@@ -1,6 +1,7 @@
 """Generate a bounded onion-only topology from the unchanged M0 graph."""
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -34,6 +35,8 @@ def prepare(run_dir):
         '  tor.mode: "ONLY"', '  tor.socks.host: "tor"', '  tor.socks.port: 9050',
         f'  tor.allowed.hosts: [{json.dumps(host)}]',
     ]) + '\n'
+    if os.environ.get('M2_TOR_DIAGNOSTICS') == '1':
+        config += '  tor.diagnostics.enabled: true\n'
     (run_dir / 'crawler-conf.yaml').write_text(config, encoding='utf-8')
     relative = run_dir.relative_to(ROOT).as_posix()
     derived = topology((ROOT / 'crawler.flux').read_text()).replace('crawler-m1', 'crawler-m2')

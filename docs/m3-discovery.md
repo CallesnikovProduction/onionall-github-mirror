@@ -74,12 +74,12 @@ is not a claim that arbitrary separately launched seed fetchers cannot start.
 
 ## Reproduce the local vertical
 
-Requires cached M1 images, Docker Compose, Java17 tools on PATH, Python and an
+Requires current M1 images, Docker Compose, Java25 tools on PATH, Python and an
 offline Maven cache. No host DNS/proxy/VPN/route changes are needed:
 
 ```sh
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk PATH=/usr/lib/jvm/java-17-openjdk/bin:$PATH mvn -o -B -Dmaven.repo.local=.runtime/maven-linux-repository verify
-JAVA_HOME=/usr/lib/jvm/java-17-openjdk PATH=/usr/lib/jvm/java-17-openjdk/bin:$PATH python3 -B test/m3/local_integration.py
+mvn -o -B -Dmaven.repo.local=.runtime/maven-linux-repository verify
+python3 -B test/m3/local_integration.py
 python3 -B -m unittest discover -s test/m3 -p 'test*.py'
 python3 -B -m unittest discover -s test/m2 -p 'test*.py'
 ```
@@ -124,3 +124,15 @@ hardening do not change the proven graph/retry assertions; live cancellation
 fault injection remains unverified. Current exact commands/results are recorded
 in the raw logs. Unrelated pre-existing pom.xml release17 edit is not included
 in the completion commits.
+
+## Platform migration verification — 2026-11-01
+
+Java25/Storm3.1 with StormCrawler3.7 passed actual LocalCluster/Flux A→B→C,
+robots/dedup/depth, temporary503 retry and five persisted frontier records
+(profile5f37e310b5; final-default rerun91c6025d49, cleanup/retention pass). This local diagnostic still reports m3_verified=false.
+Maven47, Python M2 67/M3 2, Java25 resolver-guard35 pass.
+Tor prerequisite127.0.0.1:19050 refused; no live integration started.
+Durable admission remains rejected outside local-test; see ADR0002.
+The historical Java17 results above remain valid for their original commits.
+Current commands assume one selected JDK25 on JAVA_HOME/PATH. Full compatibility,
+input checksums and remaining blockers: [migration report](jvm25-storm31-migration.md).

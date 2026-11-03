@@ -1,0 +1,23 @@
+--- a/Nimbus.java
++++ b/Nimbus.java
+@@ -454,0 +455 @@
++    private volatile boolean cleanupStopping;
+@@ -3155,0 +3157,3 @@
++            if (cleanupStopping) {
++                return;
++            }
+@@ -3204,0 +3209,10 @@
++    }
++
++    private void stopCleanupTimer() throws InterruptedException {
++        cleanupStopping = true;
++        // Drain active cleanup before interrupting the timer or disconnecting ZooKeeper.
++        synchronized (submitLock) {
++            // A newly scheduled cleanup sees cleanupStopping and performs no I/O.
++        }
++        // Do not hold submitLock while close joins the timer thread.
++        cleanupTimer.close();
+@@ -5500,0 +5515 @@
++            stopCleanupTimer();
+@@ -5502 +5516,0 @@
+-            cleanupTimer.close();

@@ -1,7 +1,212 @@
 # M2 hardening and portability audit — 2026-10-31
 
-This audit accompanies bridge integration. No new commit is authorized by the
-latest audit request; preserve the working changes for review.
+Historical audit records accompany bridge integration. The 2026-11-02 closure
+request authorizes committing/pushing independently verified harness fixes,
+without claiming failed acceptance gates have passed.
+
+## Recovery continuation — 2026-11-03
+
+TPR-02 cross-origin robots head-of-line blocking is reproduced and fixed in the
+actual TorProtocol: per-origin loading, short shared-cache critical sections,
+successful-only publication, existing ten-minute TTL/16-entry bound and terminal
+cancellation. Public no-arg construction remains available. Offline Java25
+verify90, Python M2 85 and CLI/PTY16 pass. Before/after and exact commands:
+[execution ledger](engineering/recovery-execution-ledger.md).
+
+Original targeted9560fd480748 fails despite the earlier controlled same-context
+c8d4cc4db8e8 PASS. Initial onion health/identity pass, but the single gateway
+restart still leaves CONNECT reply unanswered for30s; no JVM/crawler resume.
+Quarantine/cleanup work, all three volumes survive, host baseline unchanged.
+Full M2 is not launched after this failed prerequisite. M2/M3 remain BLOCKED;
+Tor security delivery is independently BLOCKED on official-host DNS resolution.
+No larger deadlines, log suppression, scope relaxation or host network changes.
+Written control flow and production boundary:
+[implementation review](engineering/recovery-implementation-review.md).
+
+Follow-up bounded comparisons:52b269ed5fb1 passes real Storm in one namespace;
+8f2036152884 fails all four clients after gateway restart before the fresh-context
+comparison is eligible. Thus namespace change is not necessary for failure, and
+cold-state/fresh-context causal claims remain unverified. These options preserve
+default/original acceptance; four new branch tests make Python M2 **89 PASS**.
+No further identical Tor retry. Strict M136bf86224d74 passes on the same artifact:
+six records, gap2.002960580s and full cleanup/retention. Opt-in M1 unit32 and M3
+helper2 pass. Frontier-only lifecycle1a7cb4b6f722 passes SIGKILL, lease expiry,
+pending/result persistence and recreation; it does not establish atomic admission.
+The pinned server build path is now feasible offline (14 classes/nine upstream
+storage tests). A reproduced added-CF rollback incompatibility must be resolved
+before migration; [implementation plan](engineering/frontier-admission-implementation-plan.md).
+
+Final independent regressions: local HTTP M3f90ef8e542 passes five records and
+persisted provenance/retry, with no ERROR/FATAL in crawler/services logs. Final
+frontier timing-guard variante4b9595217a2 passes too. Cleanup audit confirms seven
+projects removed,13 expected volumes retained and protected host snapshot
+unchanged. Detailed machine summary stays ignored at
+`.runtime/autonomous-recovery/final-summary-20261103.json`. These results leave
+`m2_verified=false`, `m3_verified=false` and production-ready=false: current
+runtime ownership and durable admission still need implementation/qualification,
+separately from the external Tor/security blockers.
+
+## Implementation pass — 2026-11-02
+
+Afterc99064f, Nimbus source and installed bytecode confirm two independent
+lifecycle races. LocalFsBlobStore publishes key/meta before data commit, while
+cleanup reads it outside the existing submission lock. The first backport
+serializes doCleanup on submitLock: fresh M193e27294af36 passes, but repeat
+fcab856c3399 catches a separate shutdown interruption in cleanupTimer.close.
+Revision2 publishes a stop flag, drains active cleanup on the same lock, then
+closes the timer outside the lock before disconnecting dependencies. Real Nimbus
+lock and real StormTimer shutdown probes fail baseline and pass the corrected
+code; late cleanup performs no dependency I/O. No ERROR handling/timers/assertions
+are disabled. See docker/storm-lifecycle/README.md and build-storm-lifecycle.sh.
+Both original images and cleanup1 remain available; cleanup2 is explicit via
+M1_STORM_IMAGE/M2_STORM_IMAGE, with actual image IDs recorded by harnesses.
+
+M2 now has opt-in bounded redacted TOR_TRACE (256 events/client, JVM/request IDs,
+UTC/thread, hashed host, connect/TLS/acquire/cancel/close). Native SOCKS subphases
+are not inferred from EventListener. Standalone verification uses a different
+container/client address from the next crawler; Tor's default IsolateClientAddr
+means it cannot establish that crawler's circuit readiness. The targeted variant
+therefore runs one finite verification series inside the actual crawler container
+before Storm, without changing isolation or retry/network deadlines. This remains
+an experiment until actual resumed crawler/pending assertions pass; defaults and
+standalone variant are preserved. Outer command budgets include the added finite
+series time, rather than changing the20s network deadline.
+
+Revision2 M1 repeatability:25da2046fecb andd927d1d8835e PASS (strict original
+verifier, zero ERROR/FATAL, six records, pending recovery, cleanup and retained
+volumes). Commitb8ee0da pushed to Entire. No default image pin changed; explicitly
+select onionall-storm:3.1.0-jre25-cleanup2 using M1_STORM_IMAGE/M2_STORM_IMAGE.
+
+New targeted19aa14dfd670 FAIL before the same-container variant could execute:
+initial owned health succeeds9.835s; keys unchanged; post-service-restart SOCKS
+CONNECT times out30.018s; one gateway restart restores Python HTTP health7.086s.
+The first standalone Java robots call emits socks_connect_start, then watchdog
+cancellation at20004ms and call_failed at20006ms, with no acquired connection or
+HTTP event. Controller closes gateway, never resumes the consumer, and cleanup
+retains all three volumes. Same-container readiness remains UNVERIFIED, not an
+established fix. No identical retry or dependent full M2 was launched. M2
+repeatability requirement of three passing runs remains unsatisfied.
+
+Live tracing exposed an instrumentation privacy defect: sanitized/truncated
+OkHttp thread names still include partial URL-derived content. The deliverable
+uses only thread_id plus fixed thread_kind categories; regression checks schema.
+Previously captured traces stay ignored as potentially sensitive diagnostics.
+No URL, path, query, auth or raw thread names are exported by the corrected trace.
+This is opt-in diagnostic code, not proof of DNS isolation or a transport fix.
+
+Final checks: Java25 Maven82, Python M282/M131+1skip/M32, CLI/PTY15 pass.
+All seven new volumes retained; no remaining containers/networks for these runs.
+Target before/after protected host state matches, but the final cross-session
+comparison detects changed routes/resolver (rules unchanged). No host mutation
+commands were executed; origin of the later change is not established. Do not
+restore host settings; capture fresh read-only preflight before any new Tor run.
+Final evidence summary: .runtime/recovery-implementation-20261102/summary.json.
+
+ADR0003 is a concrete PROPOSED additive Frontier service/storage contract, not
+an activated admission implementation. CLI admission remains disabled. Full M3
+requires server-source/storage work and real-onion verification after M2 passes.
+
+Tor delivery recheck: official InRelease and signing key downloaded over ordinary
+HTTPS and signature/fingerprint verified. Packages connection timed out5s; no
+retry, package download, candidate build, default pin or host network change.
+Exact manual bundle procedure/result: ignored recovery-implementation-20261102/security.
+Tor stays0.4.9.11; production-ready remains false.
+
+## Recovery closure attempt — 2026-11-02
+
+Branch migration/java25-storm31, starting checkpoint0998050. Existing M1/M2/M3
+variants and acceptance assertions are preserved; CLI, parser, TorProtocol,
+transport settings and dependency pins are unchanged. No new recovery layer.
+
+Confirmed defects fixed:
+
+- M2 used an mtime scan to find M1's successful result even after a failed
+  child command. Latest prior4f6890b7bf1c failed Docker Hub resolution before
+  result creation, then misleadingly reported missing evidence. Parent now
+  selects an isolated child project/path before launch, saves partial evidence
+  and exit first, and reports image resolution separately. Existing evidence
+  paths and arbitrary project names are rejected. No timestamp inference.
+- Explicit `--cached-images` now propagates to the M1 child. Both Bash and
+  PowerShell support M1_CACHED_IMAGES=1, inspect/record the unchanged pinned
+  images and select pull_policy=never for every M1 service and dependency.
+  Default online behavior remains; no substitutes or host network changes.
+- The recovery controller required a nested HTTP object even when a failed
+  network_probe correctly emitted a flat pre-HTTP phase/error record. Such
+  CONNECT failure is now reported with phase/type/elapsed evidence; quarantine
+  and gateway stop remain mandatory. Array/null/malformed success stay rejected.
+
+Fresh run8b64cfc89746, Tor0.4.9.11 (actual network-disabled --version):
+
+1. Isolated preflight: live bootstrap100, SOCKS ATYP3, HTTPS200 IsTor=true,
+   bridge process present, temporary container removed.
+2. Controlled initial /health succeeds. Owned onion is stopped/restarted;
+   hostname and key hashes remain identical. A fresh socket gets through SOCKS
+   greeting, then CONNECT reply times out30.024s.
+3. The existing one-cycle controller quarantines a consumer and restarts the
+   same gateway container. Python HTTP canary succeeds in11.853s; real JVM
+   TorProtocol completes robots/health three times plus final robots parsing.
+4. Consumer resumes; pending frontier snapshot is unchanged. A real Storm
+   crawler then fails its next robots fetch: ROBOTS_UNAVAILABLE -> REQUEST_TIMEOUT
+   -> SocketException in JDK SocksSocketImpl.readSocksReply/connect. This is
+   before HTTP; the Java stack does not identify greeting versus CONNECT reply.
+   No pending page request reaches the fixture. Its URL remains durably present
+   with fetch.error.count=1 and a future retry/backoff, rather than being lost.
+5. Targeted acceptance remains FAIL (`Pending content did not resume`);
+   m2_verified=false. Containers/networks removed, all three volumes retained,
+   protected VPN/default routes/rules/DNS unchanged.
+
+Independent cached M1 child regressionac0f49b9578d-m1 also FAILS in this fresh
+run: both crawler exits0, six records, before==after and pending fetched, but
+unchanged strict verifier detects Nimbus cleanupTimer ERROR/BlobStoreUtils:
+FileNotFoundException for stormcode.ser during topology submission. This occurs before the first fetch, during overlapping submission/cleanup;
+a Storm3.1 blob lifecycle race is a supported hypothesis, not a source-level
+proven cause. It is not a pull failure or observed frontier loss. No log suppression, ERROR whitelist, cleanup-timer workaround or
+acceptance change was made. Parent correctly records exit1 and the exact partial
+path instead of reporting a missing-evidence race. Prior M1 accepted evidence
+remains intact; this new regression must not be called green.
+
+A successful canary or finite protocol series does not establish future stream
+availability. The exclusive Tor/path cause of the subsequent negotiation stall
+is still unproven. Existing one-shot recovery cannot promise stable runtime
+resume; it remains fixture-coupled M2 tooling. No timeout increase, additional
+recovery loop, DIRECT fallback, manual circuit reset or security relaxation was
+used. Full M2 is BLOCKED behind the failed targeted prerequisite, not reported
+as an executed PASS/FAIL. Do not rerun identical full gates searching for luck.
+
+A suspected verifier mismatch was rejected after reading fixture.py: /health is
+intentionally absent from requests.jsonl, so four logged recovery robots requests
+are correct. The exploratory synthetic change was removed entirely; original
+verifier/test_harness assertions remain. Its failed synthetic output is retained
+as rejected-verifier-hypothesis.log, not evidence of a product defect.
+
+M3 has no existing full real-onion E2E runner: prepare.py emits Tor configuration,
+while local_integration.py deliberately uses isolated stock HTTP. Keep that
+variant as a local diagnostic. Durable global admission still requires ADR0002's
+additive server/storage/API contract (atomic unique reservation + quota + enqueue,
+restart and ambiguous-ACK tests); local planner ADMITTED is not a durable ACK.
+Therefore M3 cannot be declared complete even if an M2 network retry succeeds.
+No new queue, supervisor or inferred exactly-once guarantee is introduced.
+
+Safe next boundary: deliver/test the signed Tor security candidate independently
+(default remains0.4.9.11), then instrument the resumed JVM SOCKS negotiation phase
+for one discriminating comparison with the already successful series, using the
+same owned fixture. Do not change VPN/DNS/routes/firewall. Stable resumed Storm
+processing must pass before full M2; real-onion M3 variant and ADR0002 server work
+remain separate additive tasks, preserving current variants and acceptance.
+
+Executed checks: offline Java25 Maven verify/build80 PASS; Python M2 76 PASS,
+M1 31 PASS plus one optional skip, M3 2 PASS; CLI/PTY15 PASS. Installed offline
+discover exits0. Bash syntax and M1/M2 Compose config pass. Native PowerShell is
+not installed: Windows runtime is NOT executed. Fresh local M3b62983d078 PASS:
+five frontier records, provenance, cyclic dedup, temporary503 retry, robots,
+container/network cleanup and retained volume; m3_verified=false as designed.
+Final independent inspection verifies five retained volumes across target/M1/M3,
+no remaining containers/networks for those projects, unchanged protected host
+routes/rules/resolver hash. No existing volumes or keys were deleted. Entire
+doctor hooks/approval records pass. Diff excludes runtime/secret artifacts.
+
+Evidence root: `.runtime/m2/closure-20261102/acceptance-summary.json` and referenced
+logs. Target: `.runtime/m2/onionall-brawler-m2-8b64cfc89746/`.
 
 ## Final integration review — 2026-11-01
 
@@ -234,7 +439,7 @@ confirms version0.4.9.15-1~d12.bookworm+1 and SHA256
 The [official repository instructions](https://support.torproject.org/little-t-tor/getting-started/installing/)
 publish repository key fingerprint `A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89`.
 Previous checksum-only remote ADD did not authenticate the APT metadata chain.
-It is superseded by `scripts/verify_tor_candidate.py` and a local COPY candidate
+It is superseded by `scripts/security/verify_tor_candidate.py` and a local COPY candidate
 Dockerfile. Production Compose/default version remains unchanged.
 
 ### Manual transfer, without changing this host's network policy
@@ -259,7 +464,7 @@ Transfer exactly these four files via an approved file-transfer channel into
 bridges or Tor state. From the repository root:
 
 ```sh
-python3 -B scripts/verify_tor_candidate.py .runtime/m2/tor-security/incoming .runtime/m2/tor-security/verified-build
+python3 -B scripts/security/verify_tor_candidate.py .runtime/m2/tor-security/incoming .runtime/m2/tor-security/verified-build
 docker build --network=none --pull=false -t onionall-brawler-tor:0.4.9.15-compat .runtime/m2/tor-security/verified-build
 docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --entrypoint /usr/bin/tor onionall-brawler-tor:0.4.9.15-compat --version
 ```
@@ -321,7 +526,7 @@ required by the verifier; missing/extra/malformed traffic fails. Recovery-agent
 traffic is checked separately from the unchanged main-crawl counts and security
 scenario requests. Raw failed detection is never rewritten as success.
 
-`scripts/m2_supervise.py` is an opt-in actual local Compose process owner, not
+`scripts/recovery/supervise_local_crawl.py` is an opt-in actual local Compose process owner, not
 just a test result generator: one bounded crawler batch; detect persisted log
 categories REQUEST_TIMEOUT/SOCKS_FAILURE/ONION_UNREACHABLE/ROBOTS_UNAVAILABLE;
 one recovery and one new JVM at most. It refuses existing quarantine, never
@@ -332,7 +537,7 @@ not prove content fetched. Prerequisites are an already prepared isolated M2
 project, evidence JAR containing the probes, and the owned canary fixture:
 
 ```sh
-python3 -B scripts/m2_supervise.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+python3 -B scripts/recovery/supervise_local_crawl.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
 ```
 
 This is **not yet independently deployable general production runtime**: it
@@ -417,13 +622,13 @@ bridge bootstrap, controlled onion/recovery and full M2/M1; none is claimed for
 
 ### Single-cycle recovery contract
 
-`scripts/m2_recovery.py` is a local Compose operator/controller, not a production
+`scripts/recovery/recover_tor_gateway.py` is a local Compose operator/controller, not a production
 watchdog or a fix to Tor's internal cache. It accepts only an isolated M2 project
 and its exact local evidence directory. Run it only while the owning harness
 or operator has exclusive control of crawler launches for that project:
 
 ```sh
-python3 -B scripts/m2_recovery.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+python3 -B scripts/recovery/recover_tor_gateway.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
 ```
 
 1. Detect a failed own-fixture SOCKS CONNECT after successful greeting. A fresh
@@ -515,7 +720,7 @@ host-after.json is a fresh post-full-run read-only measurement. This is a
 snapshot comparison, not a continuous packet/VPN monitor.
 
 Execution: JDK17, MAVEN_ARGS=-o, M2_MAVEN_REPOSITORY set to the existing writable
-`.runtime/maven-linux-repository`, `bash scripts/m2.sh`. Maven verify26pass;
+`.runtime/maven-linux-repository`, `bash scripts/runners/run-tor-acceptance.sh`. Maven verify26pass;
 Python M2:57pass; Python M1:31pass/1optional skip. git diff --check passes.
 No host/VPN settings, Kotlin source, dependency defaults, volumes or keys changed.
 No commit/push after checkpoint1180512. No identical full retry was launched.
@@ -964,3 +1169,15 @@ M2 fail-closed/outage/retry gate. Native Windows execution and actual desktop
 notification delivery remain unexecuted. Hooks/notification user settings were
 preserved; no volume deletion was performed or automated. No new audit commit
 or push was created after the user's explicit no-commit instruction.
+
+## JVM migration boundary — 2026-11-01
+
+The migration branch now uses Java25/Storm3.1, with StormCrawler3.7 unchanged.
+The historical JDK17 private-resolver guard described above is superseded by
+a separate test-only InetAddressResolverProvider service JAR. Positive controls
+include plain and uppercase/trailing-dot onion hosts;35 tests pass with zero
+application onion resolver attempts. All M2 helper Java sources compile for25.
+Probes include Storm's lib-common directory. Python M2 67 tests pass.
+M2 runtime/recovery/full gate were not rerun: local SOCKS19050 refused and Tor
+security/recovery blockers persist. m2_verified=false. Detailed migration
+inputs, evidence and limitations: [migration report](jvm25-storm31-migration.md).

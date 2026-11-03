@@ -1,0 +1,1062 @@
+// SPDX-FileCopyrightText: 2020 Crawler-commons
+// SPDX-License-Identifier: Apache-2.0
+
+package crawlercommons.urlfrontier.service.rocksdb;
+
+import com.google.protobuf.InvalidProtocolBufferException;
+import crawlercommons.urlfrontier.CrawlID;
+import crawlercommons.urlfrontier.Urlfrontier.AckMessage.Status;
+import crawlercommons.urlfrontier.Urlfrontier.KnownURLItem;
+import crawlercommons.urlfrontier.Urlfrontier.Stats;
+import crawlercommons.urlfrontier.Urlfrontier.URLInfo;
+import crawlercommons.urlfrontier.Urlfrontier.URLItem;
+import crawlercommons.urlfrontier.Urlfrontier.URLStatusRequest;
+import crawlercommons.urlfrontier.service.AbstractFrontierService;
+import crawlercommons.urlfrontier.service.QueueInterface;
+import crawlercommons.urlfrontier.service.QueueWithinCrawl;
+import crawlercommons.urlfrontier.service.SynchronizedStreamObserver;
+import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
+import io.grpc.stub.StreamObserver;
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.text.DecimalFormat;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.BloomFilter;
+import org.rocksdb.ColumnFamilyDescriptor;
+import org.rocksdb.ColumnFamilyHandle;
+import org.rocksdb.ColumnFamilyOptions;
+import org.rocksdb.DBOptions;
+import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.RocksIterator;
+import org.rocksdb.Statistics;
+import org.rocksdb.StatsLevel;
+import org.rocksdb.WriteBatch;
+import org.rocksdb.WriteOptions;
+import org.slf4j.LoggerFactory;
+
+public class RocksDBService extends AbstractFrontierService {
+
+    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(RocksDBService.class);
+
+    private static final DecimalFormat DF = new DecimalFormat("0000000000");
+
+    static {
+        RocksDB.loadLibrary();
+    }
+
+    private RocksDB rocksDB;
+    final Object admissionLock = new Object();
+    private volatile boolean admissionStopping;
+    private boolean admissionClosed; // admissionLock
+    AdmissionLedger admission;
+
+    // a list which will hold the handles for the column families once the db is
+    // opened
+    private final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
+
+    private Statistics statistics;
+
+    // no explicit config
+    public RocksDBService(String host, int port) {
+        this(new HashMap<String, String>(), host, port);
+    }
+
+    private final ConcurrentHashMap<QueueWithinCrawl, QueueWithinCrawl> queuesBeingDeleted =
+            new ConcurrentHashMap<>();
+
+    public RocksDBService(final Map<String, String> configuration, String host, int port) {
+
+        // configure the number of threads for puts
+        super(configuration, host, port);
+
+        // where to store it?
+        String path = configuration.getOrDefault("rocksdb.path", "./rocksdb");
+
+        LOG.info("RocksDB data stored in {} ", path);
+
+        if (configuration.containsKey("rocksdb.purge")) {
+            throw new IllegalArgumentException("Purge is disabled on the durable admission candidate");
+        }
+
+        if (configuration.containsKey("rocksdb.stats")) {
+            statistics = new Statistics();
+            statistics.setStatsLevel(StatsLevel.ALL);
+        }
+
+        boolean checkOnRecovery = configuration.containsKey("rocksdb.recovery.check");
+
+        boolean bloomFilters = configuration.containsKey("rocksdb.bloom.filters");
+
+        try (final ColumnFamilyOptions cfOpts = new ColumnFamilyOptions()) {
+
+            String sMaxBytesForLevelBase = configuration.get("rocksdb.max_bytes_for_level_base");
+            if (sMaxBytesForLevelBase != null) {
+                cfOpts.setMaxBytesForLevelBase(Long.parseLong(sMaxBytesForLevelBase));
+            }
+
+            cfOpts.optimizeUniversalStyleCompaction();
+
+            // list of column family descriptors, first entry must always be default column
+            // family
+            final List<ColumnFamilyDescriptor> cfDescriptors =
+                    Arrays.asList(
+                            new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, cfOpts),
+                            new ColumnFamilyDescriptor("queues".getBytes(), cfOpts),
+                            new ColumnFamilyDescriptor("queueInfos".getBytes(), cfOpts),
+                            new ColumnFamilyDescriptor("onionallAdmissionV1".getBytes(StandardCharsets.UTF_8), cfOpts));
+
+            if (java.nio.file.Files.exists(java.nio.file.Path.of(path, "CURRENT"))) {
+                try (org.rocksdb.Options inspectOptions = new org.rocksdb.Options()) {
+                    boolean admissionSchema = RocksDB.listColumnFamilies(inspectOptions, path).stream()
+                        .anyMatch(bytes -> Arrays.equals(bytes,"onionallAdmissionV1".getBytes(StandardCharsets.UTF_8)));
+                    if (!admissionSchema && !"copy-only".equals(configuration.get("admission.migrate")))
+                        throw new IllegalArgumentException("Admission schema migration requires explicit copy-only opt-in on a fresh isolated copy; stock2.4 rollback is incompatible");
+                } catch (RocksDBException e) { throw new IllegalStateException("Cannot inspect schema",e); }
+            }
+            long start = System.currentTimeMillis();
+
+            if (bloomFilters) {
+                LOG.info("Configuring Bloom filters");
+                cfOpts.setTableFormatConfig(
+                        new BlockBasedTableConfig().setFilterPolicy(new BloomFilter(10, false)));
+            }
+
+            try (final DBOptions options = new DBOptions()) {
+                options.setCreateIfMissing(true).setCreateMissingColumnFamilies(true);
+
+                String smaxBackgroundJobs = configuration.get("rocksdb.max_background_jobs");
+                if (smaxBackgroundJobs != null) {
+                    options.setMaxBackgroundJobs(Integer.parseInt(smaxBackgroundJobs));
+                }
+
+                // Options.max_subcompactions: 1
+                String smax_subcompactions = configuration.get("rocksdb.max_subcompactions");
+                if (smax_subcompactions != null) {
+                    options.setMaxSubcompactions(Integer.parseInt(smax_subcompactions));
+                }
+
+                if (statistics != null) {
+                    LOG.info("Allowing stats from RocksDB to be displayed when GetStats is called");
+                    options.setStatistics(statistics);
+                }
+
+                rocksDB = RocksDB.open(options, path, cfDescriptors, columnFamilyHandleList);
+            } catch (RocksDBException e) {
+                LOG.error("RocksDB exception ", e);
+                throw new RuntimeException(e);
+            }
+
+            long end = System.currentTimeMillis();
+
+            LOG.info("RocksDB loaded in {} msec", end - start);
+
+            admission = new AdmissionLedger(this, rocksDB, columnFamilyHandleList.get(3));
+            admission.readOnly = "true".equals(configuration.get("admission.readonly"));
+            // Always rebuild candidate indexes from authoritative rows, including after crash.
+            checkOnRecovery = true;
+            // full re-check
+            if (checkOnRecovery) {
+                LOG.info("Scanning tables to rebuild queues... (can take a long time)");
+                recoveryQscan(true);
+            } else {
+                recovery();
+            }
+
+            long end2 = System.currentTimeMillis();
+
+            LOG.info("{} queues discovered in {} msec", getQueues().size(), (end2 - end));
+        }
+    }
+
+    private void recovery() {
+        // if a table containing the queues info exists use it,
+        // otherwise just rebuild from the content of the tables
+        int read = 0;
+        try {
+            read = readQueueInfos();
+        } catch (RocksDBException e) {
+            LOG.error("readQueueInfos", e);
+        }
+        // nothing found? rebuild
+        if (read == 0) {
+            recoveryQscan(false);
+        }
+    }
+
+    /** Resurrects the queues from the URL tables and optionally does sanity checks * */
+    private void recoveryQscan(boolean check) {
+
+        LOG.info("Recovering queues from existing RocksDB");
+
+        if (check) {
+            try (final RocksIterator rocksIterator =
+                    rocksDB.newIterator(columnFamilyHandleList.get(1))) {
+                for (rocksIterator.seekToFirst(); rocksIterator.isValid(); rocksIterator.next()) {
+                    final String currentKey =
+                            new String(rocksIterator.key(), StandardCharsets.UTF_8);
+                    final QueueWithinCrawl qk = QueueWithinCrawl.parseAndDeNormalise(currentKey);
+                    QueueMetadata queueMD =
+                            (QueueMetadata)
+                                    getQueues().computeIfAbsent(qk, s -> new QueueMetadata());
+                    queueMD.incrementActive();
+                }
+            }
+            LOG.info("Found {} queues from scheduled table", getQueues().size());
+        }
+
+        QueueWithinCrawl previousQueueID = null;
+        long numScheduled = 0;
+
+        // now get the counts of URLs already finished
+        try (final RocksIterator rocksIterator =
+                rocksDB.newIterator(columnFamilyHandleList.get(0))) {
+            for (rocksIterator.seekToFirst(); rocksIterator.isValid(); rocksIterator.next()) {
+                final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
+                final QueueWithinCrawl Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
+
+                // changed ID? check that the previous one had the correct values
+                if (previousQueueID == null) {
+                    previousQueueID = Qkey;
+                } else if (check && !previousQueueID.equals(Qkey)) {
+                    int activeinQueues = getQueues().get(previousQueueID).countActive();
+                    if (activeinQueues != numScheduled) {
+                        LOG.error(
+                                "Incorrect number of active URLs for queue: {}. {} vs {}",
+                                previousQueueID,
+                                activeinQueues,
+                                numScheduled);
+                        throw new RuntimeException(
+                                "Incorrect number of active URLs for queue: " + previousQueueID);
+                    }
+                    previousQueueID = Qkey;
+                    numScheduled = 0;
+                }
+
+                // queue might not exist if it had nothing scheduled for it
+                // i.e. all done
+                QueueMetadata queueMD =
+                        (QueueMetadata) getQueues().computeIfAbsent(Qkey, s -> new QueueMetadata());
+
+                // check the value - if it is an empty byte array it means that the URL has been
+                // processed and is not scheduled
+                // otherwise it is scheduled
+                boolean done = rocksIterator.value().length == 0;
+                if (done) {
+                    queueMD.incrementCompleted();
+                } else {
+                    // if no checks have been done increment active
+                    if (!check) {
+    
+                    }
+                    // double check the number of scheduled later on
+                    numScheduled++;
+                }
+            }
+        }
+        // check the last key
+        if (check
+                && previousQueueID != null
+                && getQueues().get(previousQueueID).countActive() != numScheduled) {
+            throw new RuntimeException(
+                    "Incorrect number of active URLs for queue " + previousQueueID);
+        }
+    }
+
+    @Override
+    protected int sendURLsForQueue(
+            QueueInterface queue,
+            QueueWithinCrawl queueID,
+            int maxURLsPerQueue,
+            int secsUntilRequestable,
+            long now,
+            SynchronizedStreamObserver<URLInfo> responseObserver) {
+
+        // stop sending if we are closing
+        if (isClosing()) {
+            return 0;
+        }
+
+        int alreadySent = 0;
+        final byte[] prefixKey = (queueID.toString() + "_").getBytes(StandardCharsets.UTF_8);
+        // scan the scheduling table
+        try (final RocksIterator rocksIterator =
+                rocksDB.newIterator(columnFamilyHandleList.get(1))) {
+            for (rocksIterator.seek(prefixKey);
+                    rocksIterator.isValid() && alreadySent < maxURLsPerQueue;
+                    rocksIterator.next()) {
+
+                final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
+
+                // don't want to split the whole string _ as the URL part is left as is
+                final int pos = currentKey.indexOf('_');
+                final int pos2 = currentKey.indexOf('_', pos + 1);
+                final int pos3 = currentKey.indexOf('_', pos2 + 1);
+
+                final String crawlPart = currentKey.substring(0, pos);
+                final String queuePart = currentKey.substring(pos + 1, pos2);
+                final String urlPart = currentKey.substring(pos3 + 1);
+
+                // not for this queue anymore?
+                if (!queueID.equals(crawlPart, queuePart)) {
+                    return alreadySent;
+                }
+
+                // too early for it?
+                long scheduled = Long.parseLong(currentKey.substring(pos2 + 1, pos3));
+                if (scheduled > now) {
+                    // they are sorted by date no need to go further
+                    return alreadySent;
+                }
+
+                // check that the URL is not already being processed
+                if (((QueueMetadata) queue).isHeld(urlPart, now)) {
+                    continue;
+                }
+
+                // this one is good to go
+                try {
+                    // check that we haven't already reached the number of queues
+                    if (alreadySent == 0 && !responseObserver.tryTakingToken()) {
+                        return 0;
+                    }
+
+                    responseObserver.onNext(URLInfo.parseFrom(rocksIterator.value()));
+
+                    // mark it as not processable for N secs
+                    ((QueueMetadata) queue).holdUntil(urlPart, now + secsUntilRequestable);
+
+                    alreadySent++;
+                } catch (Throwable e) {
+                    LOG.error("Caught unlikely error ", e);
+                }
+            }
+        }
+
+        return alreadySent;
+    }
+
+    @Override
+    protected Status putURLItem(final URLItem value) {
+        if (admissionStopping) return Status.FAIL;
+        synchronized (admissionLock) {
+            if (admissionStopping) return Status.FAIL;
+            if (!admission.permitsLegacy(value)) return Status.FAIL;
+            return putLegacyURLItem(value);
+        }
+    }
+
+    private Status putLegacyURLItem(final URLItem value) {
+
+        if (isClosing()) {
+            return Status.FAIL;
+        }
+
+        long nextFetchDate;
+        boolean discovered = true;
+        URLInfo info;
+
+        putURLs_urls_count.inc();
+
+        if (value.hasDiscovered()) {
+            putURLs_discovered_count.labels("true").inc();
+            info = value.getDiscovered().getInfo();
+            nextFetchDate = Instant.now().getEpochSecond();
+        } else {
+            putURLs_discovered_count.labels("false").inc();
+            KnownURLItem known = value.getKnown();
+            info = known.getInfo();
+            nextFetchDate = known.getRefetchableFromDate();
+            discovered = Boolean.FALSE;
+        }
+
+        String Qkey = info.getKey();
+        final String url = info.getUrl();
+        final String crawlID = CrawlID.normaliseCrawlID(info.getCrawlID());
+
+        // has a queue key been defined? if not use the hostname
+        if (Qkey.equals("")) {
+            LOG.debug("key missing for {}", url);
+            Qkey = provideMissingKey(url);
+            if (Qkey == null) {
+                LOG.error("Malformed URL {}", url);
+                return Status.SKIPPED;
+            }
+            // make a new info object ready to return
+            info = URLInfo.newBuilder(info).setKey(Qkey).setCrawlID(crawlID).build();
+        }
+
+        LOG.debug("putURLItem -> {} with key {} in crawl {}", url, Qkey, crawlID);
+
+        // check that the key is not too long
+        if (Qkey.length() > 255) {
+            LOG.error("Key too long: {}", Qkey);
+            return Status.SKIPPED;
+        }
+
+        final QueueWithinCrawl qk = QueueWithinCrawl.get(Qkey, crawlID);
+
+        // ignore this url if the queue is being deleted
+        if (queuesBeingDeleted.containsKey(qk)) {
+            LOG.info("Not adding {} as its queue {} is being deleted", url, Qkey);
+            return Status.SKIPPED;
+        }
+
+        // make it intern so that all threads accessing this method
+        // share the same instance of the String, this way we can synchronize
+        // on it and make sure that 2 threads working on the same URL won't
+        // both be considered non-existant
+        final String existenceKeyString = (qk.toString() + "_" + url).intern();
+        final byte[] existenceKey = existenceKeyString.getBytes(StandardCharsets.UTF_8);
+
+        synchronized (existenceKeyString) {
+
+            // is this URL already known?
+            try (WriteBatch writeBatch = new WriteBatch();
+                    WriteOptions writeOps = new WriteOptions()) {
+
+                if (isClosing()) {
+                    return Status.FAIL;
+                }
+                byte[] schedulingKey = rocksDB.get(existenceKey);
+                final byte[] oldSchedulingKey = schedulingKey;
+
+                // already known? ignore if discovered
+                if (schedulingKey != null && discovered) {
+                    putURLs_alreadyknown_count.inc();
+                    return Status.SKIPPED;
+                }
+
+                // get the priority queue or create one
+
+
+                // known - remove from queues
+                // its key in the queues was stored in the default cf
+                if (schedulingKey != null) {
+                    if (isClosing()) {
+                        return Status.FAIL;
+                    }
+                    writeBatch.delete(columnFamilyHandleList.get(1), schedulingKey);
+                    // remove from queue metadata
+
+                }
+
+                // add the new item
+                // unless it is an update and it's nextFetchDate is 0 == NEVER
+                if (!discovered && nextFetchDate == 0) {
+                    // does not need scheduling
+                    // remove any scheduling key from its value
+                    schedulingKey = new byte[] {};
+
+                } else {
+                    // it is either brand new or already known
+                    // create a scheduling key for it
+                    schedulingKey =
+                            (qk.toString() + "_" + DF.format(nextFetchDate) + "_" + url)
+                                    .getBytes(StandardCharsets.UTF_8);
+                    // add to the scheduling
+                    if (isClosing()) {
+                        return Status.FAIL;
+                    }
+                    writeBatch.put(
+                            columnFamilyHandleList.get(1), schedulingKey, info.toByteArray());
+
+                }
+
+                if (isClosing()) {
+                    return Status.FAIL;
+                }
+
+                // update the link to its queue
+                writeBatch.put(columnFamilyHandleList.get(0), existenceKey, schedulingKey);
+
+                // batch the updates - this way the scheduling and main tables will always be in
+                // sync
+                rocksDB.write(writeOps, writeBatch);
+                QueueMetadata queueMD=(QueueMetadata)getQueues().computeIfAbsent(qk, k -> new QueueMetadata());
+                if (oldSchedulingKey != null && oldSchedulingKey.length != 0) {
+                    queueMD.removeFromProcessed(url); queueMD.decrementActive();
+                } else if (oldSchedulingKey != null) queueMD.decrementCompleted();
+                if (!discovered && nextFetchDate == 0) { queueMD.incrementCompleted(); putURLs_completed_count.inc(); }
+                else queueMD.incrementActive();
+
+            } catch (RocksDBException e) {
+                LOG.error("RocksDB exception", e);
+                return Status.FAIL;
+            }
+        }
+
+        return Status.OK;
+    }
+
+    void stageAdmission(URLInfo info, WriteBatch batch) throws RocksDBException {
+        QueueWithinCrawl q = QueueWithinCrawl.get(info.getKey(), info.getCrawlID());
+        byte[] existence = (q.toString()+"_"+info.getUrl()).getBytes(StandardCharsets.UTF_8);
+        if (rocksDB.get(existence) != null) throw new IllegalStateException("Legacy URL already exists");
+        byte[] scheduling = (q.toString()+"_"+DF.format(Instant.now().getEpochSecond())+"_"+info.getUrl()).getBytes(StandardCharsets.UTF_8);
+        batch.put(columnFamilyHandleList.get(0), existence, scheduling);
+        batch.put(columnFamilyHandleList.get(1), scheduling, info.toByteArray());
+    }
+    void publishAdmission(URLInfo info) {
+        QueueWithinCrawl q=QueueWithinCrawl.get(info.getKey(),info.getCrawlID());
+        ((QueueMetadata)getQueues().computeIfAbsent(q,k->new QueueMetadata())).incrementActive();
+    }
+    boolean crawlExists(String id) {
+        return getQueues().keySet().stream().anyMatch(q->q.getCrawlid().equals(CrawlID.normaliseCrawlID(id)));
+    }
+    public com.google.gson.JsonObject admissionCommand(com.google.gson.JsonObject command) {
+        if (admissionStopping) throw new IllegalStateException("Admission service is stopping");
+        synchronized(admissionLock) {
+            if (admissionStopping) throw new IllegalStateException("Admission service is stopping");
+            return admission.command(command);
+        }
+    }
+
+    /**
+     *
+     *
+     * <pre>
+     * * Delete  the queue based on the key in parameter *
+     * </pre>
+     */
+    @Override
+    public void deleteQueue(
+            crawlercommons.urlfrontier.Urlfrontier.QueueWithinCrawlParams request,
+            StreamObserver<crawlercommons.urlfrontier.Urlfrontier.Long> responseObserver) {
+        final QueueWithinCrawl qc = QueueWithinCrawl.get(request.getKey(), request.getCrawlID());
+        int sizeQueue = deleteLocalQueue(qc);
+        responseObserver.onNext(
+                crawlercommons.urlfrontier.Urlfrontier.Long.newBuilder()
+                        .setValue(sizeQueue)
+                        .build());
+        responseObserver.onCompleted();
+    }
+
+    protected int deleteLocalQueue(QueueWithinCrawl qc) {
+        int sizeQueue = 0;
+
+        if (isClosing()) {
+            return 0;
+        }
+
+        // don't have that queue?
+        if (!getQueues().containsKey(qc)) {
+            return sizeQueue;
+        }
+
+        // is this queue already being deleted?
+        // no need to do it again
+        if (queuesBeingDeleted.contains(qc)) {
+            return sizeQueue;
+        }
+
+        queuesBeingDeleted.put(qc, qc);
+
+        String prefixed_queue = qc.toString() + "_";
+
+        // find the next key by alphabetical order, taking the separator into account
+        QueueWithinCrawl[] array = getQueues().keySet().toArray(new QueueWithinCrawl[0]);
+        String[] prefixed_queues = new String[array.length];
+        for (int i = 0; i < array.length; i++) {
+            prefixed_queues[i] = array[i] + "_";
+        }
+        Arrays.sort(prefixed_queues);
+        byte[] startKey = null;
+        byte[] endKey = null;
+        for (String p_queue : prefixed_queues) {
+            if (startKey != null) {
+                endKey = p_queue.getBytes(StandardCharsets.UTF_8);
+                break;
+            } else if (prefixed_queue.equals(p_queue)) {
+                startKey = prefixed_queue.getBytes(StandardCharsets.UTF_8);
+            }
+        }
+
+        try {
+            deleteRanges(startKey, endKey);
+        } catch (RocksDBException e) {
+            LOG.error(
+                    "Exception caught when deleting ranges - {} - {}",
+                    new String(startKey),
+                    new String(endKey),
+                    e);
+        }
+
+        QueueInterface q = getQueues().remove(qc);
+        sizeQueue += q.countActive();
+        sizeQueue += q.getCountCompleted();
+
+        queuesBeingDeleted.remove(qc);
+        return sizeQueue;
+    }
+
+    @Override
+    public void getStats(
+            crawlercommons.urlfrontier.Urlfrontier.QueueWithinCrawlParams request,
+            StreamObserver<Stats> responseObserver) {
+        if (statistics != null) {
+            LOG.info("RockdSB stats: {}", statistics);
+        }
+        super.getStats(request, responseObserver);
+    }
+
+    @Override
+    public void close() throws IOException {
+
+        LOG.info("Closing RocksDB");
+        // Direct admission RPC callbacks are not members of the legacy executors.
+        // Reject newcomers before draining those executors, without holding their lock.
+        admissionStopping = true;
+        super.close();
+        synchronized (admissionLock) {
+            if (admissionClosed) return;
+            // Any admission already past its stopping check has committed/published
+            // before this point. No late command can touch native handles afterward.
+
+            // persisting the counts for the queues
+            try {
+                writeQueueInfos();
+            } catch (Exception e) {
+                LOG.error("writeQueueInfos ", e);
+                rocksDB.destroyColumnFamilyHandle(columnFamilyHandleList.get(2));
+            }
+
+            for (final ColumnFamilyHandle columnFamilyHandle : columnFamilyHandleList) {
+                columnFamilyHandle.close();
+            }
+
+            if (statistics != null) {
+                statistics.close();
+            }
+
+            if (rocksDB != null) {
+                try {
+                    rocksDB.syncWal();
+                    rocksDB.closeE();
+                } catch (Exception e) {
+                    LOG.error("Closing ", e);
+                }
+            }
+            admissionClosed = true;
+        }
+    }
+
+    /**
+     * When shutting down an instance - write the stats about the queues into a table for faster
+     * reloading later
+     *
+     * @throws RocksDBException
+     */
+    private void writeQueueInfos() throws RocksDBException {
+        long start = System.currentTimeMillis();
+        int queuesWritten = 0;
+        if (!getQueues().isEmpty()) {
+            ByteBuffer bb = ByteBuffer.allocate(8);
+            synchronized (getQueues()) {
+                for (Entry<QueueWithinCrawl, QueueInterface> entry : getQueues().entrySet()) {
+                    queuesWritten++;
+                    int active = entry.getValue().countActive();
+                    int completed = entry.getValue().getCountCompleted();
+                    bb.putInt(active);
+                    bb.putInt(completed);
+                    rocksDB.put(
+                            columnFamilyHandleList.get(2),
+                            entry.getKey().toString().getBytes(),
+                            bb.array());
+                    bb.clear();
+                }
+            }
+        }
+        long end = System.currentTimeMillis();
+        LOG.info(
+                "writeQueueInfos stored stats for {} queues in {} msec",
+                queuesWritten,
+                (end - start));
+    }
+
+    private int readQueueInfos() throws RocksDBException {
+        long start = System.currentTimeMillis();
+        int queuesRead = 0;
+        byte[] firstKey = null;
+        byte[] lastKey = null;
+        ByteBuffer bb = ByteBuffer.allocate(8);
+        try (final RocksIterator rocksIterator =
+                rocksDB.newIterator(columnFamilyHandleList.get(2))) {
+            for (rocksIterator.seekToFirst(); rocksIterator.isValid(); rocksIterator.next()) {
+                if (firstKey == null) firstKey = rocksIterator.key();
+                lastKey = rocksIterator.key();
+                queuesRead++;
+                final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
+                final QueueWithinCrawl qk = QueueWithinCrawl.parseAndDeNormalise(currentKey);
+                QueueMetadata queueMD =
+                        (QueueMetadata) getQueues().computeIfAbsent(qk, s -> new QueueMetadata());
+                rocksIterator.value(bb);
+                int active = bb.getInt();
+                int completed = bb.getInt();
+                bb.clear();
+                queueMD.setActiveCount(active);
+                queueMD.setCompletedCount(completed);
+            }
+        }
+
+        if (queuesRead != 0) {
+            // empty the table so that we don't read it again
+            // if there has been a nasty crash
+            rocksDB.deleteRange(columnFamilyHandleList.get(2), firstKey, lastKey);
+        }
+
+        long end = System.currentTimeMillis();
+        LOG.info("readQueueInfos read stats for {} queues in {} msec", queuesRead, (end - start));
+
+        return queuesRead;
+    }
+
+    @Override
+    public void deleteCrawl(
+            crawlercommons.urlfrontier.Urlfrontier.DeleteCrawlMessage crawlID,
+            io.grpc.stub.StreamObserver<crawlercommons.urlfrontier.Urlfrontier.Long>
+                    responseObserver) {
+        long total = deleteLocalCrawl(crawlID.getValue());
+        responseObserver.onNext(
+                crawlercommons.urlfrontier.Urlfrontier.Long.newBuilder().setValue(total).build());
+        responseObserver.onCompleted();
+    }
+
+    protected long deleteLocalCrawl(String crawlID) {
+        long total = 0;
+
+        if (isClosing()) {
+            return 0;
+        }
+
+        final String normalisedCrawlID = CrawlID.normaliseCrawlID(crawlID);
+
+        final Set<QueueWithinCrawl> toDelete = new HashSet<>();
+
+        synchronized (getQueues()) {
+
+            // find the crawlIDs
+            QueueWithinCrawl[] array = getQueues().keySet().toArray(new QueueWithinCrawl[0]);
+            Arrays.sort(array);
+
+            byte[] startKey = null;
+            byte[] endKey = null;
+            for (QueueWithinCrawl prefixed_queue : array) {
+                boolean samePrefix = prefixed_queue.getCrawlid().equals(normalisedCrawlID);
+                if (samePrefix) {
+                    if (startKey == null) {
+                        startKey =
+                                (prefixed_queue.getCrawlid().replaceAll("_", "%5F") + "_")
+                                        .getBytes(StandardCharsets.UTF_8);
+                    }
+                    toDelete.add(prefixed_queue);
+                } else if (startKey != null) {
+                    endKey =
+                            (prefixed_queue.getCrawlid().replaceAll("_", "%5F") + "_")
+                                    .getBytes(StandardCharsets.UTF_8);
+                    break;
+                }
+            }
+
+            // no queues found - nothing to delete
+            if (startKey == null) {
+                return 0;
+            }
+
+            try {
+                deleteRanges(startKey, endKey);
+            } catch (RocksDBException e) {
+                LOG.error(
+                        "Exception caught when deleting ranges - {} - {}",
+                        new String(startKey),
+                        new String(endKey));
+            }
+
+            for (QueueWithinCrawl quid : toDelete) {
+                if (queuesBeingDeleted.contains(quid)) {
+                    continue;
+                } else {
+                    queuesBeingDeleted.put(quid, quid);
+                }
+
+                QueueInterface q = getQueues().remove(quid);
+                total += q.countActive();
+                total += q.getCountCompleted();
+
+                queuesBeingDeleted.remove(quid);
+            }
+        }
+        return total;
+    }
+
+    private void deleteRanges(final byte[] prefix, byte[] endKey) throws RocksDBException {
+
+        if (isClosing()) {
+            return;
+        }
+
+        // if endKey is null it means that there is no other crawlID after this one
+        boolean includeEndKey = false;
+
+        if (endKey == null) {
+            try (RocksIterator iter = rocksDB.newIterator(columnFamilyHandleList.get(0))) {
+                iter.seekToLast();
+                if (iter.isValid()) {
+                    // this is the last known URL
+                    endKey = iter.key();
+                    includeEndKey = true;
+                }
+            }
+        }
+
+        // no end key found?
+        if (endKey == null) {
+            throw new RuntimeException("No endkey found");
+        }
+
+        // delete the ranges in the queues table as well as the URLs already
+        // processed
+        rocksDB.deleteRange(columnFamilyHandleList.get(1), prefix, endKey);
+        rocksDB.deleteRange(columnFamilyHandleList.get(0), prefix, endKey);
+
+        if (includeEndKey) {
+            rocksDB.deleteRange(columnFamilyHandleList.get(1), endKey, endKey);
+            rocksDB.delete(columnFamilyHandleList.get(0), endKey);
+        }
+    }
+
+    @Override
+    public void getURLStatus(URLStatusRequest request, StreamObserver<URLItem> responseObserver) {
+
+        String crawlId = request.getCrawlID();
+        String key = request.getKey();
+        String url = request.getUrl();
+
+        // has a queue key been defined? if not use the hostname
+        if (key == null || key.equals("")) {
+            LOG.debug("key missing for {}", url);
+            key = provideMissingKey(url);
+            if (key == null) {
+                LOG.error("Malformed URL {}", url);
+                responseObserver.onError(io.grpc.Status.INVALID_ARGUMENT.asRuntimeException());
+                return;
+            }
+        }
+
+        final QueueWithinCrawl qk = QueueWithinCrawl.get(key, crawlId);
+        final String existenceKeyString = (qk.toString() + "_" + url).intern();
+        final byte[] existenceKey = existenceKeyString.getBytes(StandardCharsets.UTF_8);
+
+        byte[] schedulingKey = null;
+
+        boolean found = false;
+
+        URLItem.Builder builder = URLItem.newBuilder();
+        KnownURLItem.Builder knownbuilder = KnownURLItem.newBuilder();
+        URLInfo info = null;
+        long fromEpoch = 0;
+
+        try {
+            schedulingKey = rocksDB.get(columnFamilyHandleList.get(0), existenceKey);
+            if (schedulingKey != null) {
+                final String currentKey = new String(schedulingKey, StandardCharsets.UTF_8);
+
+                if (StringUtil.isNullOrEmpty(currentKey)) {
+                    info = URLInfo.newBuilder().setCrawlID(crawlId).setKey(key).setUrl(url).build();
+
+                    found = true;
+                } else {
+                    final int pos = currentKey.indexOf('_');
+                    final int pos2 = currentKey.indexOf('_', pos + 1);
+                    final int pos3 = currentKey.indexOf('_', pos2 + 1);
+
+                    fromEpoch = Long.parseLong(currentKey.substring(pos2 + 1, pos3));
+
+                    try {
+                        info =
+                                URLInfo.parseFrom(
+                                        rocksDB.get(columnFamilyHandleList.get(1), schedulingKey));
+                    } catch (InvalidProtocolBufferException e) {
+                        LOG.error(e.getMessage(), e);
+                        responseObserver.onError(
+                                io.grpc.Status.fromThrowable(e).asRuntimeException());
+                    }
+
+                    found = true;
+                }
+            } else {
+                // Key is unknown
+                found = false;
+            }
+
+        } catch (RocksDBException e) {
+            LOG.error("Caught unlikely error ", e);
+            responseObserver.onError(io.grpc.Status.fromThrowable(e).asRuntimeException());
+            return;
+        }
+
+        if (found) {
+            responseObserver.onNext(buildURLItem(builder, knownbuilder, info, fromEpoch));
+            responseObserver.onCompleted();
+        } else {
+            responseObserver.onError(io.grpc.Status.NOT_FOUND.asRuntimeException());
+        }
+    }
+
+    public Iterator<URLItem> urlIterator(
+            Entry<QueueWithinCrawl, QueueInterface> qentry, long start, long maxURLs) {
+        return new RocksDBURLItemIterator(qentry, start, maxURLs);
+    }
+
+    class RocksDBURLItemIterator implements Iterator<URLItem> {
+
+        private final org.slf4j.Logger LOG = LoggerFactory.getLogger(RocksDBURLItemIterator.class);
+
+        private final long maxURLs;
+        private long pos = 0;
+        private long sent = 0;
+        private URLItem.Builder builder = URLItem.newBuilder();
+        private KnownURLItem.Builder knownBuilder = KnownURLItem.newBuilder();
+
+        private final QueueWithinCrawl queueID;
+        private final byte[] prefixKey;
+        private final RocksIterator rocksIterator;
+        private boolean hasNext = true;
+
+        public RocksDBURLItemIterator(
+                Entry<QueueWithinCrawl, QueueInterface> qentry, long start, long maxURLs) {
+
+            this.queueID = qentry.getKey();
+            this.prefixKey = (queueID.toString() + "_").getBytes(StandardCharsets.UTF_8);
+            this.maxURLs = maxURLs;
+            this.builder = URLItem.newBuilder();
+            this.knownBuilder = KnownURLItem.newBuilder();
+
+            this.rocksIterator = rocksDB.newIterator(columnFamilyHandleList.get(0));
+            this.rocksIterator.seek(prefixKey);
+
+            if (rocksIterator.isValid() && start == 0L) {
+                // Check if we're not past the seeked queue
+                final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
+                final QueueWithinCrawl Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
+
+                if (!queueID.equals(Qkey.getCrawlid(), Qkey.getQueue())) {
+                    hasNext = false;
+                    return;
+                }
+            } else {
+                // advance to the start position
+                while (rocksIterator.isValid() && pos < start) {
+                    final String currentKey =
+                            new String(rocksIterator.key(), StandardCharsets.UTF_8);
+                    final QueueWithinCrawl Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
+
+                    if (!queueID.equals(Qkey.getCrawlid(), Qkey.getQueue())) {
+                        hasNext = false;
+                        break;
+                    }
+                    rocksIterator.next();
+                    pos++;
+                }
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return rocksIterator.isValid() && hasNext && sent < maxURLs;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public URLItem next() {
+
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+
+            while (rocksIterator.isValid() && sent < maxURLs) {
+                String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
+                QueueWithinCrawl Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
+
+                if (!queueID.equals(Qkey.getCrawlid(), Qkey.getQueue())) {
+                    hasNext = false;
+                    break;
+                }
+
+                final String schedulingKey =
+                        new String(rocksIterator.value(), StandardCharsets.UTF_8);
+
+                LOG.debug("current key {}, schedulingKey={}", currentKey, schedulingKey);
+
+                byte[] scheduled = null;
+                try {
+                    scheduled = rocksDB.get(columnFamilyHandleList.get(1), rocksIterator.value());
+                } catch (RocksDBException e) {
+                    LOG.error(e.getMessage(), e);
+                }
+
+                long fromEpoch = 0;
+                URLInfo info = null;
+
+                if (!StringUtil.isNullOrEmpty(schedulingKey)) {
+                    final int pos1 = schedulingKey.indexOf('_');
+                    final int pos2 = schedulingKey.indexOf('_', pos1 + 1);
+                    final int pos3 = schedulingKey.indexOf('_', pos2 + 1);
+
+                    fromEpoch = Long.parseLong(schedulingKey.substring(pos2 + 1, pos3));
+
+                    try {
+                        info = URLInfo.parseFrom(scheduled);
+                    } catch (InvalidProtocolBufferException | NumberFormatException e) {
+                        LOG.error(e.getMessage(), e);
+                    }
+                } else {
+                    LOG.debug("no schedule for {}", currentKey);
+
+                    final int pos1 = currentKey.indexOf('_');
+                    final int pos2 = currentKey.indexOf('_', pos1 + 1);
+
+                    info =
+                            URLInfo.newBuilder()
+                                    .setCrawlID(Qkey.getCrawlid())
+                                    .setKey(Qkey.getQueue())
+                                    .setUrl(currentKey.substring(pos2 + 1))
+                                    .build();
+                }
+
+                sent++;
+                rocksIterator.next();
+
+                currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
+                Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
+
+                if (!queueID.equals(Qkey.getCrawlid(), Qkey.getQueue())) {
+                    hasNext = false;
+                } else {
+                    hasNext = rocksIterator.isValid();
+                }
+
+                return buildURLItem(builder, knownBuilder, info, fromEpoch);
+            }
+
+            return null; // Shouldn't happen
+        }
+    }
+}

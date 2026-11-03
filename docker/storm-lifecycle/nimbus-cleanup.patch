@@ -1,0 +1,99 @@
+--- a/Nimbus.java
++++ b/Nimbus.java
+@@ -3154,14 +3154,2 @@
+-        try {
+-            if (!isLeader()) {
+-                LOG.info("not a leader, skipping cleanup");
+-                return;
+-            }
+-            IStormClusterState state = stormClusterState;
+-            long cleanupStartMs = Time.currentTimeMillis();
+-            Set<String> toClean = new HashSet<>(topoIdsToClean(state, blobStore, this.conf));
+-            long topoIdSelectionDurationMs = Time.deltaMs(cleanupStartMs);
+-
+-            //Computed once for the whole pass, with the dying topologies excluded so that two of them sharing a
+-            //dependency blob do not keep it alive for each other. A null result means the references are unknown and
+-            //only the blobs that are provably unique to one topology are reclaimed below.
+-            Set<String> stillReferenced = null;
++        // Serialize blob publication/activation and cleanup on the existing lifecycle lock.
++        synchronized (submitLock) {
+@@ -3169,32 +3157,47 @@
+-                stillReferenced = referencedDependencyKeys(toClean);
+-            } catch (Exception e) {
+-                LOG.warn("Could not determine which dependency blobs are still in use, only the dependency blobs whose "
+-                    + "key proves they belong to a single topology are reclaimed in this pass, the others are kept", e);
+-            }
+-
+-            for (String topoId : toClean) {
+-                LOG.info("Cleaning up {}", topoId);
+-                state.teardownHeartbeats(topoId);
+-                state.teardownTopologyErrors(topoId);
+-                state.removeAllPrivateWorkerKeys(topoId);
+-                state.removeBackpressure(topoId);
+-                rmDependencyBlobsInTopology(topoId, stillReferenced);
+-                forceDeleteTopoDistDir(topoId);
+-                rmTopologyKeys(topoId);
+-                heartbeatsCache.removeTopo(topoId);
+-                idToExecutors.getAndUpdate(new Dissoc<>(topoId));
+-            }
+-
+-            //Catches the dependency blobs that outlived the pass that cleaned up their topology. Without knowing the
+-            //references nothing can be told to be unused, so nothing is swept then.
+-            if (stillReferenced != null) {
+-                sweepOrphanedDependencyBlobs(stillReferenced);
+-            }
+-
+-            long cleanupDurationMs = Time.deltaMs(cleanupStartMs);
+-            if (cleanupDurationMs > 10000) {
+-                LOG.warn("doCleanup is taking too long, topoIdSelectionDurationMs={}, cleanupDurationMs={}",
+-                    topoIdSelectionDurationMs, cleanupDurationMs);
+-            }
+-        } catch (Exception ex) {
+-            LOG.error("Ignoring error in doCleanup()", ex);
++                if (!isLeader()) {
++                    LOG.info("not a leader, skipping cleanup");
++                    return;
++                }
++                IStormClusterState state = stormClusterState;
++                long cleanupStartMs = Time.currentTimeMillis();
++                Set<String> toClean = new HashSet<>(topoIdsToClean(state, blobStore, this.conf));
++                long topoIdSelectionDurationMs = Time.deltaMs(cleanupStartMs);
++
++                //Computed once for the whole pass, with the dying topologies excluded so that two of them sharing a
++                //dependency blob do not keep it alive for each other. A null result means the references are unknown and
++                //only the blobs that are provably unique to one topology are reclaimed below.
++                Set<String> stillReferenced = null;
++                try {
++                    stillReferenced = referencedDependencyKeys(toClean);
++                } catch (Exception e) {
++                    LOG.warn("Could not determine which dependency blobs are still in use, only the dependency blobs whose "
++                        + "key proves they belong to a single topology are reclaimed in this pass, the others are kept", e);
++                }
++
++                for (String topoId : toClean) {
++                    LOG.info("Cleaning up {}", topoId);
++                    state.teardownHeartbeats(topoId);
++                    state.teardownTopologyErrors(topoId);
++                    state.removeAllPrivateWorkerKeys(topoId);
++                    state.removeBackpressure(topoId);
++                    rmDependencyBlobsInTopology(topoId, stillReferenced);
++                    forceDeleteTopoDistDir(topoId);
++                    rmTopologyKeys(topoId);
++                    heartbeatsCache.removeTopo(topoId);
++                    idToExecutors.getAndUpdate(new Dissoc<>(topoId));
++                }
++
++                //Catches the dependency blobs that outlived the pass that cleaned up their topology. Without knowing the
++                //references nothing can be told to be unused, so nothing is swept then.
++                if (stillReferenced != null) {
++                    sweepOrphanedDependencyBlobs(stillReferenced);
++                }
++
++                long cleanupDurationMs = Time.deltaMs(cleanupStartMs);
++                if (cleanupDurationMs > 10000) {
++                    LOG.warn("doCleanup is taking too long, topoIdSelectionDurationMs={}, cleanupDurationMs={}",
++                        topoIdSelectionDurationMs, cleanupDurationMs);
++                }
++            } catch (Exception ex) {
++                LOG.error("Ignoring error in doCleanup()", ex);
++            }

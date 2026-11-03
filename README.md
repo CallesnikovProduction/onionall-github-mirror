@@ -14,15 +14,114 @@ Verified on Windows 11 on 2026-10-30:
 - Flux `--dry-run crawler.flux` succeeded: one spout, nine bolts, 15 streams. This constructs the graph without opening/preparing components.
 - The shaded JAR contains the dependency-supplied `tika-config.xml`.
 - `docker compose -f compose.m0.yaml config --quiet` succeeded.
-- The user ran `scripts/m0.ps1` on the host. Reviewed service and console logs confirm all nine bolts prepared, the spout opened/activated, Tika initialized, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on SIGTERM (exit 143). The user reports Compose removed the containers and network.
+- The user ran `scripts/runners/run-startup-check.ps1` on the host (now `scripts/runners/run-startup-check.ps1`). Reviewed service and console logs confirm all nine bolts prepared, the spout opened/activated, Tika initialized, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on SIGTERM (exit 143). The user reports Compose removed the containers and network.
 
 **M0 is complete for the empty-frontier local baseline.** The agent still cannot access Docker Engine directly; runtime evidence comes from the user's host run and the reviewed logs, not an agent rerun. Container cleanup is user-reported; image digests were not captured. See [the verification record and warning assessment](docs/m0-baseline.md).
 
 **Tor transport is not configured in the default M0/M1 topology.** Do not inject onion URLs or begin a real crawl yet. DNS, redirects and fail-closed verification remain M2 work. Existing URL filters alone are not a complete network boundary.
 
+Current migration branch uses **Java25 LTS / Storm3.1.0**, retaining
+StormCrawler3.7.0. Real local M3 passes; Tor acceptance and durable global budgets
+remain BLOCKED. Earlier Java17 results below are historical. See the
+[migration report](docs/jvm25-storm31-migration.md) for exact gates and rollback.
+
+Recovery recheck (2026-11-02): **M2/M3 remain BLOCKED**. Targeted gateway
+restart restores the canary and JVM series, but resumed Storm robots still times
+out before HTTP. A fresh M1 regression preserves/reuses six records but fails
+the unchanged no-ERROR gate on Nimbus blob submission/cleanup. Cached M1 runs
+are available via `M1_CACHED_IMAGES=1 bash scripts/runners/run-controlled-crawl.sh`; M2 `--cached-images`
+propagates that policy and records deterministic child evidence and real exit
+codes. See [recovery evidence and boundaries](docs/m2-hardening.md).
+
+## Terminal CLI
+
+The Java25 CLI exposes `fetch`, offline `inspect`/`discover`, and `status`; launching without
+arguments opens a violet onion menu only in a real terminal. Pipes receive usage,
+never a blocking prompt. `--json` emits JSON without branding/animation; `--no-color`,
+`NO_COLOR` and non-TTY output disable colors. Branding uses ASCII, no special font.
+
+Select a JDK25 with `JAVA_HOME` (and its bin on PATH for Maven), then:
+
+```sh
+# Uses Maven Central; prefix ONIONALL_OFFLINE=1 when the dependency cache is complete.
+./scripts/cli/install-cli.sh
+onionall --version
+onionall --help
+onionall status --json
+onionall fetch http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/ --output ./ahmia.html
+onionall inspect ./ahmia.html --json
+onionall discover ./ahmia.html --base-url http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/ --json
+# Optional explicit export; refuses to replace an existing file:
+# onionall discover ./ahmia.html --base-url <approved-source-url> --export .runtime/discovery.jsonl
+```
+
+Offline discovery reads at most 4 MiB and processes at most 1,000 anchors. It uses
+JSoup and TorPolicy, preserves Ahmia-only scope, reports excluded links and never
+fetches or enqueues. JSONL export is a report, not a Frontier queue. No recursive
+crawl is enabled. See [discovery contracts](docs/cli-discovery.md). Status remains
+a TCP-only local check, with Tor/onion connectivity explicitly NOT_TESTED.
+
+No Maven is used by the installed launcher. Default installation:
+`~/.local/bin/onionall` → `~/.local/share/onionall/cli/bin/onionall`.
+`XDG_DATA_HOME` and optional `XDG_BIN_HOME` select absolute installation paths.
+The installer reports if its bin directory is absent from PATH; it never edits
+shell configuration. Update by rerunning the installer. Remove with
+`./scripts/cli/uninstall-cli.sh` using the same XDG variables; downloads/user-added
+files are preserved. Unknown executables/install contents are never overwritten.
+
+Repository-only usage: `./scripts/cli/build-cli.sh`, then
+`target/onionall/bin/onionall --help`. The distribution copies an explicit dependency
+allowlist, including necessary Storm API/StormCrawler classes; it excludes Flux,
+Tika, gRPC, URLFrontier and test libraries. It does not start a topology or daemon.
+
+Default downloads use `.runtime/downloads` when invoked from this checkout,
+otherwise `$XDG_DATA_HOME/onionall/downloads` (default `~/.local/share/onionall/downloads`).
+Override with `--download-dir` or `ONIONALL_DOWNLOAD_DIR`; `--output` selects an exact
+file. Default filename is `ahmia.html`. Existing files require `--overwrite`.
+Publication is atomic: same-directory hard link without overwrite, atomic rename
+with overwrite. Filesystems lacking these operations fail safely. HTML is untrusted
+data; no scripts, links, browsers or binaries are launched. Inspection is bounded
+at4MiB and uses JSoup charset detection/replacement decoding, not strict UTF-8.
+Link statistics count raw hrefs, including relative and protocol-relative links.
+
+`fetch` calls the existing JVM TorProtocol. Only the approved Ahmia v3 hostname,
+HTTP/HTTPS and standard ports are allowed; userinfo/ambiguous paths are refused.
+SOCKS is fixed to local127.0.0.1, with `--socks-port` (default19050).
+`--timeout-ms` bounds the entire request (default30000, maximum120000);
+`--max-bytes` bounds HTML (default/maximum131072). No automatic redirects,
+retries, clearnet or DIRECT fallback. Fetch is a single transport diagnostic,
+not a robots-aware crawl or M2/M3 acceptance. No crawl/discover commands are exposed.
+
+Status checks only local TCP reachability with a1500ms bound. It explicitly marks
+Tor/onion availability NOT_TESTED. An open SOCKS port does not establish either.
+Exit codes:0 success;1 unexpected failure;2 arguments/config;3 rejected URL;
+4 transport (including timeout/body gate);5 unacceptable HTTP/content;
+6 filesystem/output failure;130 usual Ctrl+C. Ctrl+C invokes protocol cleanup;
+no completed output is published before a successful response. On monochrome
+terminals progress is a plain wait message; animated elapsed time is TTY/color-only.
+
+Troubleshooting: select Java25 if launcher exits69; build once before offline
+installation; use a new output path if a download already exists. A SOCKS refusal
+or Tor timeout is an error, not a reason to change host DNS/VPN or bypass transport.
+Current full M2/M3 acceptance and durable global budget remain BLOCKED.
+
+CLI verification: select Java25, run `mvn verify` or `scripts/cli/build-cli.sh`, then
+`python3 -B -m unittest discover -s test/cli -p 'test*.py'` against the built bundle.
+Actual delivery results and retained failures: [CLI verification](docs/cli-verification.md).
+
+Interactive ANSI terminals now keep a layered onion/gradient wordmark fixed above
+a selective-update content region, with80/120/narrow layouts and resize reflow.
+Enter returns from an action to the menu. NO_COLOR/--no-color retain plain output
+without cursor controls (no physical pinning); JSON/direct commands are unchanged.
+The surface mascot uses headless JDK java.desktop and ANSI half-blocks; custom
+jlink runtimes must include java.desktop. `ONIONALL_ASCII=1` selects its density
+fallback. The wordmark is unchanged. Renderer contracts and actual PTY captures: [interactive rendering](docs/cli-rendering.md).
+
 ## Build
 
-Prerequisites: JDK 17 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.
+See the [script map, platform support, inputs and resource ownership](scripts/README.md) for direct entrypoints organized by responsibility.
+
+Prerequisites: JDK 25 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.
 
 Linux / a shell with Java and Maven on PATH:
 
@@ -35,7 +134,7 @@ mvn -B clean package
 PowerShell:
 
 ```powershell
-./scripts/build.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
+./scripts/cli/build-project.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
 The helper finds `mvn` on PATH or Maven bundled with IntelliJ under `$env:ProgramFiles/JetBrains`. For other installations, pass `-Maven` with the path to `mvn.cmd`. `-Repository <path>` selects a writable dependency cache; `-Offline` requires a complete cache. Environment changes are restored afterwards. Log: `.runtime/build.log`.
@@ -44,13 +143,13 @@ Output: `target/onionall-brawler-0.1.0-SNAPSHOT.jar`. Storm supplies the provide
 
 ## M0: empty-frontier runtime baseline
 
-Requires Docker Engine with Linux containers and Docker Compose. Start Docker Desktop on Windows first. The host-verified recipe uses `crawlercommons/url-frontier:2.4` and `storm:2.8.9-jre17`, matching project dependency versions. Image tags are versioned but not locked by digest. Storm's logged Java runtime is Eclipse Adoptium 17.0.20.
+Requires Docker Engine with Linux containers and Docker Compose. Start Docker Desktop on Windows first. The original host-verified recipe used `crawlercommons/url-frontier:2.4` and `storm:2.8.9-jre17`. Current Compose selects `storm:3.1.0-jre25` on the migration branch. Image tags are versioned but not locked by digest. The historical runtime was Eclipse Adoptium17.0.20; the current candidate image was checked as Temurin25.0.5+8.
 
 ```powershell
-./scripts/m0.ps1
+./scripts/runners/run-startup-check.ps1
 ```
 
-The helper checks prerequisites, pulls images, runs the topology, captures `.runtime/m0-console.log` and `.runtime/m0-services.log`, and tears down the baseline containers. Equivalent Linux commands:
+The helper checks prerequisites, pulls images, runs the topology, captures `.runtime/m0-console.log` and `.runtime/m0-services.log`, and tears down the baseline containers. Linux wrapper: `bash scripts/runners/run-startup-check.sh`. Equivalent manual commands:
 
 ```sh
 docker info
@@ -82,10 +181,10 @@ M1 now has a separate controlled test harness: `compose.m1.yaml`, a synthetic si
 Linux / Omarchy (from the repository root, after building):
 
 ```sh
-bash scripts/m1.sh
+bash scripts/runners/run-controlled-crawl.sh
 ```
 
-Requires Bash, Python 3.12+, JDK 17+ (`javac` and `jar`), and Docker Engine / Compose.
+Requires Bash, Python 3.12+, JDK 25+ (`javac` and `jar`), and Docker Engine / Compose.
 `JAVA_HOME` optionally selects the JDK; `PYTHON` optionally selects Python.
 The runner uses the same assertions and evidence layout as Windows, retains the
 RocksDB volume, and checks cleanup even on failure or interruption.
@@ -102,7 +201,7 @@ container/network cleanup passed; the RocksDB volume is retained.
 Windows PowerShell:
 
 ```powershell
-./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-17"
+./scripts/runners/run-controlled-crawl.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
 The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/m1-controlled.md). Local regression tests pass. Docker evidence comes from user host runs `df35366e0994` (Windows) and `e55203e97536` (Omarchy Linux), rechecked offline by the agent. The agent cannot directly access Docker Engine. No blocking log defects were found; unavailable cgroup metrics and resolved shutdown warnings are documented.
@@ -140,3 +239,13 @@ M0/M1 runners remain supported. Native Windows M2 execution is not yet verified.
 - [Official Storm image](https://hub.docker.com/_/storm)
 - [URLFrontier service and RocksDB configuration](https://github.com/crawler-commons/url-frontier/blob/master/service/README.md)
 - [URLFrontier image tags](https://hub.docker.com/r/crawlercommons/url-frontier/tags)
+
+## Bounded local research workflow
+
+Configured M4.1 supports approved plan → durable Frontier admission → bounded
+Storm/TorProtocol crawl → archive → local search. The versioned server must run
+on an isolated fresh volume; stock Frontier is not a fallback. See
+[CLI/runtime setup](docs/m41-durable-admission.md),
+[server contract and rollback](frontier-server/README.md), and
+[executed verification](docs/engineering/m41-execution-ledger.md).
+Real-Tor M2/M3 qualification remains separate from the controlled local fixture.

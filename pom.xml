@@ -31,8 +31,9 @@ under the License.
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <java.version>25</java.version>
         <stormcrawler.version>3.7.0</stormcrawler.version>
-        <storm.version>2.8.9</storm.version>
+        <storm.version>3.1.0</storm.version>
         <urlfrontier.version>2.4</urlfrontier.version>
         <kotlin.version>2.3.21</kotlin.version>
     </properties>
@@ -49,7 +50,7 @@ under the License.
                 <artifactId>kotlin-maven-plugin</artifactId>
                 <version>${kotlin.version}</version>
                 <executions><execution><id>kotlin-compile</id><phase>process-sources</phase><goals><goal>compile</goal></goals></execution></executions>
-                <configuration><jvmTarget>17</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
+                <configuration><jvmTarget>${java.version}</jvmTarget><sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir></sourceDirs></configuration>
             </plugin>
             <!-- Pin lifecycle plugins: Maven distributions use different defaults. -->
             <plugin>
@@ -77,8 +78,7 @@ under the License.
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>17</source>
-                    <target>17</target>
+                    <release>${java.version}</release>
                 </configuration>
             </plugin>
             <plugin>
@@ -152,6 +152,9 @@ under the License.
     </build>
 
     <dependencies>
+        <!-- Embedded document catalog; no scheduling state or network server. -->
+        <dependency><groupId>com.h2database</groupId><artifactId>h2</artifactId><version>2.4.240</version></dependency>
+        <dependency><groupId>info.picocli</groupId><artifactId>picocli</artifactId><version>4.7.7</version></dependency>
         <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin.version}</version></dependency>
         <dependency><groupId>junit</groupId><artifactId>junit</artifactId><version>4.13.2</version><scope>test</scope></dependency>
         <dependency>
@@ -186,4 +189,14 @@ under the License.
             <version>${urlfrontier.version}</version>
         </dependency>
     </dependencies>
+    <profiles>
+        <profile>
+            <id>java25</id>
+            <properties><java.version>25</java.version></properties>
+        </profile>
+        <profile>
+            <id>storm31</id>
+            <properties><storm.version>3.1.0</storm.version><java.version>25</java.version></properties>
+        </profile>
+    </profiles>
 </project>
