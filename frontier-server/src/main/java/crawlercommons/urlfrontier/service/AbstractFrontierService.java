@@ -148,7 +148,7 @@ public abstract class AbstractFrontierService
         return queues;
     }
 
-    private boolean closing = false;
+    private volatile boolean closing = false;
 
     protected boolean isClosing() {
         return closing;

@@ -35,6 +35,7 @@ public final class AdmissionConformance {
             if(args[1].equals("before"))s.admission.beforeCommit=()->Runtime.getRuntime().halt(23);else s.admission.afterCommit=()->Runtime.getRuntime().halt(23);
             s.admissionCommand(reserve("crash","/seed","",0));throw new AssertionError("Crash hook not called");
         }
+        check(AdmissionLedger.canonical(base+"/é").equals(base+"/%C3%A9"),"Unicode identity differs from transport");
         Path root=Path.of(args[0]);Files.createDirectories(root);
         String stable;
         try(RocksDBService s=service(root.resolve("quota"))){

@@ -2,13 +2,13 @@
 
 Owning source: crawler-commons/url-frontier tag2.4, commit
 27363207fdb68abad7606cf249d93be55509d71a. The14 service Java files and Apache2
-LICENSE are vendored here; changes are limited to RocksDBService, QueueMetadata,
+LICENSE are vendored here; changes are limited to RocksDBService, QueueMetadata, AbstractFrontierService,
 URLFrontierServer, plus AdmissionLedger and AdmissionRpc. UPSTREAM-SHA256 records
 original source hashes. Runtime dependency is the exact stock2.4 service fat JAR:
 SHA256 ff1b774bf81343234e6f34878f8b7c9a826371b3e305e96bf0e204895e3562df.
 No dependency download or protobuf code generation occurs.
 
-Build (JDK11+; project validation uses JDK25):
+Build with JDK25 (server source is compiled with release11):
 
 ```sh
 JAVA_HOME=<JDK25> URLFRONTIER_BASE_JAR=<pinned-service.jar> bash frontier-server/build.sh --test
@@ -104,3 +104,7 @@ ACK. AdmissionMigrationConformance exercises fresh schema migration/rollback.
 AdmissionRpcConformance runs a real local gRPC server and validates absent token,
 valid capability, admin denial and legacy read compatibility. These primitive
 checks do not claim full CLI/Storm/archive integration or real-Tor M2/M3.
+
+Shutdown conformance blocks a real admission transaction before commit and proves
+close drains it before freeing native handles. Late admissions/status writes fail
+closed; committed reservation/count/queue survive reopening.

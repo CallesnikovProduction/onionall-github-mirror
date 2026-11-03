@@ -60,6 +60,8 @@ public class RocksDBService extends AbstractFrontierService {
 
     private RocksDB rocksDB;
     final Object admissionLock = new Object();
+    private volatile boolean admissionStopping;
+    private boolean admissionClosed; // admissionLock
     AdmissionLedger admission;
 
     // a list which will hold the handles for the column families once the db is
@@ -349,7 +351,9 @@ public class RocksDBService extends AbstractFrontierService {
 
     @Override
     protected Status putURLItem(final URLItem value) {
+        if (admissionStopping) return Status.FAIL;
         synchronized (admissionLock) {
+            if (admissionStopping) return Status.FAIL;
             if (!admission.permitsLegacy(value)) return Status.FAIL;
             return putLegacyURLItem(value);
         }
@@ -514,7 +518,11 @@ public class RocksDBService extends AbstractFrontierService {
         return getQueues().keySet().stream().anyMatch(q->q.getCrawlid().equals(CrawlID.normaliseCrawlID(id)));
     }
     public com.google.gson.JsonObject admissionCommand(com.google.gson.JsonObject command) {
-        synchronized(admissionLock) { return admission.command(command); }
+        if (admissionStopping) throw new IllegalStateException("Admission service is stopping");
+        synchronized(admissionLock) {
+            if (admissionStopping) throw new IllegalStateException("Admission service is stopping");
+            return admission.command(command);
+        }
     }
 
     /**
@@ -609,32 +617,40 @@ public class RocksDBService extends AbstractFrontierService {
     public void close() throws IOException {
 
         LOG.info("Closing RocksDB");
-
+        // Direct admission RPC callbacks are not members of the legacy executors.
+        // Reject newcomers before draining those executors, without holding their lock.
+        admissionStopping = true;
         super.close();
+        synchronized (admissionLock) {
+            if (admissionClosed) return;
+            // Any admission already past its stopping check has committed/published
+            // before this point. No late command can touch native handles afterward.
 
-        // persisting the counts for the queues
-        try {
-            writeQueueInfos();
-        } catch (Exception e) {
-            LOG.error("writeQueueInfos ", e);
-            rocksDB.destroyColumnFamilyHandle(columnFamilyHandleList.get(2));
-        }
-
-        for (final ColumnFamilyHandle columnFamilyHandle : columnFamilyHandleList) {
-            columnFamilyHandle.close();
-        }
-
-        if (statistics != null) {
-            statistics.close();
-        }
-
-        if (rocksDB != null) {
+            // persisting the counts for the queues
             try {
-                rocksDB.syncWal();
-                rocksDB.closeE();
+                writeQueueInfos();
             } catch (Exception e) {
-                LOG.error("Closing ", e);
+                LOG.error("writeQueueInfos ", e);
+                rocksDB.destroyColumnFamilyHandle(columnFamilyHandleList.get(2));
             }
+
+            for (final ColumnFamilyHandle columnFamilyHandle : columnFamilyHandleList) {
+                columnFamilyHandle.close();
+            }
+
+            if (statistics != null) {
+                statistics.close();
+            }
+
+            if (rocksDB != null) {
+                try {
+                    rocksDB.syncWal();
+                    rocksDB.closeE();
+                } catch (Exception e) {
+                    LOG.error("Closing ", e);
+                }
+            }
+            admissionClosed = true;
         }
     }
 

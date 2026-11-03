@@ -62,7 +62,7 @@ final class AdmissionLedger {
             if(!path.equals(u.normalize().getRawPath())&&!u.getRawPath().isEmpty())throw new IllegalArgumentException("Noncanonical path");
             for(String part:path.split("/"))if(Set.of(".","..").contains(part.replaceAll("(?i)%2e",".")))throw new IllegalArgumentException("Dot segment");
             if(!u.getRawAuthority().equals(h+(u.getPort()==-1?"":":"+u.getPort())))throw new IllegalArgumentException("Invalid authority");
-            return s+"://"+h+path+(u.getRawQuery()==null?"":"?"+u.getRawQuery());
+            return URI.create(s+"://"+h+path+(u.getRawQuery()==null?"":"?"+u.getRawQuery())).toASCIIString();
         }catch(java.net.URISyntaxException e){throw new IllegalArgumentException("Invalid URL",e);}
     }
     static String origin(String url){URI u=URI.create(url);return u.getScheme()+"://"+u.getHost();}

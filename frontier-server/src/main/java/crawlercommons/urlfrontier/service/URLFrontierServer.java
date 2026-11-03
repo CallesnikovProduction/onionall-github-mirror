@@ -208,6 +208,12 @@ public class URLFrontierServer implements Callable<Integer> {
     }
 
     public void stop() {
+        // Stop accepting RPCs before closing their backing storage. The service
+        // drains legacy executors and any direct admission transaction itself.
+        if (server != null) {
+            LOG.info("Shutting down URLFrontierServer on port {}", server.getPort());
+            server.shutdown();
+        }
         // terminate the service if possible
         if (service != null && Closeable.class.isAssignableFrom(service.getClass())) {
             LOG.info("Shutting down service {}", service.getClass().getSimpleName());
@@ -216,11 +222,6 @@ public class URLFrontierServer implements Callable<Integer> {
             } catch (IOException e) {
                 LOG.error("Error when closing service: ", e);
             }
-        }
-
-        if (server != null) {
-            LOG.info("Shutting down URLFrontierServer on port {}", server.getPort());
-            server.shutdown();
         }
 
         if (prometheus != null) {
