@@ -26,7 +26,7 @@ class ColdGatewayTest(unittest.TestCase):
 
 class NamespaceComparisonTest(unittest.TestCase):
     """Exercise optional A/B/A control flow without claiming real Tor availability."""
-    def run_case(self, gateway=True, fresh=True, original=True):
+    def run_case(self, gateway=True, fresh=True, original=True, flag='--compare-fresh-context'):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             project='onionall-brawler-m2-123456abcdef'
@@ -34,6 +34,8 @@ class NamespaceComparisonTest(unittest.TestCase):
             (root/'target').mkdir()
             (root/'target/onionall-brawler-0.1.0-SNAPSHOT.jar').write_bytes(b'test artifact')
             (root/'target/cli-classpath.txt').write_text('test classpath')
+            (root/'test/m2').mkdir(parents=True)
+            (root/'test/m2/tor_observer.py').write_text('test observer')
             operations=[]
             def save(name,data):(path/name).write_text(json.dumps(data))
             def execute(args,log=None,**kwargs):
@@ -41,26 +43,29 @@ class NamespaceComparisonTest(unittest.TestCase):
                 output=''
                 if log=='config.log':output='{}'
                 if log=='identity.log':output='a'*56+'.onion'
+                if log in ('service-identity-before.log','service-identity-after.log'):output='{}'
                 if args[:2]==['docker','exec'] and 'bash' not in args:
                     filename=args[-2] if args[-1]=='auth' else args[-1]
                     phase=filename.rsplit('-',1)[0]
                     if filename.endswith('-python-auth.json'):phase=filename[:-17]
                     passed={'initial':True,'service-return':False,'gateway-return':gateway,
                         'fresh-context':fresh,'original-recheck':original}[phase]
-                    save(filename,dict(passed=passed,network_namespace='B' if args[2].endswith('-fresh-incident') else 'A'))
+                    save(filename,dict(passed=passed,phase='complete' if passed else 'socks_connect_reply',error_type='TimeoutError',network_namespace='B' if args[2].endswith('-fresh-incident') else 'A'))
                 if log=='crawler-path.log':(path/log).write_text('M2_PENDING_MARKER')
                 if 'snapshot' in args:
                     save('crawler-final.json',dict(captured_at_epoch=1,
                         entries=[dict(refetch=86401,metadata={})]))
                 if args[:3]==['docker','volume','inspect']:output='[{},{},{}]'
                 return subprocess.CompletedProcess(args,0,stdout=output)
-            runner=SimpleNamespace(project=project,path=path,compose=['compose'],save=save,
+            runner=SimpleNamespace(project=project,path=path,compose=['compose'],environment={},save=save,
                 command=execute,dc=execute,validate_toolchain=lambda:None,tool=lambda name:name)
             with patch.object(incident,'ROOT',root), patch.object(incident,'Runner',return_value=runner), \
                     patch.object(incident,'host_state',return_value={}), \
                     patch.object(incident.signal,'signal'), \
+                    patch.object(incident.subprocess,'Popen') as popen, \
                     patch.object(incident.subprocess,'check_output',return_value=''), \
-                    patch.object(sys,'argv',['socks_incident.py','--compare-fresh-context']):
+                    patch.object(sys,'argv',['socks_incident.py',flag]):
+                popen.return_value.poll.return_value=None
                 code=incident.main()
             return code,json.loads((path/'incident.json').read_text()),operations
 

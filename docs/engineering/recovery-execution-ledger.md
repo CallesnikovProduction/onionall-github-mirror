@@ -204,3 +204,84 @@ or verified transport/security candidate change.
 M1 PASS and M3 local PASS are independent positives. **M2 VERIFIED=false,
 M3 VERIFIED=false, production-ready=false.** Only TPR-02 is newly closed in the
 production TODO inventory; outstanding contracts remain in the debt register.
+
+## 2026-11-03 — forensic plan implementation (uncommitted)
+
+Baseline HEAD0ae1b7c, branch migration/java25-storm31. User documentation
+consolidation remains untouched. No framework fork, application transport policy,
+RocksDB migration, host networking, secrets or existing volumes changed.
+
+Acceptance attribution: `restart_recovery.restore_transport` accepts proved
+unassisted HTTP200/ready/ATYP3 and continues actual pending/Storm checks, marking
+assisted recovery NOT_EXERCISED. Only qualifying CONNECT failure invokes the
+existing one-cycle recovery. `verify.stage` records explicit per-stage outcomes;
+policy scope/one-loop-request assertions moved to an independent mandatory stage.
+Full M2 remains all original capability flags AND no blockers.
+
+New `test/m2/deterministic_recovery.py` uses actual Storm cleanup2/TorProtocol/
+URLFrontier2.4 on internal-only Docker networking with a SOCKS fixture that never
+forwards traffic. URL admitted before outage; actual worker reaches CONNECT;
+controlled stall triggers finite timeout/socket cancellation. One error and
+original retry date persist; fresh worker waits for that date without reseeding,
+fetches robots then pending, parses marker and commits future refetch.
+
+Executed once: .runtime/m2/onionall-brawler-m2-57fb824e2d5b/
+`deterministic-recovery.json`: PASS, m2_verified=false, work_preexisted_outage,
+failed_fetch_persisted, scheduled_retry_recovered true; containers/networks
+removed, frontier volume retained, host snapshots unchanged. Runtime config uses
+2s call and1min retry ONLY in this diagnostic. This is not live-worker pause/resume
+or real-Tor acceptance. It does not add a second recovery scheduler.
+
+`TerminalMetadataProbe.write` drives real installed StatusUpdaterBolt and server
+ACKs for three FETCH_ERRORs: persisted counts1/2 and provenance, then generated
+maxFetchErrors -> Known refetch0 with empty metadata. `verify` after server
+recreation confirms the tombstone persists without cause. Both executed PASS in
+the same project, but durable_terminal_reason_verified=false deliberately. No DB
+schema change. Missing terminal cause remains an explicit production limitation.
+
+Review found teardown could skip down on worker/log failure. New independent
+cleanup attempts and fault-injection regression cover this; mode-file updates
+are atomic and live JSONL reads exclude an incomplete trailing record.
+
+Verification:43 targeted JVM tests PASS (TorProtocolTest,TorRobotsCacheTest,
+FrontierSchedulingTest);113 Python M2 tests PASS; git diff --check PASS.
+Logs: .runtime/autonomous-recovery/recovery-contract-20261103/.
+Historical intermediate Python failures from concurrent in-progress incident
+edits remain preserved; final suite above supersedes them, not their evidence.
+
+Tor diagnostic: `socks_incident.py --compare-retained-cold` adds one opt-in,
+600s-bounded diagnostic. Normal restart must still fail CONNECT before a separate
+fresh-state observer is created. Identical NO_AUTH20s pair shares one requester
+namespace. Passive revision/period/publication evidence must exist before pair;
+missing telemetry is INCONCLUSIVE. Control identity/start time and onion key
+hashes are checked. No HSFETCH/NEWNYM/CLOSECIRCUIT or additional retries. Separate
+cold ControlSocket/CookieAuthFile prevent overwriting the retained control.
+Live outcome is recorded below after the single permitted execution.
+
+New diagnostic entrypoints (repository root; select JDK25 via JAVA_HOME):
+
+```sh
+M2_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 python3 -B test/m2/deterministic_recovery.py
+python3 -B -m unittest discover -s test/m2
+M2_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 python3 -B test/m2/socks_incident.py --compare-retained-cold
+```
+
+The retained/cold diagnostic deliberately exits1 even when its observation is
+complete: inspect `incident.json.retained_cold`, not exit code for acceptance.
+Do not repeat its real network command identically after an inconclusive result.
+
+Single real Tor execution completed in
+`.runtime/m2/onionall-brawler-m2-4c5fbf2c0766/`: INCONCLUSIVE, pair_attempts0,
+m2_verified=false. Startup's original120s health bound failed before any baseline
+request or service/gateway restart. Service onion reached bootstrap100; gateway
+logs ended at95. No CONNECT/state attribution can be made from this attempt.
+No repeated network experiment or full M2 was launched. `incident.json` confirms
+containers/networks removed, all3 volumes retained and host snapshots unchanged.
+Driver and startup/services/cleanup logs remain in the same project.
+
+Final source review: failed worker-stop/log collection cannot skip deterministic
+project teardown; fault-injection regression passes. Cold diagnostic requires
+mapped publication revision/period before attempting its pair. Final113-test
+Python suite and43-test JVM evidence are retained in the contract checkpoint
+folder above. The runtime integration predates only these teardown/evidence-gate
+hardening edits; their changed branches were verified by focused unit regressions.

@@ -25,10 +25,38 @@ def host_state():
         resolver_sha256=hashlib.sha256(Path('/etc/resolv.conf').read_bytes()).hexdigest())
 
 
+def restore_transport(project, path, code, observation, recover_gateway=None):
+    """Attribute transport recovery separately from pending-work verification.
+
+    Unassisted reachability does not exercise the assisted branch. A successful
+    exit alone is insufficient: require the same owned ATYP3 HTTP health proof.
+    """
+    if type(code) is not int or not isinstance(observation, dict):
+        raise ValueError('Invalid controlled health evidence')
+    health = observation.get('health', {})
+    if not isinstance(health, dict):
+        raise ValueError('Invalid controlled health object')
+    if code == 0 and observation.get('passed') is True and (
+            health.get('http_status') == 200 and health.get('health_body') == 'ready'
+            and health.get('socks_atyp') == 3 and health.get('remote_hostname_sent') is True):
+        return dict(transport_recovery='PASS', recovery_mode='unassisted',
+                    assisted_recovery='NOT_EXERCISED', recovery_exercised=False)
+    if code == 0 or observation.get('passed') is not False:
+        raise ValueError('Contradictory or incomplete controlled health evidence')
+    from m2_recovery import connect_failure
+    if not connect_failure(observation):
+        raise ValueError('No qualifying SOCKS CONNECT failure; no replacement attempted')
+    recovery = (recover_gateway or recover)(project, path, diagnostics=True)
+    return dict(transport_recovery='PASS' if recovery.get('passed') is True else 'DEPENDENCY_UNAVAILABLE',
+                recovery_mode='assisted', assisted_recovery='PASS' if recovery.get('passed') is True else 'FAILED',
+                recovery_exercised=True, recovery=recovery)
+
+
 def main():
     runner = Runner()
     path = runner.path
-    result = {'passed': False, 'm2_verified': False}
+    result = {'passed': False, 'm2_verified': False, 'transport_recovery': 'NOT_EXECUTED',
+              'assisted_recovery': 'NOT_EXERCISED', 'application_recovery': 'NOT_EXECUTED'}
     subject = runner.project + '-consumer'
     def dc(args, name, **kwargs):
         print(name, flush=True)
@@ -64,6 +92,8 @@ def main():
         (path / 'onion-hostname.txt').write_text(first['hostname'])
         code, baseline = health('baseline')
         result['baseline'] = baseline
+        if code != 0 and baseline.get('passed') is False:
+            result['transport_recovery'] = 'DEPENDENCY_UNAVAILABLE'
         check(code == 0 and baseline['passed'], 'Initial health failed; restart not attempted')
         # Build only the small frontier probe against the existing unchanged JAR.
         runner.command([sys.executable, '-B', 'test/m2/prepare.py', path], 'prepare.log')
@@ -100,22 +130,20 @@ def main():
         check(result['identity_unchanged'], 'Onion identity changed')
         code, detected = health('recovery-detection')
         result['post_restart'] = detected
-        if code == 0:
-            result['recovery_exercised'] = False
-            raise RuntimeError('Unassisted restart succeeded; replacement path not exercised')
-        result['recovery_exercised'] = True
-        result['recovery'] = recover(runner.project, path, diagnostics=True)
-        check(result['recovery']['passed'], 'Bounded gateway replacement failed')
+        result.update(restore_transport(runner.project, path, code, detected))
+        check(result['transport_recovery'] == 'PASS', 'Bounded gateway replacement failed')
         state = runner.command(['docker', 'inspect', '--format', '{{json .State}}', subject], capture=True)
         consumer_state = json.loads(state.stdout)
-        result['consumer_resumed'] = consumer_state.get('Running') is True and consumer_state.get('Paused') is False
-        check(result['consumer_resumed'], 'Consumer did not resume')
+        result['consumer_running'] = consumer_state.get('Running') is True and consumer_state.get('Paused') is False
+        result['consumer_resumed'] = result['recovery_exercised'] and result['consumer_running']
+        check(result['consumer_running'], 'Consumer is not running after transport recovery')
         dc(['run', '--rm', '--no-deps', 'probe', 'snapshot', 'after.json'], 'frontier-after')
         a, b = [json.loads((path / name).read_text())['entries'] for name in ('before.json', 'after.json')]
         check(a == b and len(a) == 1, 'Replacement changed pending frontier')
         runner.command(['docker', 'rm', '-f', subject], 'consumer-cleanup.log')
         # Outer orchestration budget includes the existing finite 160s series budget;
         # individual SOCKS/HTTP deadlines remain 20s and failed requests are not retried.
+        result['application_recovery'] = 'INCONCLUSIVE'
         dc(['run', '--rm', '--no-deps', '-e', 'M2_CRAWL_TTL=45', '-e', 'M2_VERIFY_BEFORE_CRAWL=1',
             '-e', 'M2_TOR_DIAGNOSTICS=1', '-e', 'M2_SERIES_OUTPUT=resumed-series.json', 'crawler'], 'crawl-resumed', timeout=120 + 160)
         dc(['run', '--rm', '--no-deps', 'probe', 'snapshot', 'resumed.json'], 'frontier-resumed')
@@ -137,11 +165,15 @@ def main():
         check(len(json.loads((path/'series.json').read_text())['entries']) == 8, 'Unexpected series frontier scope')
         traffic=[json.loads(line) for line in (path/'requests.jsonl').read_text().splitlines()]
         check(not any(row['path']=='/blocked' for row in traffic), 'Robots denied path fetched')
+        result['application_recovery'] = 'PASS'
         result['actual_storm_series_passed'] = True
         result['frontier_preserved_and_resumed'] = True
         result['passed'] = True
-    except (OSError, ValueError, RuntimeError, KeyboardInterrupt, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, KeyboardInterrupt, subprocess.SubprocessError) as error:
         result['blocker'] = str(error)
+        result['failure_category'] = ('EVIDENCE_MISSING' if isinstance(error, FileNotFoundError) else
+            'EVIDENCE_INVALID' if isinstance(error, (ValueError, KeyError, TypeError)) else
+            'DEPENDENCY_UNAVAILABLE' if result['transport_recovery'] == 'DEPENDENCY_UNAVAILABLE' else 'INCONCLUSIVE')
     finally:
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -171,6 +203,7 @@ def main():
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             result['passed'] = False
             result['cleanup_blocker'] = str(error)
+            result['failure_category'] = 'CLEANUP_FAILED'
         finally:
             runner.save('restart-recovery.json', result)
             print(str(path), flush=True)

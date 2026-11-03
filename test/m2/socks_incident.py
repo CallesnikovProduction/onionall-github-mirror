@@ -1,5 +1,5 @@
 """One bounded same-container experiment. Never a replacement for M2 acceptance."""
-import argparse,json,os,shutil,subprocess,sys,signal,hashlib,re
+import argparse,json,os,shutil,subprocess,sys,signal,hashlib,re,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
@@ -20,13 +20,22 @@ def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cold-gateway-on-failure',action='store_true',help='One diagnostic replacement with fresh client directory; preserve old volume/state')
     parser.add_argument('--compare-fresh-context',action='store_true',help='After recovery, compare a second namespace; recheck the original only if it fails')
+    parser.add_argument('--compare-retained-cold',action='store_true',help='One passive retained-state/cold-state pair after failed ordinary restart; never M2 acceptance')
     args=parser.parse_args()
+    if args.compare_retained_cold and (args.cold_gateway_on_failure or args.compare_fresh_context):
+        parser.error('Retained/cold comparison must run alone')
     r=Runner();p=r.path;subject=r.project+'-incident';result={'passed':False,'m2_verified':False,'comparisons':[]}
     fresh_subject=r.project+'-fresh-incident'
     before=host_state();r.save('host-before.json',before)
-    def dc(args,name,**kw):
+    experiment_deadline=time.monotonic()+600
+    service_watcher=None;service_output=None
+    def dc(command_args,name,**kw):
         print(name,flush=True);kw.setdefault('timeout',40)
-        return r.dc(args,name+'.log',**kw)
+        if args.compare_retained_cold and name not in {'services','cleanup'}:
+            remaining=experiment_deadline-time.monotonic()
+            if remaining<=0:raise TimeoutError('Experiment600s ceiling exceeded')
+            kw['timeout']=min(kw['timeout'],remaining)
+        return r.dc(command_args,name+'.log',**kw)
     def compare(phase,container=None):
         container=container or subject
         python="""import sys,json,time;from pathlib import Path
@@ -42,6 +51,9 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
 """
         # docker exec preserves exactly the same container, source IP and network namespace.
         r.command(['docker','exec',container,'python3','-c',python,phase+'-python.json'],phase+'-python.log',timeout=25)
+        if args.compare_retained_cold:
+            row=json.loads((p/(phase+'-python.json')).read_text());result['comparisons'].append(dict(phase=phase,results={'python':row}));r.save('incident.json',result)
+            return row['passed']
         r.command(['docker','exec',container,'python3','-c',python,phase+'-python-auth.json','auth'],phase+'-python-auth.log',timeout=25)
         for mode in ('native','protocol'):
             r.command(['docker','exec',container,'java','-cp','/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar','dev.onionall.brawler.m2.SocksIncidentProbe',mode,phase+'-'+mode+'.json'],phase+'-'+mode+'.log',allow_failure=True,timeout=30)
@@ -65,12 +77,40 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
         r.command([r.tool('jar'),'--update','--file',p/'crawler-m2.jar','-C',p/'classes','.','-C',p/'resources','.'],'package.log')
         dc(['run','-d','--no-deps','--name',subject,'--entrypoint','python3','crawler','-c','import time;time.sleep(900)'],'client-start')
         if not compare('initial'):raise RuntimeError('Initial equivalent-deadline comparison failed; no restart attempted')
+        if args.compare_retained_cold:
+            identity_code="import hashlib,json;from pathlib import Path;p=Path('/var/lib/tor/hidden_service');print(json.dumps({n:hashlib.sha256((p/n).read_bytes()).hexdigest() for n in ('hostname','hs_ed25519_secret_key','hs_ed25519_public_key')}))"
+            result['service_identity_before']=json.loads(dc(['exec','-T','onion','python3','-c',identity_code],'service-identity-before',capture=True).stdout)
         dc(['restart','--timeout','5','onion'],'onion-restart',timeout=30)
         # Bootstrap and live stream availability remain separate; no arbitrary sleep.
+        if args.compare_retained_cold:
+            cid=dc(['ps','-q','onion'],'service-observer-id',capture=True).stdout.strip()
+            service_output=(p/'service-events.jsonl').open('w')
+            service_watcher=subprocess.Popen(['docker','exec',cid,'python3','-u','-c',(ROOT/'test/m2/tor_observer.py').read_text()],cwd=ROOT,env=r.environment,stdout=service_output,stderr=subprocess.DEVNULL)
         compare('service-return')
+        if args.compare_retained_cold:
+            result['service_identity_after']=json.loads(dc(['exec','-T','onion','python3','-c',identity_code],'service-identity-after',capture=True).stdout)
+            if result['service_identity_before'] != result['service_identity_after']:
+                raise RuntimeError('Onion identity changed; paired diagnostic refused')
+        if args.compare_retained_cold:
+            control_id=dc(['ps','-q','tor'],'retained-before-id',capture=True).stdout.strip()
+            control_start=r.command(['docker','inspect','--format','{{.State.StartedAt}}',control_id],capture=True,timeout=10).stdout.strip()
+            result['retained_before']={'container':control_id,'started_at':control_start}
         dc(['restart','--timeout','5','tor'],'gateway-restart',timeout=30)
         dc(['up','-d','--no-build','--no-recreate','--pull','never','--wait','--wait-timeout','90','tor'],'gateway-bootstrap',timeout=110)
         recovered=compare('gateway-return')
+        if args.compare_retained_cold:
+            if recovered:
+                result['retained_cold']={'status':'NOT_REPRODUCED','m2_verified':False,'pair_attempts':0,'interpretation':'Ordinary restart restored control; no observer or extra restart attempted'}
+            else:
+                from m2_recovery import connect_failure
+                control=result['comparisons'][-1]['results']['python']
+                if not connect_failure(control):
+                    result['retained_cold']={'status':'INCONCLUSIVE','m2_verified':False,'pair_attempts':0,'interpretation':'Control did not fail at SOCKS CONNECT; cold observer not started'}
+                    return 1
+                from retained_cold import run
+                result['retained_cold']=run(r,subject,json.loads((p/'compose.json').read_text()),experiment_deadline,result['retained_before'])
+            result['diagnostic_completed']=True
+            return 1  # Diagnostic outcomes never assert acceptance. finally persists cleanup.
         if not recovered and args.cold_gateway_on_failure:
             # Replacement changes IP; every compared client is newly constructed.
             # No configured/live crawler may resume across this replacement.
@@ -112,8 +152,16 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
         result['crawler_path_passed']=True
         result['passed']=result.get('fresh_context_passed',True)
         if not result['passed']:result['blocker']='Fresh context failed while original context recovered; inspect A/B/A comparisons'
-    except (OSError,ValueError,RuntimeError,AssertionError,subprocess.SubprocessError,KeyboardInterrupt) as e:result['blocker']=type(e).__name__+': '+str(e)
+    except (OSError,ValueError,RuntimeError,AssertionError,subprocess.SubprocessError,KeyboardInterrupt) as e:
+        result['blocker']=type(e).__name__+': '+str(e)
+        if args.compare_retained_cold:result.setdefault('retained_cold',{'status':'INCONCLUSIVE','pair_attempts':0,'m2_verified':False})
     finally:
+        if service_watcher is not None:
+            if service_watcher.poll() is None:
+                service_watcher.terminate()
+                try:service_watcher.wait(timeout=5)
+                except subprocess.TimeoutExpired:service_watcher.kill();service_watcher.wait(timeout=5)
+        if service_output is not None:service_output.close()
         signal.signal(signal.SIGTERM,signal.SIG_IGN)
         signal.signal(signal.SIGINT,signal.SIG_IGN)
         try:

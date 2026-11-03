@@ -502,3 +502,7 @@ Windows and desktop notification delivery were not executed. No new commits
 were made after the explicit audit prohibition. Changes remain in the working
 tree. Full integration has real passed stages and preserved failures, not a
 passing M2 result. See docs/m2-hardening.md and ignored bridge-integration reports.
+
+## Recovery contract implementation — 2026-11-03
+
+Acceptance now attributes unassisted/assisted transport separately; the strict full M2 gate remains unchanged. Internal-only deterministic Storm/TorProtocol/Frontier recovery and three-error terminal metadata characterization pass in57fb824e2d5b; terminal reason is still discarded by stock Frontier. 43 targeted JVM/113 Python M2 tests pass. Single retained/cold attempt4c5fbf2c0766 ended INCONCLUSIVE before baseline: gateway startup health120s failed, pair0, cleanup/retention/host checks pass. Read the latest recovery-execution-ledger entry for commands and evidence. Full M2/M3 remain BLOCKED. Preserve user documentation consolidation.
