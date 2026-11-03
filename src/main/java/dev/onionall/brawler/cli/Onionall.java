@@ -16,7 +16,7 @@ import picocli.CommandLine.*;
 
 @Command(name="onionall", description="Bounded Tor-native HTML fetch and offline inspection.",
         mixinStandardHelpOptions=true, version="onionall 0.1.0-SNAPSHOT (Java 25)",
-        subcommands={Onionall.Fetch.class, Onionall.Inspect.class, Onionall.Status.class, Onionall.Discover.class})
+        subcommands={Onionall.Fetch.class, Onionall.Inspect.class, Onionall.Status.class, Onionall.Discover.class, ArchiveCommands.Crawl.class, ArchiveCommands.Pages.class, ArchiveCommands.Page.class, ArchiveCommands.SearchLocal.class, ArchiveCommands.Archive.class, ArchiveCommands.ProviderSearch.class})
 public final class Onionall implements Callable<Integer> {
     @Option(names="--json", scope=ScopeType.INHERIT, description="Machine-readable result, no branding or animation.") boolean json;
     @Option(names="--no-color", scope=ScopeType.INHERIT) boolean noColor;
@@ -24,6 +24,7 @@ public final class Onionall implements Callable<Integer> {
     @Option(names="--timeout-ms", scope=ScopeType.INHERIT, defaultValue="30000") long timeout;
     @Option(names="--max-bytes", scope=ScopeType.INHERIT, defaultValue="131072") int limit;
     @Option(names="--download-dir", scope=ScopeType.INHERIT, description="Default output directory (or ONIONALL_DOWNLOAD_DIR).") Path directory;
+    @Option(names="--archive-dir", scope=ScopeType.INHERIT, description="Local document catalog directory (or ONIONALL_ARCHIVE_DIR).") Path archiveDirectory;
     @Spec Model.CommandSpec spec;
     final Map<String,String> env;
     final boolean tty;
@@ -43,6 +44,11 @@ public final class Onionall implements Callable<Integer> {
                 return Path.of(".runtime/downloads");
         } catch(IOException ignored) { /* Installed mode does not require a source checkout. */ }
         return Path.of(env.getOrDefault("XDG_DATA_HOME", System.getProperty("user.home")+"/.local/share"), "onionall", "downloads");
+    }
+    Path archiveDirectory() {
+        if (archiveDirectory != null) return archiveDirectory;
+        if (env.containsKey("ONIONALL_ARCHIVE_DIR")) return Path.of(env.get("ONIONALL_ARCHIVE_DIR"));
+        return Path.of(env.getOrDefault("XDG_DATA_HOME", System.getProperty("user.home")+"/.local/share"), "onionall", "archive");
     }
     Config config() {
         if (port < 1 || port > 65535 || timeout < 1 || timeout > 120000 || limit < 1 || limit > 131072)
@@ -66,7 +72,7 @@ public final class Onionall implements Callable<Integer> {
         out().flush();
     }
     public Integer call() throws Exception {
-        if (json) { print(new LinkedHashMap<>(Map.of("commands",List.of("fetch","inspect","status","discover"),"version","0.1.0-SNAPSHOT"))); return 0; }
+        if (json) { print(new LinkedHashMap<>(Map.of("commands",List.of("fetch","inspect","status","discover","crawl","pages","page","search-local","archive","search-provider"),"version","0.1.0-SNAPSHOT"))); return 0; }
         if (!tty) { spec.commandLine().usage(out()); return 0; }
         try(var session=new InteractiveSession(out(),env,color())) {
             PrintWriter screen=session.writer();
@@ -173,7 +179,7 @@ public final class Onionall implements Callable<Integer> {
             Map<String,Object> r=new LinkedHashMap<>();r.put("version","0.1.0-SNAPSHOT");r.put("java",Runtime.version().toString());
             r.put("socks_endpoint","127.0.0.1:"+root.port);r.put("socks_tcp_reachable",reachable);r.put("tor_connectivity","NOT_TESTED");r.put("onion_connectivity","NOT_TESTED");
             r.put("downloads",root.downloads().toAbsolutePath().toString());r.put("timeout_ms",root.timeout);r.put("max_bytes",root.limit);
-            r.put("allowed_host",OnionSmoke.HOST);r.put("features",List.of("fetch","inspect","status","discover"));r.put("m2_m3_acceptance","BLOCKED");root.print(r);return 0;
+            r.put("allowed_host",OnionSmoke.HOST);r.put("features",List.of("fetch","inspect","status","discover","crawl","pages","page","search-local","archive","search-provider"));r.put("m2_m3_acceptance","BLOCKED");root.print(r);return 0;
         }
     }
     int failure(int code, Exception e) throws IOException {
@@ -193,7 +199,7 @@ public final class Onionall implements Callable<Integer> {
             var leaf=parsed;
             while(leaf.hasSubcommand()) leaf=leaf.subcommand();
             if(root.json && (leaf.isUsageHelpRequested() || leaf.isVersionHelpRequested())) {
-                try { root.print(new LinkedHashMap<>(Map.of("version","0.1.0-SNAPSHOT","commands",List.of("fetch","inspect","status","discover"),"help","Use --help without --json for option details"))); }
+                try { root.print(new LinkedHashMap<>(Map.of("version","0.1.0-SNAPSHOT","commands",List.of("fetch","inspect","status","discover","crawl","pages","page","search-local","archive","search-provider"),"help","Use --help without --json for option details"))); }
                 catch(IOException e) { return 6; }
                 return 0;
             }

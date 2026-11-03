@@ -12,7 +12,7 @@ if [[ -d .runtime/maven-linux-repository ]]; then maven+=(-Dmaven.repo.local=.ru
 stage=$(mktemp -d "$root/target/onionall-stage.XXXXXX")
 trap 'rm -rf -- "$stage"' EXIT
 mkdir -p "$stage/lib" "$stage/bin" "$stage/classes/dev/onionall/brawler"
-for package in cli tor tools discovery; do
+for package in cli tor tools discovery archive; do
     [[ -d target/classes/dev/onionall/brawler/$package ]] || { echo "Missing compiled package: $package" >&2; exit 1; }
     cp -R -- "target/classes/dev/onionall/brawler/$package" "$stage/classes/dev/onionall/brawler/"
 done
@@ -23,7 +23,7 @@ rm -rf -- "$stage/classes"
 while IFS= read -r dependency || [[ -n $dependency ]]; do
     name=${dependency##*/}
     case "$name" in
-        commons-cli-[0-9]*.jar|commons-lang3-[0-9]*.jar|commons-io-[0-9]*.jar|commons-codec-[0-9]*.jar|picocli-[0-9]*.jar|kotlin-stdlib-[0-9]*.jar|annotations-[0-9]*.jar|storm-client-[0-9]*.jar|storm-shaded-deps-[0-9]*.jar|stormcrawler-core-[0-9]*.jar|crawler-commons-[0-9]*.jar|okhttp-[0-9]*.jar|okhttp-jvm-[0-9]*.jar|okio-[0-9]*.jar|okio-jvm-[0-9]*.jar|jsoup-[0-9]*.jar|jackson-core-[0-9]*.jar|jackson-databind-[0-9]*.jar|jackson-annotations-[0-9]*.jar|slf4j-api-[0-9]*.jar|guava-[0-9]*.jar|failureaccess-[0-9]*.jar)
+        h2-[0-9]*.jar|commons-cli-[0-9]*.jar|commons-lang3-[0-9]*.jar|commons-io-[0-9]*.jar|commons-codec-[0-9]*.jar|picocli-[0-9]*.jar|kotlin-stdlib-[0-9]*.jar|annotations-[0-9]*.jar|storm-client-[0-9]*.jar|storm-shaded-deps-[0-9]*.jar|stormcrawler-core-[0-9]*.jar|crawler-commons-[0-9]*.jar|okhttp-[0-9]*.jar|okhttp-jvm-[0-9]*.jar|okio-[0-9]*.jar|okio-jvm-[0-9]*.jar|jsoup-[0-9]*.jar|jackson-core-[0-9]*.jar|jackson-databind-[0-9]*.jar|jackson-annotations-[0-9]*.jar|slf4j-api-[0-9]*.jar|guava-[0-9]*.jar|failureaccess-[0-9]*.jar)
             cp -- "$dependency" "$stage/lib/$name" ;;
     esac
 done < <(tr ':' '\n' < target/cli-classpath.txt)

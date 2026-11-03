@@ -14,8 +14,8 @@ SOCKS19050, HTML-only128KiB, finite30s call, no redirects/retries/DIRECT fallbac
 inspect is offline; status is local TCP only, never Tor-readiness proof.
 Offline discover reuses JSoup/TorPolicy and the planner metadata-only rule; no
 transport/Frontier calls. Limit4MiB/1000 anchors/2048 URL chars, deterministic JSON
-and explicit atomic JSONL export (no overwrite). Admission is unavailable per
-ADR0002; no crawl CLI until blocked prerequisites resolve.
+and explicit atomic JSONL export (no overwrite). Automatic admission is unavailable per ADR0002; crawl plan/show/approve/status
+and local archive commands are available, while crawl start fails closed.
 Menu/status presentation styles trusted rows after clipping; status is TCP-only.
 Discovery contracts/tests: docs/cli-discovery.md.
 2026-11-02 offline Java25 verify80 tests and CLI/PTY15 pass. Installed discover
@@ -506,3 +506,18 @@ passing M2 result. See docs/m2-hardening.md and ignored bridge-integration repor
 ## Recovery contract implementation — 2026-11-03
 
 Acceptance now attributes unassisted/assisted transport separately; the strict full M2 gate remains unchanged. Internal-only deterministic Storm/TorProtocol/Frontier recovery and three-error terminal metadata characterization pass in57fb824e2d5b; terminal reason is still discarded by stock Frontier. 43 targeted JVM/113 Python M2 tests pass. Single retained/cold attempt4c5fbf2c0766 ended INCONCLUSIVE before baseline: gateway startup health120s failed, pair0, cleanup/retention/host checks pass. Read the latest recovery-execution-ledger entry for commands and evidence. Full M2/M3 remain BLOCKED. Preserve user documentation consolidation.
+
+## Local archive MVP — 2026-11-03
+
+ArchiveStore owns H2 catalog/schemaV1 and SHA256 HTML objects, not scheduling.
+ArchiveParseFilter commits before parser emission; ArchiveStatusUpdaterBolt.store
+records the installed scheduler outcome before the normal Frontier write/ACK.
+CLI: crawl plan/show/approve/status, blocked start(exit7), archive import/export,
+pages/page show/search-local, assisted search-provider(no scraping). Plans are
+same-origin/depth0..5/pages1..100; approval is not admission. H2 is single-process
+embedded, callbacks open/close stores; concurrent CLI may report catalog busy.
+Source/runtime/CLI contracts: docs/archive-mvp.md. Exact successful local
+Storm/TorProtocol/Frontier A→B→C/retry/archive/reopen and Recovery evidence:
+docs/engineering/archive-execution-ledger.md.105 JVM/113 M2/16 CLI/2 fixture tests
+pass; durable admission and M2/M3 qualification remain blocked. Existing RocksDB
+volumes are not migrated and no external Tor experiment is repeated here.
