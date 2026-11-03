@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+if [[ ${1:-} == --help ]]; then
+    printf '%s\n' 'Remove only managed CLI files from XDG_DATA_HOME / XDG_BIN_HOME; retain archive and downloads.'
+    exit 0
+fi
 (( $# == 0 )) || { echo 'Usage: uninstall-cli.sh (uses XDG_DATA_HOME / XDG_BIN_HOME)' >&2; exit 2; }
 data_home=${XDG_DATA_HOME:-$HOME/.local/share}
 bin_home=${XDG_BIN_HOME:-$HOME/.local/bin}

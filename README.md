@@ -14,7 +14,7 @@ Verified on Windows 11 on 2026-10-30:
 - Flux `--dry-run crawler.flux` succeeded: one spout, nine bolts, 15 streams. This constructs the graph without opening/preparing components.
 - The shaded JAR contains the dependency-supplied `tika-config.xml`.
 - `docker compose -f compose.m0.yaml config --quiet` succeeded.
-- The user ran `scripts/m0.ps1` on the host. Reviewed service and console logs confirm all nine bolts prepared, the spout opened/activated, Tika initialized, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on SIGTERM (exit 143). The user reports Compose removed the containers and network.
+- The user ran `scripts/m0.ps1` on the host (now `scripts/run-startup-check.ps1`). Reviewed service and console logs confirm all nine bolts prepared, the spout opened/activated, Tika initialized, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on SIGTERM (exit 143). The user reports Compose removed the containers and network.
 
 **M0 is complete for the empty-frontier local baseline.** The agent still cannot access Docker Engine directly; runtime evidence comes from the user's host run and the reviewed logs, not an agent rerun. Container cleanup is user-reported; image digests were not captured. See [the verification record and warning assessment](docs/m0-baseline.md).
 
@@ -29,7 +29,7 @@ Recovery recheck (2026-11-02): **M2/M3 remain BLOCKED**. Targeted gateway
 restart restores the canary and JVM series, but resumed Storm robots still times
 out before HTTP. A fresh M1 regression preserves/reuses six records but fails
 the unchanged no-ERROR gate on Nimbus blob submission/cleanup. Cached M1 runs
-are available via `M1_CACHED_IMAGES=1 bash scripts/m1.sh`; M2 `--cached-images`
+are available via `M1_CACHED_IMAGES=1 bash scripts/run-controlled-crawl.sh`; M2 `--cached-images`
 propagates that policy and records deterministic child evidence and real exit
 codes. See [recovery evidence and boundaries](docs/m2-hardening.md).
 
@@ -119,6 +119,8 @@ fallback. The wordmark is unchanged. Renderer contracts and actual PTY captures:
 
 ## Build
 
+See the [script map, platform support, inputs and resource ownership](scripts/README.md) for descriptive entrypoints and compatibility aliases.
+
 Prerequisites: JDK 25 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.
 
 Linux / a shell with Java and Maven on PATH:
@@ -132,7 +134,7 @@ mvn -B clean package
 PowerShell:
 
 ```powershell
-./scripts/build.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
+./scripts/build-project.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
 The helper finds `mvn` on PATH or Maven bundled with IntelliJ under `$env:ProgramFiles/JetBrains`. For other installations, pass `-Maven` with the path to `mvn.cmd`. `-Repository <path>` selects a writable dependency cache; `-Offline` requires a complete cache. Environment changes are restored afterwards. Log: `.runtime/build.log`.
@@ -144,10 +146,10 @@ Output: `target/onionall-brawler-0.1.0-SNAPSHOT.jar`. Storm supplies the provide
 Requires Docker Engine with Linux containers and Docker Compose. Start Docker Desktop on Windows first. The original host-verified recipe used `crawlercommons/url-frontier:2.4` and `storm:2.8.9-jre17`. Current Compose selects `storm:3.1.0-jre25` on the migration branch. Image tags are versioned but not locked by digest. The historical runtime was Eclipse Adoptium17.0.20; the current candidate image was checked as Temurin25.0.5+8.
 
 ```powershell
-./scripts/m0.ps1
+./scripts/run-startup-check.ps1
 ```
 
-The helper checks prerequisites, pulls images, runs the topology, captures `.runtime/m0-console.log` and `.runtime/m0-services.log`, and tears down the baseline containers. Equivalent Linux commands:
+The helper checks prerequisites, pulls images, runs the topology, captures `.runtime/m0-console.log` and `.runtime/m0-services.log`, and tears down the baseline containers. Linux wrapper: `bash scripts/run-startup-check.sh`. Equivalent manual commands:
 
 ```sh
 docker info
@@ -179,7 +181,7 @@ M1 now has a separate controlled test harness: `compose.m1.yaml`, a synthetic si
 Linux / Omarchy (from the repository root, after building):
 
 ```sh
-bash scripts/m1.sh
+bash scripts/run-controlled-crawl.sh
 ```
 
 Requires Bash, Python 3.12+, JDK 25+ (`javac` and `jar`), and Docker Engine / Compose.
@@ -199,7 +201,7 @@ container/network cleanup passed; the RocksDB volume is retained.
 Windows PowerShell:
 
 ```powershell
-./scripts/m1.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
+./scripts/run-controlled-crawl.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
 The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/m1-controlled.md). Local regression tests pass. Docker evidence comes from user host runs `df35366e0994` (Windows) and `e55203e97536` (Omarchy Linux), rechecked offline by the agent. The agent cannot directly access Docker Engine. No blocking log defects were found; unavailable cgroup metrics and resolved shutdown warnings are documented.

@@ -1,6 +1,6 @@
+# Compatibility entrypoint; use check-tor-connectivity.ps1.
 [CmdletBinding()]
 param([string]$Python = 'python', [int]$Seconds = 180)
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
-& $Python (Join-Path $root 'test/m2/tor_preflight.py') (Join-Path $root '.runtime/m2/connectivity-preflight') --seconds $Seconds
+& (Join-Path $PSScriptRoot 'check-tor-connectivity.ps1') @PSBoundParameters
 exit $LASTEXITCODE

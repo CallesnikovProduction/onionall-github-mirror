@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-import m2_supervise as runtime
+import supervise_local_crawl as runtime
 
 
 class RuntimeTest(unittest.TestCase):

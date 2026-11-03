@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+if [[ ${1:-} == --help ]]; then
+    printf '%s\n' 'Install the managed CLI in XDG_DATA_HOME / XDG_BIN_HOME. Usage: bash scripts/install-cli.sh [--no-build].'
+    exit 0
+fi
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-case ${1:-} in
-    --no-build) shift ;;
-    '') bash "$root/scripts/build-cli.sh" ;;
+case "$#:${1:-}" in
+    1:--no-build) ;;
+    0:) bash "$root/scripts/build-cli.sh" ;;
     *) echo 'Usage: install-cli.sh [--no-build]' >&2; exit 2 ;;
 esac
-(( $# == 0 )) || { echo 'Usage: install-cli.sh [--no-build]' >&2; exit 2; }
 source_dir="$root/target/onionall"
 [[ -f $source_dir/.onionall-cli && ! -L $source_dir ]] || { echo 'Build the CLI distribution first.' >&2; exit 1; }
 [[ -z $(find "$source_dir" -type l -print -quit) ]] || { echo 'Refusing symlinks in distribution.' >&2; exit 1; }
@@ -37,10 +41,17 @@ mkdir -p -- "$data_home/onionall" "$bin_home"
 stage=$(mktemp -d "$data_home/onionall/.cli-install.XXXXXX")
 backup=''
 cleanup() {
-    local status=$?
+    local status=$? cleanup_status=0
     trap - EXIT
-    rm -rf -- "$stage"
-    if [[ -n $backup && -d $backup && ! -e $app ]]; then mv -- "$backup" "$app"; fi
+    set +e
+    rm -rf -- "$stage" || cleanup_status=$?
+    if [[ -n $backup && -d $backup && ! -e $app ]]; then
+        mv -- "$backup" "$app" || cleanup_status=$?
+    fi
+    if (( cleanup_status != 0 )); then
+        echo "Installation cleanup failed (exit $cleanup_status); inspect $stage and $backup." >&2
+        if (( status == 0 )); then status=$cleanup_status; fi
+    fi
     exit "$status"
 }
 trap cleanup EXIT

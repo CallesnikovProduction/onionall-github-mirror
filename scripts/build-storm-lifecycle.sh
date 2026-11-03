@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+if [[ ${1:-} == --help ]]; then
+    printf '%s\n' 'Build the pinned Nimbus lifecycle image and run its regressions. Settings: JAVA_HOME, STORM_LIFECYCLE_REVISION, STORM_BASE, STORM_LIFECYCLE_IMAGE, STORM_NIMBUS_SOURCE. Requires Docker; no user volumes.'
+    exit 0
+fi
+(( $# == 0 )) || { echo 'Unexpected arguments; use --help.' >&2; exit 2; }
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd -- "$root"
 : "${JAVA_HOME:?Select JDK25 via JAVA_HOME}"

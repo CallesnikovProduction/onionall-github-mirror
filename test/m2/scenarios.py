@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-from m2_recovery import recover
+from recover_tor_gateway import recover
 
 REQUIRED = ['socks_port_unavailable','invalid_socks_endpoint','bootstrap_incomplete',
             'onion_unreachable','malformed_onion','out_of_scope_redirect','redirect_loop',

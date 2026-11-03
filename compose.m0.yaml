@@ -20,7 +20,7 @@ services:
     working_dir: /workspace
     volumes:
       - .:/workspace:ro
-    entrypoint: ["/bin/bash", "/workspace/scripts/m0-container.sh"]
+    entrypoint: ["/bin/bash", "/workspace/scripts/run-startup-container.sh"]
     stop_grace_period: 60s
 
 networks:

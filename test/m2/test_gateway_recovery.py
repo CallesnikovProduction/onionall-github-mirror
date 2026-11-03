@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
-import m2_recovery as recovery
+import recover_tor_gateway as recovery
 import outage_pipeline
 
 

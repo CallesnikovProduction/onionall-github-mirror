@@ -1,0 +1,143 @@
+# Script map
+
+Use descriptive names below for new commands. The directory remains flat: public
+paths are stable, and compatibility wrappers contain no second implementation.
+`m0`/`m1`/`m2` identify evidence/acceptance milestones, not the command to remember.
+
+## Public commands
+
+| Script | Platform | Purpose / inputs | Safe to rerun |
+|---|---|---|---|
+| `build-cli.sh` | Linux/Bash | Verify and package CLI; no arguments | Yes; replaces managed `target/onionall` |
+| `install-cli.sh` | Linux/Bash | Build then install CLI; `--no-build` uses existing bundle | Yes for recognized managed installation |
+| `uninstall-cli.sh` | Linux/Bash | Remove managed CLI files; no arguments | Yes; preserves user-added files, archive and downloads |
+| `build-project.ps1` | Windows/PowerShell | Maven package; `-JdkHome`, `-Maven`, `-Repository`, `-Offline` | Yes; Maven clean replaces `target`, `.runtime/build.log` |
+| `run-startup-check.sh`, `run-startup-check.ps1` | Linux / Windows | Empty-frontier startup (M0); no arguments | Sequential only; fixed project and overwritten `.runtime/m0-*.log` |
+| `run-controlled-crawl.sh`, `run-controlled-crawl.ps1` | Linux / Windows | Controlled fixture + persistence assertions (M1); PS `-JdkHome`, `-Python` | Fresh project/evidence only; reuse refused; volume retained |
+| `run-tor-acceptance.sh`, `run-tor-acceptance.ps1` | Linux / Windows | Full Tor acceptance (M2); `--cached-images`, PS `-CachedImages`, `-Python`, `-Help` and remaining runner arguments | Fresh project per run; real Tor and retained volumes |
+| `check-tor-connectivity.sh`, `check-tor-connectivity.ps1` | Linux / Windows | Bounded real Tor probe; `--seconds N`, PS `-Seconds N`, `-Python` (default 180s) | Sequential only; fixed `.runtime/m2/connectivity-preflight` evidence |
+| `check-onion-fetch.sh` | Linux/Bash | Fixed permitted Ahmia fetch through existing Tor SOCKS; no arguments | Repeats network fetch; overwrites `.runtime/downloads/ahmia-*.log` |
+
+Bash host commands can be called with `bash` without an executable bit, from any
+working directory (use an absolute script path outside the checkout). PowerShell
+uses `$PSScriptRoot`. Git attributes force LF for shell and PowerShell sources;
+Compose also normalizes copied shell helpers. Arbitrary CRLF Bash files outside
+Git checkout still need line-ending conversion. Linux tools use GNU utilities.
+Bash build/install/uninstall/startup/controlled/fetch commands expose `--help`;
+Tor wrappers pass help through to Python. Help does not start Docker or a build.
+
+```sh
+bash scripts/build-cli.sh
+bash scripts/install-cli.sh --no-build
+bash scripts/run-startup-check.sh
+M1_CACHED_IMAGES=1 bash scripts/run-controlled-crawl.sh
+bash scripts/check-tor-connectivity.sh --seconds 180
+bash scripts/run-tor-acceptance.sh --cached-images
+```
+
+```powershell
+./scripts/build-project.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
+./scripts/run-startup-check.ps1
+./scripts/run-controlled-crawl.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
+./scripts/check-tor-connectivity.ps1 -Seconds 180
+./scripts/run-tor-acceptance.ps1 -CachedImages
+```
+
+These are usage examples, not an instruction to run all acceptance suites.
+
+## Inputs, dependencies and effects
+
+- Builds require JDK 25+ and Maven. `JAVA_HOME` selects Java. CLI build accepts
+  `ONIONALL_OFFLINE=1` and reuses `.runtime/maven-linux-repository` when present.
+  Install/uninstall use absolute `XDG_DATA_HOME` / `XDG_BIN_HOME` (defaults
+  `$HOME/.local/share` / `$HOME/.local/bin`). Install calls `build-cli.sh` unless
+  `--no-build`; it installs `cli-launcher.sh` and refuses unrelated destinations.
+- M0 requires Docker/Compose and the prebuilt application JAR. It owns fixed
+  Compose project `onionall-brawler-m0`, temporary Frontier storage, and two logs.
+  Do not overlap runs or use that project for another workload. Exit zero still
+  requires inspection of startup/RPC/shutdown logs before accepting M0.
+- M1 additionally requires Python 3.12+ and JDK 25+. Bash selects `PYTHON`, Windows
+  selects `-Python` (default `python`). `M1_PROJECT_NAME` optionally chooses a
+  validated fresh project, `M1_CACHED_IMAGES=1` prevents pulls, `M1_STORM_IMAGE`
+  selects the existing image override. Runners derive `M1_RUN_DIR` / `M1_RUN_REL`
+  before Compose and retain `.runtime/m1/<project>/` and `<project>_frontier-data`.
+  They call `test/m1/prepare.py`, probe/fixture helpers and `test/m1/verify.py`;
+  only verified assertions AND cleanup produce `result.json`.
+- M2 host wrappers call `tor_acceptance_runner.py` (also directly runnable with
+  Python, `--cached-images` / `--help`). It requires Python, Docker/Compose,
+  JDK 25+, Maven, private bridges (`M2_BRIDGES_FILE`, default
+  `.secrets/m2/bridges.conf`), and real Tor access. Optional settings are
+  `M2_MAVEN_REPOSITORY`, `M2_STORM_IMAGE`, plus Maven's own environment settings.
+  It calls `test/m2` harnesses and the M1 runner. It owns a fresh project, evidence
+  `.runtime/m2/<project>/` and retains its persistent volumes. Cached images do
+  not imply an offline Maven build or successful Tor acceptance.
+- Connectivity wrappers call `test/m2/tor_preflight.py`, require Python,
+  Docker, the existing Tor image and the same private bridge file; they perform
+  a real network check. Bash accepts `PYTHON`. The runner sets `M2_RUNTIME_USER`
+  for container permissions (preflight also accepts it). Fetch smoke requires
+  Maven's cached dependencies, JDK and an already running local SOCKS proxy;
+  it compiles and runs `OnionSmoke`, without provisioning Tor.
+
+## Internal helpers and maintenance
+
+| Script | Platform | Inputs / responsibility / dependencies | Safe to rerun / effects |
+|---|---|---|---|
+| `cli-launcher.sh` | Linux/Bash, installed only | CLI arguments forwarded to Java; `JAVA_HOME`; reads installed `lib/*` | Depends on CLI command; launcher itself only starts Java |
+| `run-startup-container.sh` | Linux container/Bash | No arguments; `/workspace` JAR, Python TCP readiness, Storm | Compose-owned; temporary M0 state |
+| `run-controlled-crawl-container.sh` | Linux container/Bash | No arguments; `M1_RUN_REL`, Storm/JAR | Compose-owned bounded 45s crawl; run-specific evidence |
+| `run-tor-crawl-container.sh` | Linux container/Bash | No arguments; `M2_RUN_REL`, optional `M2_VERIFY_BEFORE_CRAWL`, `M2_SERIES_OUTPUT`, `M2_TOPOLOGY`, `M2_CRAWL_TTL`; Java/Storm | Compose-owned; optional verification before bounded crawl |
+| `frontier-volume-init.sh` | Linux container/POSIX sh | No arguments; image account `urlfrontier`, mounted `/crawldir` | Idempotent directory creation/ownership; never removes DB files |
+| `recover_tor_gateway.py` | Python/Linux or Windows | `project run_dir`; existing scoped stack, private bridges; optional `M2_TOR_DIAGNOSTICS=1`; imports M2 harness | One recovery journal, not replayable; scoped gateway restart/quarantine; volumes retained |
+| `supervise_local_crawl.py` | Python/Linux or Windows | `project run_dir`; existing stack/JAR; calls `recover_tor_gateway.py` and M2 readiness helpers | One supervision journal, not replayable; at most two batches and one recovery |
+| `verify_tor_candidate.py` | Python + GnuPG | `bundle destination`; local artifact/signature/hash-chain verification, no environment settings | New destination only; offline evidence, no installation/update |
+| `build-storm-lifecycle.sh` | Linux/Bash | No arguments; JDK25, Docker, Python, patch/hash/tar tools, curl if source absent | Sequential build only; writes `.runtime/storm-lifecycle-build-cleanup<N>`, builds local image; no user volumes |
+
+Container helpers deliberately use Compose's `/workspace` working directory:
+they are copied into `/tmp`, so deriving checkout location from their own path
+would be incorrect. They are not host entrypoints. Lifecycle build accepts
+`JAVA_HOME` (required), `STORM_LIFECYCLE_REVISION`, `STORM_BASE`,
+`STORM_LIFECYCLE_IMAGE`, `STORM_NIMBUS_SOURCE`; source/JAR hashes and patches remain
+pinned. It owns one uniquely named, network-isolated temporary extraction container.
+
+Cleanup is scoped to each runner's containers/networks. Persistent volumes,
+evidence, secrets, Tor identities and host network configuration are retained.
+Primary execution failures survive secondary cleanup failures; cleanup failure
+alone fails the command. Nonzero exit means failure, never accepted recovery.
+See [M1 evidence contract](../docs/m1-controlled.md) and
+[M2 bridge setup and limits](../docs/m2-bridges.md).
+
+## Compatibility paths
+
+| Previous name | Canonical name |
+|---|---|
+| `build.ps1` | `build-project.ps1` |
+| `m0.ps1` | `run-startup-check.ps1` |
+| `m0-container.sh` | `run-startup-container.sh` |
+| `m1.sh`, `m1.ps1` | `run-controlled-crawl.sh`, `run-controlled-crawl.ps1` |
+| `m1-container.sh` | `run-controlled-crawl-container.sh` |
+| `m2.sh`, `m2.ps1` | `run-tor-acceptance.sh`, `run-tor-acceptance.ps1` |
+| `m2-preflight.sh`, `m2-preflight.ps1` | `check-tor-connectivity.sh`, `check-tor-connectivity.ps1` |
+| `m2-container.sh` | `run-tor-crawl-container.sh` |
+| `m2.py` | `tor_acceptance_runner.py` |
+| `m2_recovery.py` | `recover_tor_gateway.py` |
+| `m2_supervise.py` | `supervise_local_crawl.py` |
+| `onion-smoke.sh` | `check-onion-fetch.sh` |
+
+Old paths delegate arguments and failures to canonical implementations; old
+Python imports resolve to the same module. Historical documents remain usable.
+Active README/Compose/test callers use descriptive paths. No image tags,
+application behavior, acceptance assertions or evidence schemas changed.
+
+## Verification and remaining boundaries
+
+`python3 -B -m unittest discover -s test/scripts` checks installation and fake-tool
+failure paths (spaces, another cwd, no executable bit, primary vs cleanup error,
+M1 environment ordering, aliases/help). `test/m2` owns Python orchestration tests;
+`test/m1` owns deterministic fixture assertions. These are not real Docker/Tor
+acceptance. Windows source-contract checks do not replace PowerShell parsing or
+native Windows execution. PowerShell and ShellCheck must be run where installed.
+
+Remaining debt: operational M2 code still imports `test/m2` harness modules;
+extracting that boundary is a separate refactor. M0/preflight logs use fixed paths
+and need sequential runs. Bash and PowerShell M1 orchestration remain separate;
+shared assertions/evidence contracts must continue to be checked on both hosts.

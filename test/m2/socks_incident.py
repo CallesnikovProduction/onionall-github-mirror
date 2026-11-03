@@ -3,7 +3,7 @@ import argparse,json,os,shutil,subprocess,sys,signal,hashlib,re,time
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
-from m2 import Runner
+from tor_acceptance_runner import Runner
 from restart_recovery import host_state
 
 def cold_gateway_override(path, project):
@@ -102,7 +102,7 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
             if recovered:
                 result['retained_cold']={'status':'NOT_REPRODUCED','m2_verified':False,'pair_attempts':0,'interpretation':'Ordinary restart restored control; no observer or extra restart attempted'}
             else:
-                from m2_recovery import connect_failure
+                from recover_tor_gateway import connect_failure
                 control=result['comparisons'][-1]['results']['python']
                 if not connect_failure(control):
                     result['retained_cold']={'status':'INCONCLUSIVE','m2_verified':False,'pair_attempts':0,'interpretation':'Control did not fail at SOCKS CONNECT; cold observer not started'}
@@ -141,7 +141,7 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
         dc(['run','--rm','--no-deps','probe','ready'],'frontier-ready')
         dc(['run','--rm','--no-deps','probe','seed','pending'],'seed-pending')
         r.command(['docker','exec','-e','M2_CRAWL_TTL=45',subject,'bash',
-            '/workspace/scripts/m2-container.sh'],'crawler-path.log',timeout=130)
+            '/workspace/scripts/run-tor-crawl-container.sh'],'crawler-path.log',timeout=130)
         dc(['run','--rm','--no-deps','probe','snapshot','crawler-final.json'],'frontier-final')
         snapshot=json.loads((p/'crawler-final.json').read_text())
         entries=snapshot['entries']

@@ -1,6 +1,12 @@
+# Compatibility entrypoint; use run-tor-acceptance.ps1.
 [CmdletBinding()]
-param([string]$Python = 'python')
+param(
+    [string]$Python = 'python',
+    [switch]$CachedImages,
+    [switch]$Help,
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$RunnerArguments = @()
+)
 $ErrorActionPreference = 'Stop'
-$runner = Join-Path $PSScriptRoot 'm2.py'
-& $Python $runner
+& (Join-Path $PSScriptRoot 'run-tor-acceptance.ps1') @PSBoundParameters
 exit $LASTEXITCODE

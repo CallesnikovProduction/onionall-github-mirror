@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+
+if [[ ${1:-} == --help ]]; then
+    printf '%s\n' 'Build and test the packaged CLI. Settings: JAVA_HOME, ONIONALL_OFFLINE. Writes target/; no crawl or Docker.'
+    exit 0
+fi
+(( $# == 0 )) || { echo 'Unexpected arguments; use --help.' >&2; exit 2; }
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 cd -- "$root"
 if [[ -n ${JAVA_HOME:-} ]]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
@@ -10,7 +16,16 @@ if [[ ${ONIONALL_OFFLINE:-0} == 1 ]]; then maven+=(-o); fi
 if [[ -d .runtime/maven-linux-repository ]]; then maven+=(-Dmaven.repo.local=.runtime/maven-linux-repository); fi
 "${maven[@]}" verify dependency:build-classpath -Dmdep.outputFile=target/cli-classpath.txt
 stage=$(mktemp -d "$root/target/onionall-stage.XXXXXX")
-trap 'rm -rf -- "$stage"' EXIT
+cleanup() {
+    local status=$?
+    trap - EXIT
+    if ! rm -rf -- "$stage"; then
+        echo "CLI staging cleanup failed; inspect $stage." >&2
+        if (( status == 0 )); then status=1; fi
+    fi
+    exit "$status"
+}
+trap cleanup EXIT
 mkdir -p "$stage/lib" "$stage/bin" "$stage/classes/dev/onionall/brawler"
 for package in cli tor tools discovery archive admission; do
     [[ -d target/classes/dev/onionall/brawler/$package ]] || { echo "Missing compiled package: $package" >&2; exit 1; }
