@@ -105,3 +105,8 @@ review found no quota/replay bypass; its endpoint/shutdown findings were fixed.
 No existing user RocksDB volume was migrated; no evidence or volume was deleted.
 The user's .gitignore assets/ edit is intentionally excluded from local commits.
 No push is authorized or performed.
+
+Local checkpoints:842081d (server primitive),e95d4f4 (shutdown/canonical identity),
+2f2e819 (verified CLI/archive integration). Final file-mode review caught staging
+copy removing the public build script executable bit; restored and checked with
+test -x. User .gitignore remains the only unrelated worktree change. No push.
