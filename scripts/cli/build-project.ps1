@@ -28,7 +28,7 @@ try {
     New-Item -ItemType Directory -Force .runtime | Out-Null
     & $mavenCommand.Source -version
     if ($LASTEXITCODE -ne 0) { throw 'Maven environment check failed' }
-    $arguments = @('-B', 'clean', 'package')
+    $arguments = @('-B', '-pl', ':onionall-brawler', 'clean', 'package')
     if ($Offline) { $arguments += '-o' }
     if ($Repository) { $arguments += "-Dmaven.repo.local=$Repository" }
     & $mavenCommand.Source @arguments 2>&1 | Tee-Object -FilePath .runtime/build.log

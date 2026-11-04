@@ -1,5 +1,17 @@
 # Onionall Brawler — project context
 
+## Maven reactor — 2026-11-04
+
+Root pom.xml now aggregates crawler/ and frontier-server/. The crawler keeps
+its original coordinates, source/resource locations and root target/ output.
+Use -pl :onionall-brawler for crawler-only goals. Frontier Maven preparation
+requires the exact SHA-pinned stock2.4 service JAR; no version fallback exists.
+Build/test JDK is25; frontier retains build.sh's release11 compatibility, while
+crawler targets25. Maven and Bash server artifacts are byte-identical; all four
+server conformance suites pass. Full reactor verify is not green on this Windows
+host: existing CrawlWorkerTest command-length failures also reproduce with the
+original POM. Details: docs/engineering/frontier-maven-integration.md.
+
 ## Purpose
 
 Onionall Brawler is an open-source-oriented, JVM-first project to build an independent search engine for publicly discoverable and permitted-to-index Tor onion services. Its intended capabilities include seed-based discovery, recurring crawling, a searchable corpus, source metadata, a graph of relationships between services, and a research interface. Optional semantic search, summaries and AI-assisted research may come later; the core search system must work without AI.
