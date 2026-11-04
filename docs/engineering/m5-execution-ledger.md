@@ -266,3 +266,22 @@ run, not targeted-only counts. Python verifier5/5 and tracked Markdown file-link
 checks PASS. Diff whitespace PASS. S1-01 guard unchanged and actual RPC rejection
 regressions included. Historical reservation enqueue ACK is omitted from read rows
 to avoid confusing it with current scheduling state.
+
+## DOM-01a - pure lifecycle/completion predicate
+
+ARCH-02 commit24dce2aab79f3d37191b043811d966b9b4541061 immediately pushed and
+remote SHA verified. Final server rerun6/6 PASS at
+.runtime/specs-dev01/arch02-publish-qjmqcqw5.
+
+Added JobStatus State/Completion/Worker/Assessment and ADR0005. Pending/future
+work after any worker exit is PAUSED only with stopped-process evidence, not
+FAILED/COMPLETE. Unavailable server, unknown liveness and unresolved storage rows
+stay UNKNOWN. Positive COMPLETE/PARTIAL tests use explicit authoritative outcome
+proof fixtures; current v1 real readback deliberately cannot supply those proofs.
+No archive-count subtraction or historical failure-as-current-terminal inference.
+
+Targeted fresh command: mvnw -o -B -Dmaven.repo.local=<cache>
+-Dtest=JobStatusTest,FrontierReadbackTest test.10/10 PASS,0 skip/error; log
+.runtime/specs-dev01/dom01-policy.log. This is pure semantic verification, not
+CLI/product E2E. No runtime policy/schema migration, Tor or scheduling change.
+Rollback is binary-only; status assembly/audit wiring is the next bounded scope.
