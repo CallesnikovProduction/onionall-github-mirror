@@ -407,3 +407,40 @@ Production RPC bind/transport policy and all auth/timeout assertions unchanged.
 App selection19/19 PASS (loopback-rpc-fixtures.log); actual Frontier6/6 PASS at
 .runtime/specs-dev01/loopback-rpc-km5mo26x. No external probe/onion request or host
 network configuration change. Next REC ownership-crash characterization.
+
+## REC-09 controlled crash characterization and owner design decision
+
+Test-only loopback commit ec7e6c232462310500c4e5be6c8ad13a4779566b immediately
+pushed and remote SHA verified. Actual CrawlWorker force-kill fixture CONFIRMED:
+child with owned loopback listener remains alive, OS lock released, current
+requireAvailable accepts, and actual start reaches a rejecting admission tripwire.
+No second crawler or Frontier mutation occurred; exact owned child identity
+rechecked before cleanup. This is JVM process fixture evidence, not full Storm.
+Characterization1/1 and worker/status selection11/11 PASS; PASS means defect
+reproduced, not safe recovery. Logs rec09-crash-characterization.log and
+rec09-publish-characterization.log; small retained proof/owner log under
+.runtime/worker-crash-characterization/case-*/.
+
+Product HIGH conditional overlap/availability risk, security LOW/conditional MEDIUM
+with authorized restart/crash prerequisites, not S1-01 auth bypass. ADR0007 records
+affected symbols, conditions, compatibility and exact acceptance gates.
+verify.py explicitly marks worker-crash-acceptance NOT RUN until an actual guard
+regression exists; no all-green from a positive characterization.
+
+Owner selected archive-level versioned fail-closed ownership: live child/UNKNOWN
+blocks start, legacy migration only with proved stop, no OS components. This
+checkpoint retains the pre-fix reproduction; implementation is next. No source
+worker behavior changed in this checkpoint, no schema/Tor/host configuration change.
+
+Checkpoint recheck initially FAIL:10 PASS/1 ERROR (rec09-checkpoint-current.log).
+New fixture published child-ready before closing JSON; reader saw an empty file.
+Changed fixture publication to atomic same-directory move; existing assertions and
+deadlines unchanged. Cleanup first allows the owned wrapper shutdown hook when
+child identity has not yet been read. Verification-runner unit tests5/5 PASS; tracked
+Markdown links PASS (run-25jlsvpz); git diff --check clean. Full product/Storm
+crash acceptance NOT RUN. Owner design accepted; implementation remains next.
+
+After atomic-ready fix: current worker/status selection11/11 PASS,0 skip/error/failure
+(rec09-checkpoint-atomic-ready.log). Python AST and limited credential signatures
+for four scoped files PASS; not a full secrets/security audit. No production
+worker change. Checkpoint is ready for its authorized atomic commit/push.

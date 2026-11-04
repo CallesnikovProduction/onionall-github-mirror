@@ -185,6 +185,8 @@ def main(argv=None):
             counts = json.loads(report.read_text(encoding='utf-8')) if report.exists() else None
             verify.record('python-' + directory, {0: 'PASS', 2: 'NOT RUN'}.get(rc, 'FAIL'), counts=counts, log=str(log))
         verify.frontier(os.environ.get('URLFRONTIER_BASE_JAR'), java_home if jdk25 else None)
+        verify.record('worker-crash-acceptance', 'NOT RUN',
+                      reason='OPEN REC-09: forced-owner characterization is not a restart-safety regression; approved ownership marker not implemented yet')
         if args.product_e2e:
             rc, log = verify.run('product-e2e', [sys.executable, '-B', str(ROOT / 'test/admission/local_integration.py')], timeout=1800)
             verify.record('product-e2e', 'PASS' if rc == 0 else 'FAIL', log=str(log))
