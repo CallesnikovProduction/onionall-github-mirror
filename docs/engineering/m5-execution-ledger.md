@@ -220,3 +220,49 @@ a complete entropy/secrets/CVE scan. All completed commits immediately pushed
 to feat/m5-operational-closure and remote SHA verified. Final self-hash resolves
 with git log; no recursive documentation commit. Continue from owner read-model
 decision, then qualify packaged CLI and paired product fixture before claiming M5.
+
+## ARCH-02 — authenticated read-only list/counts and strict typed client
+
+Owner resolved the ARCH state-inference question: success/terminal unknown stay
+null; COMPLETE requires proof. Prior hold resolved. Added read actions to existing
+authenticated Admission/Command only, state_version1. No protobuf/persistent
+schema/index, quota/reservation/recovery policy or Tor boundary change.
+
+AdmissionState reads at most the current100 reservations using the existing
+length-prefixed session key prefix, sorts immutable ordinals and validates complete
+readback. Keyset cursor binds session/through/after, freezes membership under
+concurrent appends; per-page scheduling observation remains fresh. limit<=200 plus
+<60KiB JSON byte budget. admissionLock serializes durable state and the existing
+queue monitor freezes lease publication; observational lease copy never prunes
+expired entries. CF0/CF1 distinguish pending/held/scheduled_wait/unscheduled/unknown;
+no invented done/success/terminal/retry. Earliest candidate time includes lease
+expiry, not guaranteed execution. Full contract/rollback in frontier-server README.
+
+Strict FrontierReadback/AdmissionClient typed methods reject unsupported outcomes,
+versions, malformed/nonconsecutive pages, moving cursor watermark, malformed
+counts/nullability and explicit deadline failures, without anonymous/stock fallback.
+Old callers untouched; previous server rejects new reads explicitly.
+
+Tests: actual RocksDB/RPC AdmissionStateConformance verifies five reservations/two
+unscheduled, held and future scheduling, missing/wrong capability, read-only mode,
+zero RocksDB latest-sequence change and identical raw lease map after reads,
+concurrent append without pagination loss, long URLs/byte-bounded pages, invalid
+cursor/limit, two clean restarts and separate-process Runtime.halt23. Leases are
+ephemeral and expected to return pending after server restart. Six actual server
+drivers PASS in .runtime/specs-dev01/arch02-final-zz1ixu3n. Targeted app tests
+FrontierReadbackTest,AdmissionClientTest,CapabilityClientsTest:12/12 PASS;
+.runtime/specs-dev01/arch02-client.log. Full verify recorded below after completion.
+Commands use owner-verified JDK25/Maven Wrapper/offline cache and pinned Frontier
+JAR as in earlier scopes; no external requests or Docker fixtures executed here.
+
+Compatibility/rollback: additive actions and client methods; previous binaries
+read identical persistent schema. Revert binaries together, no DB rewrite. This
+does not close S1-01 full integration/independent review or product E2E. Next DOM
+status derives from this contract and retains unknown completion provenance.
+
+ARCH-02 full offline Maven verify completed:127 run,126 PASS,1 existing Windows
+SKIP,0 failure/error; .runtime/specs-dev01/arch02-full-verify.log. Fresh full JVM
+run, not targeted-only counts. Python verifier5/5 and tracked Markdown file-link
+checks PASS. Diff whitespace PASS. S1-01 guard unchanged and actual RPC rejection
+regressions included. Historical reservation enqueue ACK is omitted from read rows
+to avoid confusing it with current scheduling state.

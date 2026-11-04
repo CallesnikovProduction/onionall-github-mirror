@@ -43,6 +43,18 @@ public final class AdmissionClient implements AutoCloseable {
             return JSON.readValue(response.getValue().toByteArray(), new TypeReference<Map<String,Object>>(){});
         } catch (StatusRuntimeException e) { throw new IOException("Admission RPC failed: " + e.getStatus().getCode(), e); }
     }
+    public FrontierReadback.Page list(String session, String cursor, int limit) throws IOException {
+        if (session == null || !session.matches("[A-Za-z0-9-]{1,64}") || limit < 1 || limit > 200
+            || cursor != null && (cursor.isEmpty() || cursor.length() > 256)) throw new IOException("Invalid Frontier list request");
+        Map<String,Object> request = new java.util.LinkedHashMap<>();
+        request.put("action", "list"); request.put("session_id", session); request.put("limit", limit);
+        if (cursor != null) request.put("cursor", cursor);
+        return FrontierReadback.page(command(request), session, cursor, limit);
+    }
+    public FrontierReadback.Counts counts(String session) throws IOException {
+        if (session == null || !session.matches("[A-Za-z0-9-]{1,64}")) throw new IOException("Invalid Frontier counts request");
+        return FrontierReadback.counts(command(Map.of("action", "counts", "session_id", session)), session);
+    }
     @Override public void close() {
         channel.shutdownNow();
         try { if (!channel.awaitTermination(5, TimeUnit.SECONDS)) throw new IllegalStateException("Admission channel did not stop"); }

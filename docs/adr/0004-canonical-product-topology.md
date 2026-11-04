@@ -60,13 +60,13 @@ No second status scheduler, H2 pending queue or DIRECT fallback is introduced.
 | CapabilityClientsTest | Actual capability Spout/StatusUpdater against loopback RPC | Auth/stream/reconnect components, not full Storm graph |
 | CrawlWorkerTest | Nested JVM ownership/deadline fixture | Process harness, not full Storm/SOCKS acceptance |
 | AdmissionClientTest | Admission client contract | Neither Storm topology |
-| Frontier conformance (five drivers) | Owning RocksDB service/RPC | Reservation/quota/auth/recovery; neither Storm topology |
+| Frontier conformance (six drivers) | Owning RocksDB service/RPC | Reservation/quota/auth/recovery; neither Storm topology |
 | TorProtocolTest | Actual protocol over local wire fixtures | Transport component, not product graph acceptance |
 | Python test suites / verify.py | Contract/unit/fixture verification | No Storm execution unless explicitly opting into product E2E |
 | Packaged CLI/PTY/installation tests | CLI bundle and local SOCKS/terminal fixtures | Not full crawl/admission graph; requires built Linux bundle |
 
-Current new local REC qualification is five actual drivers, including two clean
-restarts and a process crash. Historical M4.1 product E2E evidence exists; it does
+Current Frontier qualification includes six actual drivers; REC verifies two
+clean restarts and a process crash, and ARCH adds read-only state conformance. Historical M4.1 product E2E evidence exists; it does
 not prove current hardened wiring. Current full product E2E remains NOT RUN.
 Linux hosted core results are recorded per SHA in the M5 ledger.
 
@@ -102,3 +102,13 @@ introduced before this decision. ARCH read-model/DOM/retry dependent scope is OP
 
 Rollback of this ADR is documentation-only; historical tests/capabilities and
 all product scheduling/transport behavior remain intact.
+
+### Owner resolution — 2026-11-04
+
+The owner selected UNKNOWN/null success/terminal, with COMPLETE permitted only
+for an independently proved result. ARCH read-model work may proceed under that
+contract; the earlier decision hold is resolved. No durable terminal-provenance
+schema is introduced. STATE_LIST/STATE_COUNTS in the existing authenticated Command
+provide bounded observations; see the current frontier-server README. Future due
+is SCHEDULED_WAIT, not automatically a retry. UNSCHEDULED remains unresolved
+completion. Product graph E2E gates above remain open independently of this decision.

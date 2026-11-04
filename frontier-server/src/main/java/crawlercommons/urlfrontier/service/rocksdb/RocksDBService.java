@@ -525,6 +525,33 @@ public class RocksDBService extends AbstractFrontierService {
         }
     }
 
+    // Called only by admission readback while admissionLock and the session queue
+    // monitor are held. Never invokes GetURLs or the expiring/mutating lease APIs.
+    com.google.gson.JsonObject schedulingObservation(String id, String url, long now,
+                                                     java.util.Map<String, Long> held) throws RocksDBException {
+        QueueWithinCrawl q = QueueWithinCrawl.get(java.net.URI.create(url).getHost(), id);
+        String prefix = q.toString() + "_";
+        byte[] pointer = rocksDB.get(columnFamilyHandleList.get(0),
+            (prefix + url).getBytes(StandardCharsets.UTF_8));
+        com.google.gson.JsonObject result = new com.google.gson.JsonObject();
+        String state = "UNKNOWN";
+        result.add("next_due_epoch", com.google.gson.JsonNull.INSTANCE);
+        result.add("lease_until_epoch", com.google.gson.JsonNull.INSTANCE);
+        if (pointer != null && pointer.length == 0) state = "UNSCHEDULED";
+        else if (pointer != null && rocksDB.get(columnFamilyHandleList.get(1), pointer) != null) {
+            String key = new String(pointer, StandardCharsets.UTF_8);
+            int separator = key.indexOf('_', prefix.length());
+            if (!key.startsWith(prefix) || separator < 0 || !key.substring(separator + 1).equals(url))
+                throw new IllegalStateException("Invalid scheduling pointer");
+            long due = Long.parseLong(key.substring(prefix.length(), separator));
+            result.addProperty("next_due_epoch", due);
+            state = held.containsKey(url) ? "HELD" : due > now ? "SCHEDULED_WAIT" : "PENDING";
+            if (held.containsKey(url)) result.addProperty("lease_until_epoch", held.get(url));
+        }
+        result.addProperty("state", state);
+        return result;
+    }
+
     /**
      *
      *

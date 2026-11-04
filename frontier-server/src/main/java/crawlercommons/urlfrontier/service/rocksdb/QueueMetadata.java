@@ -13,6 +13,19 @@ public class QueueMetadata implements QueueInterface {
 
     public QueueMetadata() {}
 
+    /** Observation only: unlike getInProcess/isHeld this never removes expired leases. */
+    public synchronized java.util.Set<String> heldURLsAt(long now) {
+        return new java.util.HashSet<>(leaseExpiriesAt(now).keySet());
+    }
+
+    public synchronized java.util.Map<String, Long> leaseExpiriesAt(long now) {
+        java.util.Map<String, Long> result = new java.util.HashMap<>();
+        if (beingProcessed != null) beingProcessed.forEach((url, until) -> {
+            if (until > now) result.put(url, until);
+        });
+        return result;
+    }
+
     /** number of URLs that are not scheduled anymore * */
     private AtomicInteger completed = new AtomicInteger(0);
 

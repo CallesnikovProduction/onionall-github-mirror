@@ -145,7 +145,7 @@ shared assertions/evidence contracts must continue to be checked on both hosts.
 ## Unified local verification (M5 DEV-01)
 
 `python -B scripts/runners/verify.py --offline` runs Maven, independent Python
-suites, five actual Frontier conformance drivers, and tracked Markdown file-link
+suites, six actual Frontier conformance drivers, and tracked Markdown file-link
 checks. Set JAVA_HOME to JDK25 and URLFRONTIER_BASE_JAR to the verified stock2.4
 service JAR (checksum enforced). Maven may be selected with --maven and the cache
 with --maven-repository. Frontier verification compiles to a unique disposable
