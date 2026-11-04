@@ -23,6 +23,11 @@ and deadlines retained. Current validation and remaining integration/review gate
 docs/security/SECURITY-REVIEW.md and docs/engineering/security-execution-ledger.md.
 The Security RC task authorizes reviewed local checkpoint commits only.
 No push, merge, PR creation or main/source-branch changes are authorized.
+Security RC is a local reviewable checkpoint, not full S1-01/Tor/release acceptance.
+Before future WP-08 work note that current RocksDBService forces recoveryQscan(true);
+DeepSeek REC-06/07 are not active on this candidate. Follow the corrected roadmap,
+full M2 triage and owner handoff in SECURITY-REVIEW.md section15. Do not start M5-M9
+or send the handoff automatically.
 
 ## Purpose
 

@@ -616,3 +616,103 @@ Local checkpoints created after explicit path staging and cached diff checks:
 
 Documentation checkpoint follows; subsequent RC analysis will append evidence,
 triage, roadmap and handoff in these same two reports. No automatic owner message.
+
+## 2026-11-04 — Security RC final qualification, arbitration and handoff
+
+Local documentation checkpoint:
+`2aaa3cceddaaa47e9c91a851b24c1ab8ec98cd37` (six files,+1304/-8).
+Independent auth reviewer remains unavailable after the prior tool policy refusal;
+no bypass/rephrased retry performed. Lead's separate secondary checklist is in
+review section15, explicitly not independent. Two read-only researchers separately
+triaged M2 harness and arbitrated six DeepSeek product findings; neither approved
+the auth patch as an independent reviewer.
+
+### Fresh RC execution evidence
+
+- Full **offline** Maven verify at the checkpoint code: **BUILD SUCCESS**,
+  124 run/123 PASS/1 existing Windows SKIP/0 FAIL/ERROR. Command:
+  `mvn -o -B -Dmaven.repo.local=.runtime/security-stage23/maven-repository verify`,
+  portable selected JDK25.0.5+8/Maven3.10.0. Evidence
+  `.runtime/security-rc/maven-verify-offline.log`. Pinned cache already complete;
+  no skipTests, download or version/POM change. Byte-identical JAR output is not claimed.
+- Quick selected JVM12/12 and freshly compiled Frontier4/4 already passed before
+  local code/test commits. Existing server assertions cover auth/no-mutation,
+  fresh-process restart/replay and genuine storage/lease behavior.
+- M2 triage located all3 failures/5 errors/2 skips in pre-S1 Stage1 logs; affected
+  test/production files matched base853934e before the one permitted fixture edit.
+  Exact ten-case command/cause/security gate table is in review section15.
+- Minimal repair only in `test/m2/test_runner.py`: Windows dummy .exe suffix and
+  mocked command .stem,4 replaced lines. All original assert/assert* AST nodes
+  exactly equal baseline; no timeout, acceptance, skip or product runner change.
+  RunnerContractTest **4/4 PASS**, `m2-runner-fixture.log`. Local commit
+  `cc01871cc29f163258a30a2269340672112eeddf`, test-only,+4/-4.
+- Full M2 after that repair: **105 PASS/2 FAIL/4 ERROR/2 SKIP** (113 run, exit1),
+  `python-m2-after.log`. Remaining bridge0600 failures interrupt security assertions;
+  four /bin/bash errors interrupt shell-order assertions. Existing pwd/getuid and
+  Bash project-name skips preserved. Linux qualification mandatory; no automatic
+  safety conclusion and no permission mocking/new skips to obtain green.
+- Runtime read-only discovery: Docker absent from checked standard paths/PATH,
+  no Docker service/named pipe discovered; vmcompute Running alone insufficient.
+  WSL --list --quiet exits1 reporting subsystem not installed. No service started,
+  installer run, host network/daemon setting or volume changed. Full generated
+  Storm/SOCKS **BLOCKED/NOT RUN**; exact Linux prerequisites/commands in review15.
+  Real-Tor/public onion checks NOT RUN and not authorized.
+- Current tracked Python AST/XML/YAML parsing and limited full reachable-history
+  signatures executed through an RC copy of the scanner, retaining old evidence.
+  `history-static-checks.json`, static-checks.log. Same six old synthetic invalid-URL
+  fixture matches as Stage1; no new operational secret indicated. Full entropy/
+  Gitleaks/advisory/image scanning not claimed.
+
+### Secondary-review conclusions and roadmap arbitration
+
+No new confirmed CRITICAL/HIGH patch regression identified in limited secondary
+review. Residuals remain shared operator/worker authority, plaintext/public read
+policy, no stream revocation/TTL, fast-restart behavior outside TF, and unexecuted
+G6/independent review. Do not use a reviewer-policy refusal as independent PASS.
+
+Six DeepSeek claims arbitrated, not all63 accepted:
+
+- ARCH01 divergence CONFIRMED; universal "generated path never demonstrated"
+  rejected because dedicated controlled CLI/generated integration/historical M4.1
+  evidence exists. Current hardened G6 remains pending. Preserve synthetic controls.
+- ARCH06 application progress read-model gap CONFIRMED; stock readonly server APIs
+  already exist. Never observe status using leasing GetURLs.
+- REC06/REC07 REJECTED as active candidate defects: constructor forcibly calls
+  recoveryQscan(true), already in baseline. Dormant half-open stats deletion/false
+  scan debt is real but unreachable through current public construction. No
+  stats_epoch/schema/counter logic change justified; test>=3 queues/restarts/crash.
+- REC10 default120s/max600s consumer versus120-minute retry CONFIRMED mismatch,
+  not lost persisted work/universal retry impossibility. Short override and later
+  same-plan consumption are distinct; keep bounded PAUSED/UNKNOWN semantics honest.
+- DATA06 list/export pagination gap CONFIRMED narrowly. Valid snapshot<=100 edges
+  is not truncated by its100-link read; history is unbounded. A250-page test needs
+  >=3 plans. Never remove safety caps to make complete retrieval seem possible.
+- WP03 cannot derive DONE/FAILED from deleted terminal CF1 rows; CF0 empty means
+  UNSCHEDULED, otherwise terminal outcome remains UNKNOWN without provenance.
+
+Corrected order: WP01 unified gate plus early WP11 mode/evidence matrix, narrowed
+WP08 current-path recovery qualification, then WP03 observation and lifecycle.
+No automatic WP08 implementation or topology retirement. Remaining57 findings not
+verified here. Roadmap RC0/M5 operational/M6 lifecycle/M7 paginated data/API/M8 UI/
+M9 qualification has measurable gates, risks, dependencies and existing/missing
+work in review15; historical milestone acceptance is not renamed. No M5-M9 code.
+
+### Owner handoff and final state
+
+Stepan handoff is prepared in review15, not dispatched. Compare
+`origin/migration/java25-storm31...security/comprehensive-hardening`; source/main
+refs remain unchanged. Four checkpoint hashes above plus final RC docs commit
+are listed in the final response and ignored checkpoint-commits.json. Final commit
+self-hash resolves via git log; do not create recursive self-referencing commits.
+
+Ready for local review/draft PR only after owner authorizes publication; no PR
+created. Not merge/release/security-fully-verified. Owner retains publication,
+runtime/deployment, topology retirement, authorization/TLS/revocation/lifetime,
+schema and real-Tor acceptance decisions. Minimum next milestone is bounded M5
+verification and mode/qualification closure; no automatic next-phase execution.
+
+**SECURITY RC READY (local reviewable checkpoint)**, **SECURITY FULLY VERIFIED NO**,
+**RELEASE READY NO**. S1-01 FIX IMPLEMENTED/PARTIALLY VERIFIED/NOT CLOSED.
+DeepSeek13-file SHA256 preservation, final diff/signature/commit manifest checks and
+optional local format-patch package are under .runtime/security-rc/, never staged.
+No push, merge, tag, PR creation or message to Stepan. Stop after final local commit.

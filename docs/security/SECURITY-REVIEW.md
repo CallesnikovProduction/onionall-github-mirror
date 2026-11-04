@@ -2,10 +2,11 @@
 
 ## 1. Executive summary
 
-Checkpoint: **2026-11-04, approved S1-01 local remediation implemented**.
-State: **FIX IMPLEMENTED / PARTIALLY VERIFIED; NOT CLOSED** pending controlled
-full Storm/SOCKS acceptance and independent review. Stage1 remains accepted;
-section13 preserves the pre-remediation investigation, section14 records this change.
+Checkpoint: **2026-11-04, SECURITY RC READY for owner review (local checkpoint)**.
+**SECURITY FULLY VERIFIED: NO. RELEASE READY: NO.** S1-01 remains **FIX IMPLEMENTED /
+PARTIALLY VERIFIED, NOT CLOSED** pending controlled full Storm/SOCKS qualification
+and independent review. Section15 contains RC verification, roadmap and handoff;
+sections13/14 retain the investigation/implementation history.
 Security assurance: **PARTIALLY VERIFIED**. Full audit and remediation are not complete.
 
 Repository: `CallesnikovProduction/onionall-github-mirror`.
@@ -631,5 +632,204 @@ Reviewed baseline853934e; source checkpoint9091f4f and tests checkpoint1f039df.
 New quick RC gates:12/12 targeted JVM tests and4/4 freshly compiled real Frontier
 conformance drivers PASS. DeepSeek's13 untracked audit files are preserved and
 excluded from checkpoint; binary/runtime evidence remains ignored.
-Detailed RC triage, secondary review, roadmap and Stepan handoff follow after
-remaining read-only qualification; S1-01/full audit remain PARTIALLY VERIFIED.
+Completed RC triage, secondary review, roadmap and Stepan handoff are recorded
+below; S1-01/full audit remain PARTIALLY VERIFIED.
+
+### RC verification matrix and checkpoint identity
+
+Base853934e57a17b827487b023e8e2c295375290b65. Local commits, no remote publication:
+
+| Commit | Reviewable change |
+| --- | --- |
+| 9091f4ff5611fcb0878df2b884e73ad71a07e9b1 | Existing capability protects scheduling/lease calls; paired client adapters. |
+| 1f039dfbe70bed232bc79606d3908bbc6d5d9304 | Actual RPC/client regressions and Windows argfile launcher. |
+| 2aaa3cceddaaa47e9c91a851b24c1ab8ec98cd37 | Contract/AGENTS/security documentation checkpoint. |
+| cc01871cc29f163258a30a2269340672112eeddf | Test-only fake-JDK executable naming; no changed assertions. |
+
+This final RC documentation commit is identified by `git log -1 --format='%H %s'`;
+its own hash cannot be embedded in its content. The final response and ignored
+`.runtime/security-rc/checkpoint-commits.json` contain the complete commit list.
+
+| Gate / current execution | Result and evidence under .runtime/security-rc |
+| --- | --- |
+| Quick JVM before commits | PASS12/12, checkpoint-jvm.log. |
+| Full offline Maven verify | BUILD SUCCESS,124 run/123 PASS/1 SKIP/0 fail/error; maven-verify-offline.log. Includes client5, worker3, transport35 and archive/CLI regressions. |
+| Freshly compiled Frontier | PASS4/4 on disposable actual RocksDB/gRPC, including separate-process rejected-state/replay checks; frontier/*.log. |
+| M2 before fixture correction | Historical current-task input:103 PASS/3 FAIL/5 ERROR/2 SKIP, pre-existing before S1-01. |
+| M2 after minimal fixture correction |105 PASS/2 FAIL/4 ERROR/2 SKIP, still full-suite FAIL; python-m2-after.log. Four RunnerContractTest tests PASS; m2-runner-fixture.log. |
+| Source/static/provenance | Whitespace/UTF8/limited secret signatures clean; adapters normalize to official pinned source except identity/credential wiring. No schema/Tor/scheduler source changes. |
+| Independent S1-01 reviewer | BLOCKED by prior collaboration-tool refusal; no bypass/reworded retry. Secondary self-review below is not independent. |
+| Full controlled Storm/SOCKS G6 | BLOCKED: no usable verified Linux Docker runtime. vmcompute running alone is not a Docker engine; no Docker service/pipe found; WSL command reports not installed. |
+| Actual public onion / real-Tor / deployment | NOT RUN, not authorized. |
+
+One JVM skip is the existing non-Windows archive symlink gate. Full lint is not
+warning-free: retained Kotlin/shade and14 client javac warnings are described in
+section14. Limited pattern scanning is not full entropy/Gitleaks/CVE assurance.
+Build reproducibility here means the stated pinned toolchain/commands and restored
+cache pass offline, not a claim of byte-identical JARs or a fresh-clone single command.
+
+### Secondary S1-01 review — limited independence
+
+The same implementing lead performed this separate checklist review; product/M2
+read-only researchers did not independently approve the authorization patch.
+No new confirmed CRITICAL/HIGH regression caused by the patch was identified.
+
+| Checklist / affected symbols | Result / concrete basis |
+| --- | --- |
+| AdmissionRpc.guard exact full method IDs | Command/PutURLs/GetURLs require token across every crawl; admin/unknown denied before dispatch. Fresh auth conformance PASS, including unprotected crawl and six admin methods. |
+| Missing/wrong/unavailable credentials | Existing constant-time compare; local failure status sanitized without file contents/cause. New client tests show no anonymous stream handler/mutation/ACK. |
+| Initial/recreated/reconnected worker channels | Every source-pinned newStub uses CallCredentials; file validated before open/prepare and reread for new call. Actual TF/restart5-test suite PASS. |
+| Storage/lease/retry/replay invariants | Rejected calls leave scheduling metadata/reservation/quota unchanged after a new JVM; denied GetURLs does not steal lease. Authorized retry/terminal/replay and all4 conformance gates PASS. |
+| Alternate mutation paths | All PutURLs crawl IDs protected; GetURLs treated as mutating. Six admin endpoints remain denied even with capability; direct internal trusted service calls are not a remote RPC bypass. |
+| Logs and secrets | Guard returns empty trailers; FrontierCapability uses sanitized status. Explicit source review plus limited reachable-history signatures found no operational secret; known synthetic URL-negative fixtures remain. |
+| Legacy compatibility / persistent schema / Tor | Paired rollout mandatory; tokenless clients intentionally denied. No change to admission schema, RocksDB/H2 ownership, scheduling or Tor/Compose policy. |
+
+Remaining review findings, not S1-01 regressions:
+
+| ID | Severity / confidence | Evidence / recommended action |
+| --- | --- | --- |
+| RC-R1 (S1-02) | HIGH conditional / DESIGN GAP | Same worker/operator capability, AdmissionLedger.open plus FrontierCapability. Keep trusted single-deployment scope; owner must approve any future role/session split. |
+| RC-R2 (S1-03) | MEDIUM, HIGH on hostile network / DESIGN GAP | AdmissionClient/ManagedChannelUtil use plaintext; actual public reachability not established. Keep isolated deployment; separately review endpoint identity/TLS before widening trust. |
+| RC-R3 | MEDIUM / confirmed lifecycle limitation | guard executes once per RPC; CallCredentials per stream establishment. No TTL or active-stream revocation. Do not promise file deletion revokes an existing stream; define/drain epochs before future rotation work. |
+| RC-R4 | MEDIUM assurance gap | Full generated-topology G6 and independent review not completed. Run stated gates before full closure/rollout; component evidence remains scoped. |
+
+### M2 triage: every original failure/error/skip
+
+All ten names exist in pre-S1 Stage1 logs. Relevant entrypoint/runner/shell logic
+matches base853934e. They are not caused by S1-01; that does not certify the
+unreached security assertions. Windows mode bits also do not prove actual ACL leakage.
+
+Reproduce each row from root:
+`python -B -m unittest discover -s test/m2 -p FILE -k TEST -v`.
+Class prefixes below give exact unittest identities; FILE is the indicated .py.
+
+| FILE / exact CLASS.TEST | Original -> current | Cause / safe action and qualification |
+| --- | --- | --- |
+| test_bridge_security.py / BridgeSecurityTest.test_runtime_warnings_errors_transport_and_bootstrap_are_sanitized | FAIL -> FAIL | invoke:89 expects0600, Windows returns0666 (384!=438), before sanitization checks. Keep assertion; execute on Linux filesystem. No product confidentiality PASS inferred. |
+| test_bridge_security.py / BridgeSecurityTest.test_tor_verify_errors_are_withheld_and_no_fallback_started | FAIL -> FAIL | Same permission failure before no-fallback/error-withholding assertions. No permission mock or new skip; Linux unit qualification required, no real Tor needed. |
+| test_runner.py / RunnerContractTest.test_jdk_mismatch_rejected_before_docker | FAIL -> PASS | Dummy JDK omitted .exe and mock matched .name; actual runner correctly requests Windows executables. Fixture suffix/.stem fix only; original version-mismatch assertion preserved. Linux parity rerun still needed. |
+| test_runner.py / RunnerContractTest.test_jdk25_selected_consistently | ERROR -> PASS | Same dummy executable naming prevented reaching mocked version/compile_release assertions. Same test-only fix; real installed JDK cannot repair an isolated dummy fixture. |
+| test_same_container_readiness.py / SameContainerReadinessTest.test_default_variant_preserves_original_direct_storm_launch | ERROR -> ERROR | Native CreateProcess cannot launch /bin/bash. Expected storm-only call not reached; Linux/Bash gate required. |
+| test_same_container_readiness.py / SameContainerReadinessTest.test_failed_series_prevents_crawler_start_without_retry | ERROR -> ERROR | Same launch error; expected exit7/java-only ordering not reached. Linux/Bash needed to verify no crawler after failed readiness. |
+| test_same_container_readiness.py / SameContainerReadinessTest.test_invalid_opt_in_cannot_silently_start_crawler | ERROR -> ERROR | Same launch error before exit2/no-tool assertion. Linux/Bash qualification required. |
+| test_same_container_readiness.py / SameContainerReadinessTest.test_opt_in_series_runs_before_storm_in_same_container | ERROR -> ERROR | Same launch error before java-then-storm order. POSIX executable/shebang/PATH semantics required; substituting Git Bash is not equivalent qualification. |
+| test_onion_readiness.py / OnionReadinessTest.test_jdk_auth_offer_has_separate_phase_and_never_sends_http_after_auth_failure | SKIP -> SKIP | Existing Windows skip; network_probe uses pwd/getuid. Linux account + mocked SOCKS test required; no Tor/container needed for this unit gate. |
+| test_runner.py / M1RegressionContractTest.test_unsafe_compose_project_names_are_rejected_before_any_docker_operation | SKIP -> SKIP | Existing POSIX fake-tool/Bash test; invalid-name exit2/no-tool assertions need Linux. Adjacent Windows source-regex parity is not a runtime substitute. |
+
+Only test_runner.py dummy file suffix and mock .stem changed (4 lines replaced).
+AST comparison proves existing assert/assert* nodes unchanged; no deadline, skip,
+security assertion or acceptance condition was weakened. No production runner fix.
+
+### Controlled E2E prerequisite and exact Linux follow-up
+
+BLOCKED here: Docker CLI absent from normal PATH/standard install locations,
+no Docker-named service/pipe discovered; WSL runtime reports not installed.
+Existing vmcompute service was observed running but neither started nor modified.
+Unsigned downloaded Docker CLI remains unused. Do not install/enable WSL/Docker,
+change daemon/VPN/DNS/routes/firewall or remove volumes as part of this RC.
+
+On a separately approved Linux host/workspace, prerequisites: verified JDK25,
+Maven, Python3.12+, Bash/POSIX tools, Docker with Compose and permission for owned
+loopback/containers, pinned stock2.4 service JAR (SHA256
+ff1b774bf81343234e6f34878f8b7c9a826371b3e305e96bf0e204895e3562df), and local images
+python:3.12-slim, crawlercommons/url-frontier:2.4,
+onionall-storm:3.1.0-jre25-cleanup2. The last image must come from the existing
+hash-checked lifecycle build, not an unverified replacement. Native conformance
+and full integration both use fresh unique DBs/volumes and retain failure evidence.
+
+```sh
+export JAVA_HOME=/absolute/path/to/verified-jdk25
+export PATH="$JAVA_HOME/bin:$PATH"
+mvn -B -C verify
+bash scripts/cli/build-cli.sh
+export URLFRONTIER_BASE_JAR=/absolute/path/to/verified-stock2.4-service.jar
+bash frontier-server/build.sh --test
+python3 -B -m unittest discover -s test/m2 -v
+M2_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 \
+  python3 -B test/admission/local_integration.py
+```
+
+Use ONIONALL_OFFLINE=1 for the CLI build only with a complete known cache. Image
+build, if separately authorized/needed: `bash scripts/patches/build-storm-lifecycle.sh`;
+it is not executed here. Do not run the real-Tor acceptance runner for this gate.
+Require actual packaged CLI/generated capability clients, denied anonymous calls,
+stable quota/replay, leases/status/reconnect,503 retry, archive/hash/provenance and
+unchanged network-isolation assertions. Inspect produced admission-local.json/logs;
+exit0 alone is insufficient. Current G6 remains NOT RUN/BLOCKED.
+
+### DeepSeek arbitration: six prioritized product findings
+
+Input:12 documents/63 claimed findings in preserved untracked
+docs/audits/non-security/. Its printed audit date is not used as proof of freshness.
+Only these six were technically arbitrated; the remaining57 are UNVERIFIED here.
+CONFIRMED below denotes a code-proven narrowed claim, not a new runtime experiment.
+
+| Finding | Verified evidence / classification | Product impact; security risk | Priority / minimum action / regression gate |
+| --- | --- | --- | --- |
+| ARCH-01 | crawler.flux9-bolt vs CrawlExecution:188-226 generated5-bolt/capability topology. CONFIRMED divergence; REJECTED universal claim that generated product path was never demonstrated: dedicated test/admission/local_integration.py and historical M4.1 evidence exist. | HIGH assurance/maintenance; LOW conditional evidence-attribution risk, no proved DIRECT fallback. | P1: execution-mode/topology/client/server/transport/gate matrix, not forced unification. Fresh hardened generated-topology G6 plus separate synthetic controls. |
+| ARCH-06 | AdmissionLedger:81-90 only admission session/reservation verbs; CrawlExecution.status:44-63 lacks scheduler progress. CONFIRMED app read-model gap; readonly server APIs already exist. | HIGH truthful lifecycle dependency; LOW/info risk, not an auth vulnerability. | P1: bounded readonly projection using existing reads where adequate, otherwise reviewed additive snapshot. Never use leasing GetURLs as status. Reads must not alter lease/queue/reservation/quota; expose UNKNOWN when terminal reason unavailable. |
+| REC-06 | readQueueInfos:690-724 has half-open last-row debt, but constructor:170-174 forces recoveryQscan(true); legacy recovery/readQueueInfos branch unreachable. Already present at853934e. REJECTED active-candidate defect; dormant debt confirmed. | No reproduced current recovery corruption/security vulnerability. | P1 verification/P2 debt: retain authoritative rebuild; no stats_epoch/schema fix. Test>=3 mixed-state queues across two clean restarts and crash, exact authoritative membership/counters. |
+| REC-07 | recoveryQscan(false):262-264 empty active branch is also bypassed; true path counts CF1 and validates CF0. REJECTED active-candidate defect. | No current zero-active failure established; no proved security issue. | Same recovery gate first. Do not blindly increment in both scans and double-count; no product edit justified by this claim. |
+| REC-10 | CrawlExecution:73-75 default120s/max600s vs default120-minute retry, TTL:125, interval:206. CONFIRMED default consumer-lifetime mismatch, REJECTED universal retry impossibility: short override1min and historical503->200 fixture exist. | HIGH operational UX/liveness; LOW availability security risk. Persisted retry is not lost scheduling. | P1: define bounded PAUSED/next_attempt_at/resume contract; owner chooses later lifetime policy. Default retry survives exit/restart, later same-plan consumer honors due date, no false COMPLETE/new quota; short503->200 gate. |
+| DATA-06 | ArchiveStore.bound:91-94 and pages/search/links/export LIMIT lack cursor. CONFIRMED targeted pagination/export gap; REJECTED "every read" and current valid page-link truncation: history is unbounded, snapshot input<=100 links. | MEDIUM complete retrieval; LOW security risk, existing bounds protective. | P1 before complete graph/export: bounded compatible cursor+continuation/watermark. >=250 pages across>=3 plans, >300 edges across valid snapshots; complete ordered walk without omissions/duplicates/concurrent append drift. |
+
+WP-03 must not infer successful DONE/FAILED from CF1 terminal rows: terminal0
+deletes scheduling data, and empty CF0 pointer means UNSCHEDULED, not success.
+Use catalog/provenance or explicit UNKNOWN, never fabricated outcomes.
+
+Dependency correction: **WP-01 -> narrowed current-path WP-08 verification gate ->
+WP-03 read model -> lifecycle**. WP-11 evidence/mode documentation starts alongside
+WP-01 and precedes topology retirement. WP-08 code/schema fixes are not a hard
+prerequisite after the active-defect claims were rejected. No M5-M9 implementation
+or DeepSeek document modification in this task.
+
+### Unified proposed roadmap / measurable acceptance
+
+These are proposed delivery labels, not a retroactive renaming/acceptance of the
+historical M0-M8 milestones. M0/M1 scoped acceptance and blocked real-Tor M2/M3 stay.
+
+| Stage | Result / dependencies | Acceptance tests / risks / implemented vs remaining |
+| --- | --- | --- |
+| RC0 Security/reproducible checkpoint | Local reviewed code/test/doc commits and exact paired-client contract. | Existing local JVM/server gates PASS; G6/independent review still BLOCKED, not full security/release acceptance. No known confirmed critical regression from patch; shared capability/plaintext/revocation risks remain. |
+| M5 Operational Closure | WP-01 unified app/Python/server verification, pinned prerequisites; early WP-11 mode/evidence matrix and reviewed deployable fixture stack; narrowed WP-08 counter qualification. Depends on RC0 owner review. | Fresh supported checkout gives explicit PASS/FAIL/PARTIAL; no silently skipped server gate. >=3-queue repeated/crash recovery gate passes; each topology's evidence scope explicit. Already have builds/conformance/scripts; unified wrapper/CI/product launch and Linux qualification remain. No premature topology deletion/schema fix. |
+| M6 Lifecycle/status/recovery | WP-03 bounded non-mutating scheduler observation after recovery gate, then truthful bounded-run PAUSED/UNKNOWN/next-attempt and failure provenance. | Status changes no scheduling/lease/quota; no false COMPLETE; default retry persists past worker exit and later resume consumes no new reservation. Already durable scheduling/ownership; progress/completion/owner retry policy remain. Avoid H2 second queue and unsupported terminal inference. |
+| M7 Archive/Search/Graph API | Complete pagination/export before higher API; reviewed outcome typing/read ownership if needed. Depends on M6 truth semantics and existing catalog invariants. | Multi-plan/edge cursor walk, stable continuation/concurrent append/export; hash/provenance and bounded memory maintained. Existing schema2 snapshots/edges/local search remain; complete retrieval and service contract missing. Any schema changes need separate design/rollback. |
+| M8 Graph Explorer/user workflow | Read-only graph/service/UI over M6/M7 truth; explicit approved crawl actions. | Pending/rejected/failed/UNKNOWN shown honestly; graph reads never admit/lease; active HTML isolated/sanitized, auth/CSRF/CSP reviewed. Data/kernel exists; UI not implemented. No UI scheduler or hidden approval. |
+| M9 Product qualification/release | Owner-authorized platform/recovery/backup/restore/retention/soak and separate controlled real-Tor qualification. Depends on prior accepted contracts and artifact/advisory review. | Measured restore and repeated platform gates, unchanged isolation, open risks resolved/accepted explicitly. No production/release readiness claim now; deployment/owner visual/hardware and real-Tor remain separate. |
+
+Disagreements with DeepSeek: forced current recovery was overlooked (REC06/07);
+generated-topology historical evidence was omitted; existing readonly RPCs do not
+equal a complete application progress model; terminal CF1 inference is invalid;
+retry lifetime mismatch is not universal/permanent retry failure; pagination claim
+overstates every API/page links;250-page tests cannot use one max100-page plan;
+stats_epoch/schema work and large topology/doc retirement are not justified RC
+prerequisites. Source-only labels/63-findings count are not runtime acceptance or
+permission to implement all recommendations.
+
+### Short Stepan handoff package (prepared, not sent)
+
+1. Base853934e; four checkpoint hashes above plus the final RC documentation commit
+   resolved from current HEAD. Optional local review patch is under ignored
+   .runtime/security-rc/; no push or transfer occurred. DeepSeek audit remains local,
+   protected/untracked and is not silently included in the patch/commits.
+2. Fixed: capability-free scheduling/lease mutation; matching durable credentials;
+   Windows long-classpath test launcher; fake-JDK fixture naming. No schema/Tor change.
+3. Fresh proof: offline Maven123 PASS/1 SKIP, Frontier4/4, quick auth/client12/12;
+   M2 now105 PASS but2 FAIL/4 ERROR/2 SKIP. Existing component/wire evidence scoped.
+4. Blocked: Linux unit qualification, full generated Storm/SOCKS G6, independent
+   authorization review; no real Tor/product deployment/installed thin-CLI claim.
+5. Breaking: old tokenless workers cannot PutURLs/GetURLs. Accept only paired
+   client/server rollout; no fallback or stock4-CF rollback.
+6. Compare locally: `git log --oneline origin/migration/java25-storm31..security/comprehensive-hardening`
+   and `git diff --stat origin/migration/java25-storm31...security/comprehensive-hardening`;
+   use `git diff` without --stat for code. Source/main refs were not changed.
+7. Review/accept by checking per-commit scope and executing gates above. Reject by
+   leaving the security branch unmerged with concrete feedback; no reset/history rewrite
+   needed. Nothing is remotely visible until separately authorized publication.
+8. Recommended next milestone: bounded M5 verification/mode/qualification gate,
+   before read-model/lifecycle or UI implementation. Do not implement WP-08 blindly.
+9. Owner-only decisions: merge/publication, runtime installation/deployment, topology
+   retirement, role/TLS/stream-revocation policy, bounded-vs-continuous consumer model,
+   schema changes and later real-Tor/product acceptance.
+10. **Ready for local review and a draft PR once owner authorizes publication;
+    not merge/release/full-security-ready.** No PR created and no message sent to Stepan.
