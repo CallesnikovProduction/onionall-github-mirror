@@ -26,6 +26,7 @@ inside operational tooling. `lib/` and `legacy/` are not created without content
 | `cli/install-cli.sh` | Linux/Bash | Build then install CLI; `--no-build` uses existing bundle | Yes for recognized managed installation |
 | `cli/uninstall-cli.sh` | Linux/Bash | Remove managed CLI files; no arguments | Yes; preserves user-added files, archive and downloads |
 | `cli/build-project.ps1` | Windows/PowerShell | Maven package; `-JdkHome`, `-Maven`, `-Repository`, `-Offline` | Yes; Maven clean replaces `target`, `.runtime/build.log` |
+| `runners/verify.py` | Windows/Linux Python3.12+ | JVM/Python/Frontier/local-link verification; see below | Yes; unique evidence directories |
 | `runners/run-startup-check.sh`, `runners/run-startup-check.ps1` | Linux / Windows | Empty-frontier startup (M0); no arguments | Sequential only; fixed project and overwritten `.runtime/m0-*.log` |
 | `runners/run-controlled-crawl.sh`, `runners/run-controlled-crawl.ps1` | Linux / Windows | Controlled fixture + persistence assertions (M1); PS `-JdkHome`, `-Python` | Fresh project/evidence only; reuse refused; volume retained |
 | `runners/run-tor-acceptance.sh`, `runners/run-tor-acceptance.ps1` | Linux / Windows | Full Tor acceptance (M2); `--cached-images`, PS `-CachedImages`, `-Python`, `-Help` and remaining runner arguments | Fresh project per run; real Tor and retained volumes |
@@ -117,7 +118,7 @@ Cleanup is scoped to each runner's containers/networks. Persistent volumes,
 evidence, secrets, Tor identities and host network configuration are retained.
 Primary execution failures survive secondary cleanup failures; cleanup failure
 alone fails the command. Nonzero exit means failure, never accepted recovery.
-See [M1 evidence contract](../docs/m1-controlled.md) and
+See [M1 evidence contract](../docs/SUMMARIZIED-M0-M1-REPORT.md) and
 [M2 bridge setup and limits](../docs/m2-bridges.md).
 
 ## Direct paths
@@ -140,3 +141,22 @@ Remaining debt: operational M2 code still imports `test/m2` harness modules;
 extracting that boundary is a separate refactor. M0/preflight logs use fixed paths
 and need sequential runs. Bash and PowerShell M1 orchestration remain separate;
 shared assertions/evidence contracts must continue to be checked on both hosts.
+
+## Unified local verification (M5 DEV-01)
+
+`python -B scripts/runners/verify.py --offline` runs Maven, independent Python
+suites, four actual Frontier conformance drivers, and tracked Markdown file-link
+checks. Set JAVA_HOME to JDK25 and URLFRONTIER_BASE_JAR to the verified stock2.4
+service JAR (checksum enforced). Maven may be selected with --maven and the cache
+with --maven-repository. Frontier verification compiles to a unique disposable
+fixture directory; production assembly still belongs to frontier-server/build.sh.
+
+Exit0 means every selected gate passed; exit1 means FAIL; exit2 means required
+work was NOT RUN (including skipped tests). JSON and logs are retained under
+.runtime/verification/run-*/. The full default result cannot be green while
+product E2E is unexecuted. --links-only selects only the file-link gate (not
+fragment validation); --product-e2e explicitly opts into the existing isolated
+Linux Docker product fixture. Real Tor is out of scope and never started.
+No dependencies, Docker images or runtime tools are installed by this runner.
+Maven without --offline may resolve normal build dependencies. Existing Windows
+POSIX permissions/Bash failures remain failures, never auto-skipped.

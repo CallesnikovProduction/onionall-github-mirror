@@ -16,14 +16,14 @@ Verified on Windows 11 on 2026-10-30:
 - `docker compose -f compose.m0.yaml config --quiet` succeeded.
 - The user ran `scripts/runners/run-startup-check.ps1` on the host (now `scripts/runners/run-startup-check.ps1`). Reviewed service and console logs confirm all nine bolts prepared, the spout opened/activated, Tika initialized, 14 empty-frontier RPCs completed and LocalCluster shut down with crawler exit 0. URLFrontier closed RocksDB on SIGTERM (exit 143). The user reports Compose removed the containers and network.
 
-**M0 is complete for the empty-frontier local baseline.** The agent still cannot access Docker Engine directly; runtime evidence comes from the user's host run and the reviewed logs, not an agent rerun. Container cleanup is user-reported; image digests were not captured. See [the verification record and warning assessment](docs/m0-baseline.md).
+**M0 is complete for the empty-frontier local baseline.** The agent still cannot access Docker Engine directly; runtime evidence comes from the user's host run and the reviewed logs, not an agent rerun. Container cleanup is user-reported; image digests were not captured. See [the verification record and warning assessment](docs/SUMMARIZIED-M0-M1-REPORT.md).
 
 **Tor transport is not configured in the default M0/M1 topology.** Do not inject onion URLs or begin a real crawl yet. DNS, redirects and fail-closed verification remain M2 work. Existing URL filters alone are not a complete network boundary.
 
 Current migration branch uses **Java25 LTS / Storm3.1.0**, retaining
 StormCrawler3.7.0. Real local M3 passes; Tor acceptance and durable global budgets
 remain BLOCKED. Earlier Java17 results below are historical. See the
-[migration report](docs/jvm25-storm31-migration.md) for exact gates and rollback.
+[migration report](docs/SUMMARIZIED-MIGRATION-AND-CLEANLINESS-REPORT.md) for exact gates and rollback.
 
 Recovery recheck (2026-11-02): **M2/M3 remain BLOCKED**. Targeted gateway
 restart restores the canary and JVM series, but resumed Storm robots still times
@@ -58,7 +58,7 @@ onionall discover ./ahmia.html --base-url http://juhanurmihxlp77nkq76byazcldy2hl
 Offline discovery reads at most 4 MiB and processes at most 1,000 anchors. It uses
 JSoup and TorPolicy, preserves Ahmia-only scope, reports excluded links and never
 fetches or enqueues. JSONL export is a report, not a Frontier queue. No recursive
-crawl is enabled. See [discovery contracts](docs/cli-discovery.md). Status remains
+crawl is enabled. See [discovery contracts](docs/SUMMARIZIED-CLI-REPORT.md). Status remains
 a TCP-only local check, with Tor/onion connectivity explicitly NOT_TESTED.
 
 No Maven is used by the installed launcher. Default installation:
@@ -107,7 +107,7 @@ Current full M2/M3 acceptance and durable global budget remain BLOCKED.
 
 CLI verification: select Java25, run `mvn verify` or `scripts/cli/build-cli.sh`, then
 `python3 -B -m unittest discover -s test/cli -p 'test*.py'` against the built bundle.
-Actual delivery results and retained failures: [CLI verification](docs/cli-verification.md).
+Actual delivery results and retained failures: [CLI verification](docs/SUMMARIZIED-CLI-REPORT.md).
 
 Interactive ANSI terminals now keep a layered onion/gradient wordmark fixed above
 a selective-update content region, with80/120/narrow layouts and resize reflow.
@@ -115,7 +115,7 @@ Enter returns from an action to the menu. NO_COLOR/--no-color retain plain outpu
 without cursor controls (no physical pinning); JSON/direct commands are unchanged.
 The surface mascot uses headless JDK java.desktop and ANSI half-blocks; custom
 jlink runtimes must include java.desktop. `ONIONALL_ASCII=1` selects its density
-fallback. The wordmark is unchanged. Renderer contracts and actual PTY captures: [interactive rendering](docs/cli-rendering.md).
+fallback. The wordmark is unchanged. Renderer contracts and actual PTY captures: [interactive rendering](docs/SUMMARIZIED-CLI-REPORT.md).
 
 ## Build
 
@@ -204,7 +204,7 @@ Windows PowerShell:
 ./scripts/runners/run-controlled-crawl.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
-The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/m1-controlled.md). Local regression tests pass. Docker evidence comes from user host runs `df35366e0994` (Windows) and `e55203e97536` (Omarchy Linux), rechecked offline by the agent. The agent cannot directly access Docker Engine. No blocking log defects were found; unavailable cgroup metrics and resolved shutdown warnings are documented.
+The helper uses only hard-coded fixture URLs and saves evidence under `.runtime/m1/<project>/`. It removes its containers/network and retains its uniquely named synthetic volume for inspection. The M0 graph/configuration and original JAR are unchanged. See [M1 commands, checks, limits and retention](docs/SUMMARIZIED-M0-M1-REPORT.md). Local regression tests pass. Docker evidence comes from user host runs `df35366e0994` (Windows) and `e55203e97536` (Omarchy Linux), rechecked offline by the agent. The agent cannot directly access Docker Engine. No blocking log defects were found; unavailable cgroup metrics and resolved shutdown warnings are documented.
 
 No `seeds.txt` is supplied or needed for M0. Future local seeds belong in ignored `seeds.local.txt`. Do not commit datasets or credentials. Define content handling, retention and deletion policy before persisting crawled documents.
 
@@ -249,3 +249,11 @@ on an isolated fresh volume; stock Frontier is not a fallback. See
 [server contract and rollback](frontier-server/README.md), and
 [executed verification](docs/engineering/m41-execution-ledger.md).
 Real-Tor M2/M3 qualification remains separate from the controlled local fixture.
+
+## M5 verification entry point
+
+Run `python -B scripts/runners/verify.py --offline` with JDK25 and the pinned
+Frontier base JAR. See [verification commands](scripts/README.md) and the
+[M5 execution ledger](docs/engineering/m5-execution-ledger.md) for current
+results, platform blockers and scope. Historical milestone results above are
+not a current product acceptance result.

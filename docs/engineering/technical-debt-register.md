@@ -62,7 +62,7 @@ No live TODO remains in TorScopeFilter. There is no production `TODO()` or
 
 ## Already closed source obligations retained as contracts
 
-These are historical findings from [the Kotlin audit](../kotlin-todo-audit.md),
+These are historical findings from [the Kotlin audit](../SUMMARIZIED-MIGRATION-AND-CLEANLINESS-REPORT.md),
 not newly executed closure claims:
 
 - TPR-06: ambiguous/missing redirect Location is rejected; a single normalized
