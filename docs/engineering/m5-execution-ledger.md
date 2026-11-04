@@ -543,3 +543,17 @@ test tool PATH inside Bash so the same cleanup-failure assertion actually execut
 on Windows as well. Real scoped fixture1/1 PASS locally with normal subprocess
 access; no production/package source change. Linux repeat qualification follows
 push. Original failed run remains FAIL; not relabeled as a passing global result.
+
+
+Fixture correction65d5a23d33db9336e06dd8a663ad7a9eec5d1784 pushed immediately;
+remote HEAD matched. New opt-in CI product harness uses workflow_dispatch boolean,
+never PR/default Tor launch. Official Docker Hub linux/amd64 manifests verified
+2026-11-04 and retained in dev-product-official-images.json: Storm3.1.0-jre25
+09184a1eef9fb82ee8dfa7705539c1571a1e8006e20bf772b6654189458e89ec;
+Python3.12-slim1148dbb014615300fa7e713b2f94f550c0d1c69780c0805f84f093ceee34dd0b.
+Existing source/JAR checksum-enforced cleanup2 builder prepares Storm; existing
+internal SOCKS fixture runs unchanged via verify --product-e2e. Tokens/raw runtime
+files are excluded from upload; copied product *.log diagnostics redact exact
+fixture capabilities, originals preserved. Generated topology/503/restart/quota
+acceptance remains pending actual dispatch. No product PASS from static syntax
+or build success, and Storm forced-owner containment gate stays separately OPEN.

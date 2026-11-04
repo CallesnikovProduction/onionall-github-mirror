@@ -206,3 +206,23 @@ Logs/provenance are retained even when a later gate fails. Assembly is not
 Storm readiness or deployment acceptance. The patched Storm cleanup2 image and
 internal SOCKS/generated-topology E2E remain separate requirements; real Tor is
 out of scope. Linux build script is not a native Windows packaging claim.
+
+
+For the separately selected internal product fixture, dispatch verify.yml on the
+M5 branch with product_e2e=true. Only that explicit dispatch pulls pinned Linux
+amd64 Storm/Python images and applies the existing source/hash-verified cleanup2
+build. The fixture itself selects Frontier/init/probe/crawler/local SOCKS only,
+requires an internal Docker network with no published ports, and never starts
+Tor or an onion service. Images are pinned to Docker Hub manifests verified on
+2026-11-04: [Storm](https://hub.docker.com/v2/repositories/library/storm/tags/3.1.0-jre25)
+and [Python](https://hub.docker.com/v2/repositories/library/python/tags/3.12-slim).
+The existing Frontier base remains checksum/digest pinned. No host tool installation.
+
+This executes the unchanged test/admission/local_integration.py acceptance using
+paired app/server/client artifacts, with traffic/archive/quota/restart assertions.
+The fixture explicitly uses retry_minutes=1; production120min is unchanged and
+its two-hour wall-clock gate is not inferred. A successful normal product fixture
+does not close the separate forced-owner Storm tree gate. Fixture tokens and raw
+runtime directories are not uploaded; only summary results, build logs, image
+provenance and the existing verification evidence are retained. Owned fixture
+Frontier volumes are retained during the run; no user volume deletion is added.

@@ -4,6 +4,12 @@ on:
     branches: [feat/m5-operational-closure]
   pull_request:
   workflow_dispatch:
+    inputs:
+      product_e2e:
+        description: 'Run internal-only generated Storm/SOCKS product fixture (never Tor)'
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -55,8 +61,49 @@ jobs:
                       'product_e2e': 'NOT RUN; assembly is not deployment acceptance'}
           Path('.runtime/ci/paired-build.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
           PY
+      - name: Prepare isolated product runtime (explicit dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.product_e2e
+        shell: bash
+        run: |
+          set -euo pipefail
+          storm='storm@sha256:09184a1eef9fb82ee8dfa7705539c1571a1e8006e20bf772b6654189458e89ec'
+          python='python@sha256:1148dbb014615300fa7e713b2f94f550c0d1c69780c0805f84f093ceee34dd0b'
+          frontier='crawlercommons/url-frontier@sha256:8fd86c533163bfbcd98006bf8523efe731eea82a87dfe8db1df32a93d1973453'
+          docker pull --platform linux/amd64 "$storm"
+          docker pull --platform linux/amd64 "$python"
+          docker tag "$storm" storm:3.1.0-jre25
+          docker tag "$python" python:3.12-slim
+          docker tag "$frontier" crawlercommons/url-frontier:2.4
+          docker image inspect "$storm" "$python" "$frontier" > .runtime/ci/product-images.json
+          bash scripts/patches/build-storm-lifecycle.sh 2>&1 | tee .runtime/ci/storm-build.log
       - name: Verify JVM, Python, Frontier and local links
-        run: python -B scripts/runners/verify.py
+        shell: bash
+        env:
+          RUN_PRODUCT_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.product_e2e }}
+        run: |
+          if [[ "$RUN_PRODUCT_E2E" == true ]]; then
+            M2_STORM_IMAGE=onionall-storm:3.1.0-jre25-cleanup2 python -B scripts/runners/verify.py --product-e2e
+          else
+            python -B scripts/runners/verify.py
+          fi
+      - name: Collect sanitized product diagnostics
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.product_e2e
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          roots = list(Path('.runtime/m2').glob('onionall-brawler-m2-*'))
+          tokens = [p.read_bytes().strip() for root in roots for p in root.glob('admission-token') if p.is_file()]
+          tokens = [token for token in tokens if token]
+          for root in roots:
+              for source in root.rglob('*.log'):
+                  data = source.read_bytes()
+                  for token in tokens:
+                      data = data.replace(token, b'[REDACTED FIXTURE CAPABILITY]')
+                  target = Path('.runtime/ci/product-logs') / root.name / source.relative_to(root)
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(data)
+          PY
       # Default runner deliberately remains non-green while product E2E is NOT RUN.
       # Paired app/CLI/server assembly above is not the patched Storm runtime/product E2E gate.
       # No real Tor, external onion fixture or privileged host configuration here.
@@ -69,4 +116,7 @@ jobs:
             .runtime/verification/
             .runtime/ci/*build.log
             .runtime/ci/paired-build.json
+            .runtime/ci/product-images.json
+            .runtime/ci/product-logs/
+            .runtime/m2/*/admission-local.json
           if-no-files-found: warn
