@@ -70,8 +70,11 @@ class InstallShellTest(unittest.TestCase):
             (self.root / 'target/classes/dev/onionall/brawler' / package).mkdir(parents=True)
         tools = Path(self.temp.name) / 'build tools'
         tools.mkdir()
+        wrapper = self.root / 'mvnw'
+        wrapper.write_text('#!/bin/sh\nexit 0\n', encoding='utf-8', newline='\n')
+        wrapper.chmod(0o755)
         scripts = {'javac': '#!/bin/sh\nprintf "javac 25.0.5\\n"\n',
-                   'mvn': '#!/bin/sh\nexit 0\n', 'jar': '#!/bin/sh\nexit 37\n',
+                   'jar': '#!/bin/sh\nexit 37\n',
                    'rm': '#!/bin/sh\nexit 41\n'}
         for name, body in scripts.items():
             command = tools / name
@@ -79,7 +82,11 @@ class InstallShellTest(unittest.TestCase):
             command.chmod(0o755)
         self.environment.pop('JAVA_HOME', None)
         self.environment['PATH'] = str(tools) + os.pathsep + os.environ['PATH']
-        result = subprocess.run(['bash', str(self.root / 'scripts/cli/build-cli.sh')], cwd='/',
+        # Resolve the fixture tool directory inside Bash before prepending PATH;
+        # Git Bash may otherwise prepend its own GNU tools to the Windows PATH.
+        launch = 'tools=$(cd -- "$1" && pwd -P); script=$2; export PATH="$tools:$PATH"; set --; source "$script"'
+        result = subprocess.run(['bash', '-c', launch, 'build-fixture', str(tools),
+                                 str(self.root / 'scripts/cli/build-cli.sh')], cwd='/',
                                 env=self.environment, capture_output=True, text=True, timeout=10)
         self.assertEqual(37, result.returncode, result.stderr)
         self.assertIn('CLI staging cleanup failed', result.stderr)

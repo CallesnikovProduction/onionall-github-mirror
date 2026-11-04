@@ -527,3 +527,19 @@ YAML and embedded provenance Python parse; real Bash syntax check PASS. Linux
 packaged assembly qualification is pending the next pushed CI run; no deployment
 PASS or product acceptance claimed. Host tools/settings unchanged, no installed
 component, real onion query or user untracked file included.
+
+
+DEV-B commitfd874e9b69322b75838d12df2444d841e1890914 pushed immediately,
+remote SHA matched. Actual Linux run41887165093 assembled app/CLI/Frontier
+successfully, emitted paired-build.json; Maven157/157 PASS, packaged CLI PASS,
+all6 Frontier PASS. Whole run FAIL because existing InstallShellTest build-cleanup
+fixture mocked PATH mvn, not new project mvnw (expected37, actual127). Retained
+artifact checksum41f105b43dbb0e447697900202bf30efba6bdee51b453686deaea91eac043bb0;
+selected result/provenance/scripts log read without extracting runtime archives.
+
+Minimal fixture correction supplies project wrapper stub, preserves exact37 and
+cleanup-message assertions. Git Bash prepended GNU tools before fake rm; normalize
+test tool PATH inside Bash so the same cleanup-failure assertion actually executes
+on Windows as well. Real scoped fixture1/1 PASS locally with normal subprocess
+access; no production/package source change. Linux repeat qualification follows
+push. Original failed run remains FAIL; not relabeled as a passing global result.
