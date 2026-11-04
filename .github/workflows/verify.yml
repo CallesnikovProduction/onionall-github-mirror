@@ -34,15 +34,39 @@ jobs:
           fixture=$(docker create --platform linux/amd64 "$image")
           docker cp "$fixture:/home/urlfrontier/urlfrontier-service.jar" "$URLFRONTIER_BASE_JAR"
           printf '%s  %s\n' ff1b774bf81343234e6f34878f8b7c9a826371b3e305e96bf0e204895e3562df "$URLFRONTIER_BASE_JAR" | sha256sum --check
+      - name: Assemble paired app, packaged CLI and Frontier
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/cli/build-cli.sh 2>&1 | tee .runtime/ci/cli-build.log
+          bash frontier-server/build.sh --test 2>&1 | tee .runtime/ci/frontier-build.log
+          python - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          artifacts = {
+              'app': Path('target/onionall-brawler-0.1.0-SNAPSHOT.jar'),
+              'cli': Path('target/onionall/lib/onionall-cli.jar'),
+              'frontier': Path('frontier-server/target/urlfrontier-admission.jar'),
+          }
+          manifest = {'build_version': 1, 'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                      'frontier_base_sha256': hashlib.sha256(Path('.runtime/ci/urlfrontier-service.jar').read_bytes()).hexdigest(),
+                      'artifacts': {name: {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                                           'bytes': path.stat().st_size} for name, path in artifacts.items()},
+                      'product_e2e': 'NOT RUN; assembly is not deployment acceptance'}
+          Path('.runtime/ci/paired-build.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+          PY
       - name: Verify JVM, Python, Frontier and local links
         run: python -B scripts/runners/verify.py
       # Default runner deliberately remains non-green while product E2E is NOT RUN.
-      # Docker product E2E needs the paired application/server/Storm assembly (DEV-02).
+      # Paired app/CLI/server assembly above is not the patched Storm runtime/product E2E gate.
       # No real Tor, external onion fixture or privileged host configuration here.
       - name: Retain actual results including failures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: verification-evidence
-          path: .runtime/verification/
+          path: |
+            .runtime/verification/
+            .runtime/ci/*build.log
+            .runtime/ci/paired-build.json
           if-no-files-found: warn

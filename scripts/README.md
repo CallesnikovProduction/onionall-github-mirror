@@ -182,3 +182,27 @@ Packaged CLI/PTY/installation tests are an explicit python-cli gate. If the Linu
 CLI bundle is absent, its skipped tests produce NOT RUN (exit2), not PASS. Build
 the package using scripts/cli/build-cli.sh before qualifying that gate on Linux.
 A green Maven build alone neither packages nor qualifies the installed CLI.
+
+
+## Paired M5 artifact assembly (Linux)
+
+Select JDK25 and the checksum-verified URLFRONTIER_BASE_JAR, then run:
+
+```sh
+bash scripts/cli/build-cli.sh
+bash frontier-server/build.sh --test
+python -B scripts/runners/verify.py
+```
+
+CLI build uses the checked-in checksum-pinned Maven Wrapper, with no PATH Maven
+fallback. ONIONALL_OFFLINE=1 still requires a complete dependency/wrapper cache.
+Outputs are target/onionall-brawler-0.1.0-SNAPSHOT.jar, target/onionall/ and
+frontier-server/target/urlfrontier-admission.jar. Clients and server must come from
+the same checked source revision; tokenless old workers are incompatible.
+
+M5 CI assembles this pair before running packaged CLI tests and records source
+commit, artifact hashes and pinned Frontier-base hash in ignored paired-build.json.
+Logs/provenance are retained even when a later gate fails. Assembly is not
+Storm readiness or deployment acceptance. The patched Storm cleanup2 image and
+internal SOCKS/generated-topology E2E remain separate requirements; real Tor is
+out of scope. Linux build script is not a native Windows packaging claim.

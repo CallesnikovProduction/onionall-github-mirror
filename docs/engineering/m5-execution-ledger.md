@@ -500,3 +500,30 @@ strict marker fields and preparation lifecycle checks. Links PASS (run-uh47r6qt)
 Python AST/diff check/limited credential signatures13 files PASS. No user untracked
 file staged. Publication SHA/remote result retained in ignored rec-c-publication.json
 and user handoff after push; this journal never claims full Storm/security closure.
+
+
+## DEV-B paired assembly prerequisite / REC-C publication receipt
+
+REC-C commit4c2afb9fb9ba90e5b0f6f30049cd9750746f3ce1 immediately pushed;
+origin/feat/m5-operational-closure HEAD verified identical. GitHub Compare with
+migration/java25-storm31 reports ahead19/behind0, including5 Security RC commits
+and14 M5 commits; source branch remains853934e57a17b827487b023e8e2c295375290b65.
+Actual Linux CI run41886030820 on that exact commit: Maven PASS, Python M1/M2/M3,
+archive/security/scripts PASS, all6 Frontier drivers PASS. Overall NOT RUN/exit2,
+not a code failure: CLI bundle absent, full Storm crash and product E2E not run.
+This also executes Linux WorkerOwnershipTest including its native destroy path;
+no Windows-only result promoted to Linux proof. Full Storm tree remains OPEN.
+
+Continued README order: REC-B actual 503/retry/resume needs generated Storm/SOCKS
+fixture, whose paired product artifacts were not built by CI. Narrow prerequisite:
+CLI build now invokes pinned project wrapper rather than unpinned PATH Maven.
+CI builds app+CLI and real Frontier JAR via existing entrypoints before verify,
+records source/artifact/base hashes, retains build logs; no new scheduler/runtime.
+Two actual Bash negative contracts: missing wrapper never falls back, failed
+wrapper exit42 propagates before packaging, including offline flag and spaced root.
+Git Bash sandbox first could not initialize (0xC0000142); same tests run with
+normal approved subprocess access2/2 PASS. This was not a product test failure.
+YAML and embedded provenance Python parse; real Bash syntax check PASS. Linux
+packaged assembly qualification is pending the next pushed CI run; no deployment
+PASS or product acceptance claimed. Host tools/settings unchanged, no installed
+component, real onion query or user untracked file included.

@@ -112,3 +112,8 @@ unobserved detached grandchildren, OS containment, portable graceful external st
 power-loss recovery and the full generated Storm crash tree are not qualified.
 The marker contains unsafe restart; it is NOT OS process containment. Future forced
 whole-tree supervision requires a separate design review. S1-01/full audit NOT CLOSED.
+
+Current Linux CI41886030820 (REC-C commit4c2afb9): Maven PASS, including
+WorkerOwnershipTest native Linux destroy path;6 Frontier drivers PASS. Overall
+NOT RUN for missing CLI/product/Storm gates. This qualifies the JVM fixture on
+both platforms, not the generated Storm tree or OS containment.
