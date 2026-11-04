@@ -58,6 +58,12 @@ public class JobStatusIntegrationTest {
             JSON.writeValue(runtime.toFile(),Map.of("frontier_host","127.0.0.1","frontier_port",server.getPort(),"work_directory",work.toString()));
             Files.writeString(token,"synthetic-status-capability-token-0000");
             Map<String,Object> first=CrawlExecution.status(archive,id,runtime,token);
+            // Explicit fixture cleanup witness; mismatching legacy PIDs alone are UNKNOWN.
+            assertEquals("UNKNOWN",first.get("job_state"));
+            Path ownershipLock=archive.resolve("crawl-worker.lock");
+            var stopped=WorkerOwnership.intent(ownershipLock,"STOPPED");stopped.put("cleanup_confirmed",true);stopped.put("exit_code",0);
+            WorkerOwnership.publish(ownershipLock,stopped);
+            first=CrawlExecution.status(archive,id,runtime,token);
             assertEquals("PAUSED",first.get("job_state"));assertEquals("INCOMPLETE",first.get("completion"));
             assertEquals("SERVER_READBACK",first.get("admission"));
             assertEquals(0,((Map<?,?>)first.get("worker")).get("exit_code"));
@@ -70,7 +76,7 @@ public class JobStatusIntegrationTest {
             assertNull(((Map<?,?>)second.get("counts")).get("pending"));
             assertNotNull(second.get("last_authoritative_counts"));
             assertEquals(false,((Map<?,?>)second.get("scheduler")).get("reachable"));
-            assertEquals(2,((List<?>)second.get("status_transitions")).size());
+            assertEquals(3,((List<?>)second.get("status_transitions")).size());
             failure.set(Status.DEADLINE_EXCEEDED);
             Map<String,Object> timedOut=CrawlExecution.status(archive,id,runtime,token);
             assertEquals("UNKNOWN",timedOut.get("job_state"));

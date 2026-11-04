@@ -31,7 +31,7 @@ public class WorkerObservationTest {
         value.put("process_scope","foreign");write(file,value);
         assertNull(WorkerObservation.read(file,root,"p").worker().alive());
         value=execution();value.put("worker_start_instant",Instant.EPOCH.toString());value.put("worker_owner_start_instant",Instant.EPOCH.toString());write(file,value);
-        assertEquals(Boolean.FALSE,WorkerObservation.read(file,root,"p").worker().alive());
+        assertNull(WorkerObservation.read(file,root,"p").worker().alive());
         assertFalse(Files.exists(root.resolve("crawl-worker.lock")));
     }
     @Test public void lockWithoutIdentifiedProcessIsUnknownAndNeverMutatesLockBytes() throws Exception {
@@ -47,7 +47,7 @@ public class WorkerObservationTest {
             var bytes=java.nio.ByteBuffer.allocate(contents.length);channel.read(bytes,0);
             assertArrayEquals(contents,bytes.array());
         }
-        assertEquals(Boolean.FALSE,WorkerObservation.read(file,root,"p").worker().alive());
+        assertNull(WorkerObservation.read(file,root,"p").worker().alive());
         assertArrayEquals(contents,Files.readAllBytes(lock));
     }
     @Test public void absentLegacyAndMalformedMarkersAreUnknownNotFailureOrEmptyState() throws Exception {

@@ -110,12 +110,17 @@ public final class CrawlExecution {
         if(!Files.isRegularFile(storm) || !Files.isExecutable(storm) || !Files.isRegularFile(jar,LinkOption.NOFOLLOW_LINKS))
             throw new IOException("Runtime requires installed Storm executable and full crawler JAR");
         String capability=token(tokenFile);
-        Files.createDirectories(work);
         try(FileChannel owner=FileChannel.open(archive.toAbsolutePath().normalize().resolve("crawl-start.lock"),StandardOpenOption.CREATE,StandardOpenOption.WRITE);
             FileLock lock=owner.tryLock()) {
             if(lock==null) throw new IOException("This archive already has an active local crawl start");
             Path runtimeWorkerLock=archive.toAbsolutePath().normalize().resolve("crawl-worker.lock");
-            CrawlWorker.requireAvailable(runtimeWorkerLock);
+            if(!Files.exists(WorkerOwnership.marker(runtimeWorkerLock),LinkOption.NOFOLLOW_LINKS)) {
+                try(var store=new ArchiveStore(archive)) {
+                    if(store.hasExecutionHistory())throw WorkerOwnership.blocked("legacy execution history lacks archive cleanup proof");
+                }
+            }
+            try(var preparation=new WorkerOwnership.Preparation(runtimeWorkerLock,id)) {
+            Files.createDirectories(work);
             Path configuration=work.resolve("crawler-conf.json");
             Path topology=work.resolve("topology.json");
             write(configuration,Map.of("config",configuration(plan,runtime,archive.toAbsolutePath(),tokenFile.toAbsolutePath(),work,httpTimeout,retryMinutes)));
@@ -153,11 +158,13 @@ public final class CrawlExecution {
             try(var store=new ArchiveStore(archive)) { store.recordAdmission(id,Map.of("admission","COMMITTED","state","ADMITTED","session_id",id,"authoritative_admission",session,"runtime",runtimeFile.toAbsolutePath().toString(),"observed_at",Instant.now().toString())); }
             Path log=work.resolve("worker-"+UUID.randomUUID()+".log");
             Path ready=work.resolve("worker-ready-"+UUID.randomUUID()+".json");
-            Process worker=new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin","java").toString(),
+            ProcessBuilder launcher=new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin","java").toString(),
                 "-cp",absoluteClasspath(),CrawlWorker.class.getName(),runtimeWorkerLock.toString(),ready.toString(),Integer.toString(seconds+90),
                 storm.toString(),"local","-c","storm.log.dir="+work.resolve("logs"),"-c","storm.local.dir="+work.resolve("storm-local"),
                 "-c","dev.zookeeper.path="+work.resolve("zookeeper"),jobJar.toString(),"org.apache.storm.flux.Flux",topology.toString(),"--local-ttl",Integer.toString(seconds))
-                .directory(work.toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+                .directory(work.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
+            launcher.environment().put(WorkerOwnership.HANDOFF,preparation.handoff());
+            Process worker=launcher.start();
             Thread stopping=new Thread(()->stop(worker),"onionall-cli-worker-stop");
             Runtime.getRuntime().addShutdownHook(stopping);
             long readyDeadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
@@ -203,6 +210,7 @@ public final class CrawlExecution {
             }
             write(work.resolve("execution.json"),result);
             return result;
+            }
         }
     }
     private static String absoluteClasspath() {

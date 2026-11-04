@@ -20,7 +20,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import static org.junit.Assert.*;
 
-/** Characterizes an OPEN defect. PASS means reproduced, not safe process recovery. */
+/** Verifies fail-closed containment; not OS process-tree containment. */
 public class WorkerCrashCharacterizationTest {
     @Rule public TemporaryFolder temporary=new TemporaryFolder();
     private static final ObjectMapper JSON=new ObjectMapper();
@@ -40,7 +40,7 @@ public class WorkerCrashCharacterizationTest {
     private static Map<String,Object> read(Path p)throws Exception {
         return JSON.readValue(Files.readAllBytes(p),new TypeReference<Map<String,Object>>(){});
     }
-    @Test public void forcedOwnerDeathLeavesChildAndCurrentGuardReachesAdmissionTripwire()throws Exception {
+    @Test public void forcedOwnerDeathLeavesChildButRestartCannotReachAdmissionTripwire()throws Exception {
         Path root=temporary.newFolder().toPath(),archive=root.resolve("archive"),work=root.resolve("work");String id;
         try(var store=new ArchiveStore(archive)) {
             id=(String)store.createPlan(List.of("http://"+OnionSmoke.HOST+"/"),1,3,"owned-process-fixture").get("plan_id");store.approvePlan(id);
@@ -73,7 +73,7 @@ public class WorkerCrashCharacterizationTest {
             assertEquals(Boolean.FALSE,observation.details().get("ownership_lock_held"));
             assertEquals(Boolean.TRUE,observation.worker().alive());
             try(var socket=new Socket()){socket.connect(new InetSocketAddress("127.0.0.1",((Number)childInfo.get("port")).intValue()),1000);}
-            CrawlWorker.requireAvailable(lock); // Existing barrier accepts despite live child.
+            assertThrows(IOException.class,()->CrawlWorker.requireAvailable(lock));
             AtomicInteger reached=new AtomicInteger();
             var method=MethodDescriptor.<BytesValue,BytesValue>newBuilder().setType(MethodDescriptor.MethodType.UNARY)
                 .setFullMethodName("onionall.frontier.admission.v1.Admission/Command")
@@ -90,12 +90,33 @@ public class WorkerCrashCharacterizationTest {
                 "storm_executable",executable.toString(),"crawler_jar",jar.toString(),"socks_host","127.0.0.1","socks_port",19050));
             Files.writeString(token,"synthetic-crash-admission-tripwire-0000");
             IOException failure=assertThrows(IOException.class,()->CrawlExecution.start(archive,id,runtime,token));
-            assertTrue(failure.getMessage().contains("FAILED_PRECONDITION"));
-            assertEquals("Current start reached admission despite surviving child",1,reached.get());
+            assertTrue(failure.getMessage().contains("BLOCKED"));
+            assertEquals("Restart must reject before admission",0,reached.get());
+            assertFalse(Files.exists(job.resolve("crawler-conf.json")));
+            Path changed=root.resolve("other-work");
+            var altered=new LinkedHashMap<String,Object>(read(runtime));altered.put("work_directory",changed.toString());JSON.writeValue(runtime.toFile(),altered);
+            assertThrows(IOException.class,()->CrawlExecution.start(archive,id,runtime,token));
+            assertFalse(Files.exists(changed));assertEquals(0,reached.get());
+            String otherPlan;
+            try(var store=new ArchiveStore(archive)) {
+                otherPlan=(String)store.createPlan(List.of("http://"+OnionSmoke.HOST+"/"),1,3,"other-owned-plan").get("plan_id");store.approvePlan(otherPlan);
+            }
+            assertThrows(IOException.class,()->CrawlExecution.start(archive,otherPlan,runtime,token));
+            assertFalse(Files.exists(changed));assertEquals(0,reached.get());
+            // Lost/missing old lock does not make a used legacy catalog fresh.
+            Path legacy=root.resolve("legacy-archive");String legacyId;
+            try(var store=new ArchiveStore(legacy)) {
+                legacyId=(String)store.createPlan(List.of("http://"+OnionSmoke.HOST+"/"),1,3,"legacy-fixture").get("plan_id");store.approvePlan(legacyId);
+                store.recordAdmission(legacyId,Map.of("worker_pid",pid,"worker_exit_code",0));
+            }
+            assertThrows(IOException.class,()->CrawlExecution.start(legacy,legacyId,runtime,token));
+            assertFalse(Files.exists(legacy.resolve("crawl-worker.lock")));
+            assertFalse(Files.exists(WorkerOwnership.marker(legacy.resolve("crawl-worker.lock"))));
+            assertEquals(0,reached.get());
             assertTrue(child.isAlive());
             Path evidenceRoot=Path.of(System.getProperty("basedir",".")).resolve(".runtime/worker-crash-characterization");
             Files.createDirectories(evidenceRoot);Path evidence=Files.createTempDirectory(evidenceRoot,"case-");
-            Map<String,Object> proof=new LinkedHashMap<>();proof.put("finding","REC-09 OPEN");
+            Map<String,Object> proof=new LinkedHashMap<>();proof.put("finding","REC-09 restart containment");
             proof.put("platform",System.getProperty("os.name"));proof.put("jdk",System.getProperty("java.version"));
             proof.put("observed_at",Instant.now().toString());proof.put("owner_exit_code",owner.exitValue());
             proof.put("owner_alive",false);proof.put("child_alive",true);proof.put("lock_held",false);
@@ -104,7 +125,7 @@ public class WorkerCrashCharacterizationTest {
             JSON.writeValue(evidence.resolve("proof.json").toFile(),proof);
             try(var input=Files.newInputStream(root.resolve("owner.log"))){Files.write(evidence.resolve("owner.log"),input.readNBytes(65536));}
             System.out.println("REC-09 retained evidence: "+evidence.toAbsolutePath());
-            System.out.println("REC-09 CONFIRMED in JVM fixture: forced owner exit, live child/listener, released lock, admission reached; no second crawler/admission mutation executed");
+            System.out.println("REC-09 CONFIRMED in JVM fixture: forced owner exit, live child/listener, released lock, restart denied before admission; no second crawler/admission mutation executed");
         } finally {
             if(tripwire!=null)tripwire.shutdownNow().awaitTermination(5,TimeUnit.SECONDS);
             if(owner.isAlive()){owner.destroy();if(!owner.waitFor(5,TimeUnit.SECONDS)){owner.destroyForcibly();owner.waitFor(5,TimeUnit.SECONDS);}}
@@ -113,5 +134,8 @@ public class WorkerCrashCharacterizationTest {
                 child.destroyForcibly();child.onExit().get(10,TimeUnit.SECONDS);
             }
         }
+        // Even after the owned orphan is stopped by the test, the crashed wrapper
+        // never published a cleanup witness. Restart must remain UNKNOWN.
+        assertThrows(IOException.class,()->CrawlWorker.requireAvailable(lock));
     }
 }

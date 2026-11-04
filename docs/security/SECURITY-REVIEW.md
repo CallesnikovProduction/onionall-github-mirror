@@ -833,3 +833,39 @@ permission to implement all recommendations.
    schema changes and later real-Tor/product acceptance.
 10. **Ready for local review and a draft PR once owner authorizes publication;
     not merge/release/full-security-ready.** No PR created and no message sent to Stepan.
+
+
+## M5 REC-C - approved archive ownership containment (2026-11-04)
+
+REC-09 pre-fix CONFIRMED Windows JVM evidence is retained in checkpoint1955ef7
+and ignored worker-crash-characterization/case-* proof logs. Product HIGH conditional
+availability/overlap; security LOW/conditional MEDIUM with crash plus authorized
+restart. Not a new unauthenticated RPC mutation, not S1-01 closure.
+
+WorkerOwnership.Preparation/claim/read/stopped/publish, CrawlWorker.main/OwnedChild,
+CrawlExecution.start and WorkerObservation.read implement the approved local guard.
+PREPARING is published before resources/admission; exact-parent UUID handoff precedes
+child creation, then pinned scope/PID/startInstant. Released OS lock or absent parent
+alone never proves cleanup. RUNNING/LAUNCHING/PREPARING/UNKNOWN after an unassisted
+crash blocks start, even when the test later terminates its own surviving child.
+Malformed/future/foreign/legacy markers are preserved and denied, without signaling
+unknown processes. Status uses the archive marker instead of a selectable work path.
+ArchiveStore.hasExecutionHistory is read-only and prevents a used legacy catalog
+without its old lock from being treated as fresh. Existing authority guards stay
+in Frontier; no protobuf, quota/reservation, schema or Tor policy change.
+
+Regression conditions: normal exit/restart, bounded owner deadline, CLI force-kill,
+wrapper force-kill/live listener, child kill, PREPARING/LAUNCHING crash, PID reuse,
+invalid handoff, stale/unknown/foreign/future marker, changed work/plan and legacy
+catalog/lock. Actual Windows Process.destroy also leaves an orphan; its regression
+requires fail-closed BLOCKED, not an unsupported graceful-cleanup claim.
+
+Compatibility: additive archive sidecar crawl-worker.lock.owner-v1.json. Legacy
+whole-tree stop cannot be retrospectively proved using absent PIDs; no automatic
+migration is shipped. Preserve data and request an operational stopped-proof review.
+Older binaries ignore the marker and lose REC-C containment; rollback requires
+proved stopped processes and preserved evidence. Not OS containment; detached
+unobserved descendants, full Storm/Linux process-tree qualification and power-loss
+filesystem guarantees remain OPEN. No host/network/native component change.
+Current executed results are recorded in m5-execution-ledger.md. Full security
+audit and S1-01 remain PARTIALLY VERIFIED / NOT CLOSED.

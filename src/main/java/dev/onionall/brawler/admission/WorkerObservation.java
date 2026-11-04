@@ -30,12 +30,12 @@ final class WorkerObservation {
         try { return ProcessHandle.of(pid).flatMap(p -> p.info().startInstant()).map(Instant::toString).orElse(null); }
         catch (RuntimeException e) { return null; }
     }
-    private static Boolean alive(Object pid, Object expected) {
+    static Boolean alive(Object pid, Object expected) {
         if (!(pid instanceof Integer || pid instanceof Long) || !(pid instanceof Number n) || n.longValue() < 1 || !(expected instanceof String clock)) return null;
         try {
             Instant instant = Instant.parse(clock);
             Optional<ProcessHandle> process = ProcessHandle.of(n.longValue());
-            if (process.isEmpty()) return false;
+            if (process.isEmpty()||!process.get().isAlive()) return false;
             Optional<Instant> actual = process.get().info().startInstant();
             if (actual.isEmpty()) return null;
             return actual.get().equals(instant) && process.get().isAlive();
@@ -60,6 +60,21 @@ final class WorkerObservation {
     }
     static Observation read(Path execution, Path archive, String plan) {
         try {
+            Path lockPath=archive.resolve("crawl-worker.lock");
+            if(Files.exists(WorkerOwnership.marker(lockPath),LinkOption.NOFOLLOW_LINKS)) {
+                Map<String,Object> marker=WorkerOwnership.read(lockPath);
+                if(marker.get("plan_id") instanceof String ownedPlan&&!plan.equals(ownedPlan))return unavailable("ARCHIVE_OWNED_BY_OTHER_PLAN");
+                Boolean owner=alive(marker.get("owner_pid"),marker.get("owner_start"));
+                Boolean child=Boolean.FALSE.equals(marker.get("child_created"))?Boolean.FALSE:alive(marker.get("child_pid"),marker.get("child_start"));
+                Boolean held=lockHeld(lockPath),running=null;
+                if(Boolean.TRUE.equals(child)||Boolean.TRUE.equals(held))running=Boolean.TRUE;
+                else if(Boolean.TRUE.equals(owner)&&!"STOPPED".equals(marker.get("phase")))running=Boolean.TRUE;
+                else if(Boolean.FALSE.equals(held)) {
+                    try {WorkerOwnership.stopped(marker);running=Boolean.FALSE;}catch(java.io.IOException unknown){ /* retained intent is not stopped proof */ }
+                }
+                Integer exit=marker.get("exit_code") instanceof Integer code?code:null;
+                return observation(running,owner,child,held,exit,"ARCHIVE_OWNERSHIP_V1");
+            }
             if (!Files.isRegularFile(execution, LinkOption.NOFOLLOW_LINKS)) return unavailable("NO_EXECUTION_OBSERVATION");
             byte[] bytes;
             try (var input = Files.newInputStream(execution)) { bytes = input.readNBytes(16385); }
@@ -73,7 +88,7 @@ final class WorkerObservation {
             Boolean held = lockHeld(archive.resolve("crawl-worker.lock"));
             Boolean running = null;
             if (Boolean.TRUE.equals(owner) || Boolean.TRUE.equals(child)) running = Boolean.TRUE;
-            else if (Boolean.FALSE.equals(owner) && Boolean.FALSE.equals(child) && Boolean.FALSE.equals(held)) running = Boolean.FALSE;
+            // Legacy roots disappearing cannot prove cleanup of descendants. Remain UNKNOWN.
             Object code = value.get("worker_exit_code");
             Integer exit = code instanceof Integer i ? i : null;
             return observation(running, owner, child, held, exit, "PROCESS_HANDLES_START_INSTANT_AND_SCOPE");

@@ -444,3 +444,59 @@ After atomic-ready fix: current worker/status selection11/11 PASS,0 skip/error/f
 (rec09-checkpoint-atomic-ready.log). Python AST and limited credential signatures
 for four scoped files PASS; not a full secrets/security audit. No production
 worker change. Checkpoint is ready for its authorized atomic commit/push.
+
+
+## REC-C approved fail-closed ownership implementation
+
+Previous checkpoint1955ef75ddb9561765f76b44ac82e3f969e36ea6 was immediately
+pushed to origin/feat/m5-operational-closure with matching remote HEAD. Owner
+approved versioned archive-level ownership, UNKNOWN denial and no OS components.
+
+Added WorkerOwnership v1 sidecar under existing archive OS lock. PREPARING intent
+precedes config/JAR/admission, LAUNCHING uses a UUID handoff bound to exact live
+parent scope/PID/startInstant; wrapper then pins owner/child and publishes RUNNING.
+Atomic temp force+move, no non-atomic fallback. STOPPED requires observed owned
+Process completion plus absent/stopped observed descendants; missing child identity
+or unassisted crash remains UNKNOWN/BLOCKED. Unknown/reused process identities never
+authorize a signal. Unpinned observed descendants may only discharge by complete
+absence; a still-present/reused PID blocks. No signaling from stored metadata.
+
+Actual legacy/history guard runs before resource writes/RPC. Read-only H2 history
+check also blocks a used legacy archive with missing old lock. No retrospective
+whole-tree migration is possible from old PIDs; legacy metadata remains intact and
+BLOCKED pending an operational stopped-proof review. Changed work/plan cannot bypass.
+Status prefers canonical marker and no longer infers stopped from disappeared legacy
+root PIDs. Admission/token/reservation/quota/scheduler/schema/Tor contracts unchanged.
+
+Current evidence:
+- POC8/8 PASS (rec-c-spike.log), then selection19/19 PASS (rec-c-targeted3.log).
+- Earlier targeted failures retained: missing fast-child identity correctly yielded
+  UNKNOWN; normal positive fixture now keeps child observable for1s, without changing
+  original deadlines. Ephemeral descendant with no startInstant is never signaled;
+  wait for absence or retain UNKNOWN. Additional UNKNOWN->PAUSED transition changed
+  the new status fixture's exact audit expectation to3, retaining prior PAUSED checks.
+- First full verify157 run/1 FAIL/1 SKIP (rec-c-full-verify.log): a new test incorrectly
+  assumed Process.destroy invokes a hook on Windows. Actual child survived. Replaced
+  that unsupported assumption with explicit Windows live-child/BLOCKED assertions,
+  pinned fixture-only cleanup; Linux expects the separate graceful hook behavior.
+- Full offline JVM verify157 run/156 PASS/1 existing Windows SKIP,0 failure/error,
+  BUILD SUCCESS (rec-c-full-final.log). No historical result counted as current.
+- Actual Frontier6/6 PASS (rec-c-frontier-ak4dk1nn): admission/auth/sync restart,
+  migration, shutdown, counters and read-only counts unchanged.
+- Changed-main javac --release25 -Xlint:all exit0, no warnings (rec-c-lint-4jndllhd).
+- Runner unit5/5 PASS. Final diff/link/limited-signature checks below.
+
+Compatibility/limits: additive sidecar; no persistent schema change, no destructive
+migration, no native/service/host network change. Old binaries ignore marker and
+lose containment; rollback requires proved stopped processes and preserved evidence.
+Marker is NOT OS process containment. Unobserved detached descendants, full Storm
+crash-tree qualification, Linux native run and power-loss filesystem semantics stay
+OPEN. verify.py retains worker-crash-acceptance NOT RUN specifically for Storm gate.
+S1-01/full audit remains PARTIALLY VERIFIED / NOT CLOSED. Next scope stays within
+REC retry/resume before DEV paired deployment/ARCH application service.
+
+Final REC-C selection20/20 PASS,0 skipped (rec-c-publish-targeted.log), including
+strict marker fields and preparation lifecycle checks. Links PASS (run-uh47r6qt),
+Python AST/diff check/limited credential signatures13 files PASS. No user untracked
+file staged. Publication SHA/remote result retained in ignored rec-c-publication.json
+and user handoff after push; this journal never claims full Storm/security closure.

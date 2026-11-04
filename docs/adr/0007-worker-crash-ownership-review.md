@@ -1,7 +1,7 @@
-# ADR 0007 - Worker crash ownership: design approved, implementation OPEN
+# ADR 0007 - Worker crash ownership: approved fail-closed implementation; Storm qualification OPEN
 
 Date:2026-11-04. Owner selected the versioned archive-level fail-closed marker design; implementation follows.
-No native OS component, process-controller replacement or production fix yet.
+Local implementation below follows that decision. No native OS component or process-controller replacement.
 
 ## Reproduced fact (not a successful recovery gate)
 
@@ -10,7 +10,7 @@ JVM child. The child briefly opens/closes its fixture catalog then retains only
 an explicit127.0.0.1 listener. After destroyForcibly on the wrapper, child PID/start
 identity remains live and the listener is reachable; the archive ownership lock
 is released. WorkerObservation correctly reports owner=false/child=true/alive=true.
-Existing CrawlWorker.requireAvailable nevertheless accepts. A real CrawlExecution
+At pre-fix checkpoint1955ef7, CrawlWorker.requireAvailable nevertheless accepts. A real CrawlExecution
 start with valid fixture runtime reaches an admission RPC tripwire, which rejects
 before mutation/second worker launch. All resources are owned fixtures and the
 surviving child is terminated only after its start identity is rechecked.
@@ -64,11 +64,51 @@ is installed or implemented without the required decision.
 - Full generated Storm/SOCKS fixture must qualify the actual process tree; JVM
   stand-in PASS alone is not that gate.
 
-Characterization PASS currently means defect reproduced. verify.py explicitly
-reports worker-crash-acceptance NOT RUN, so it cannot give a full green result
-even after core tests or product E2E pass. The gate must become a real accepted
-regression after the chosen design is implemented and exercised.
+The pre-fix characterization proved the defect. The same fixture now asserts
+restart rejection before all RPC/resource writes, including different work/plan,
+and continued rejection after the test stops its own orphan. verify.py still
+reports worker-crash-acceptance NOT RUN for the full generated Storm tree;
+passing JVM regressions do not close that acceptance gate.
 
 Owner resolution: use archive-level versioned ownership, deny live-child and
 UNKNOWN restart, migrate legacy only with stopped proof, no OS components.
-The characterization checkpoint below precedes implementation; it is not a fix.
+Checkpoint1955ef7 preserves pre-fix evidence. Current implementation:
+
+- crawl-worker.lock.owner-v1.json is an additive archive-local v1 sidecar; existing
+  OS lock remains the live mutual-exclusion primitive. No H2/RocksDB schema change.
+- Preparation owns that lock and publishes PREPARING before resource preparation
+  or any admission. Normal preparation failure proves no child was created and
+  publishes STOPPED. Process death leaves the intent and blocks restart.
+- CLI publishes LAUNCHING and hands a run UUID to its exact local child wrapper.
+  The wrapper checks parent PID plus start instant, scope, path and ticket while
+  holding the same OS lock. It pins its own identity before ProcessBuilder, then
+  child identity before readiness. The ticket is removed from the child environment.
+- Scope, startInstant, PID and run UUID bind observations; PID reuse never grants
+  mutation or a signal. Local files are ownership observations, not an auth system.
+- Publication: same-directory forced temp file, ATOMIC_MOVE/REPLACE, optional
+  directory force. No non-atomic fallback. Process crash is covered; arbitrary
+  filesystem/power-loss durability is not claimed on platforms without directory fsync.
+- Managed normal/deadline cleanup records STOPPED only after its own Process exits
+  and all observed descendants are absent/pinned identities gone. Unknown identities
+  never authorize a signal; a still-present unpinned/reused PID conservatively blocks.
+  Missing initial child start identity leaves UNKNOWN even for a fast child exit.
+- Windows Process.destroy in the actual fixture leaves the child running and does
+  not publish hook cleanup: explicit platform regression requires BLOCKED, then
+  test-only cleanup of the pinned owned child. Linux hook behavior remains a distinct
+  test, not an inferred Windows PASS. Normal/deadline execution uses the owned wrapper.
+- Legacy lock or catalog execution evidence without a v1 marker is BLOCKED and
+  preserved, even if the lock file is missing. No auto-migration, deletion, force
+  resume or killing from metadata. A retrospective legacy whole-tree stop cannot
+  be established by Java PID lookup; approved stopped-proof migration remains
+  unavailable until such proof is supplied under a separate operational review.
+- Work-directory/plan changes do not bypass the archive guard. Status prefers the
+  canonical marker; legacy disappeared roots alone now remain UNKNOWN.
+
+Compatibility/rollback: additive local file, no RPC/protobuf/CLI argument or catalog
+schema migration. Older binaries ignore this sidecar and restore the unsafe guard;
+rolling back requires proved stopped work and preserves marker/catalog evidence.
+Never roll back a live owner or delete a marker to restart. Shared/multi-host filesystems,
+unobserved detached grandchildren, OS containment, portable graceful external stop,
+power-loss recovery and the full generated Storm crash tree are not qualified.
+The marker contains unsafe restart; it is NOT OS process containment. Future forced
+whole-tree supervision requires a separate design review. S1-01/full audit NOT CLOSED.

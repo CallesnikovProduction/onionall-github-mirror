@@ -215,6 +215,16 @@ public final class ArchiveStore implements AutoCloseable {
             throw e instanceof IOException io ? io : failure((SQLException)e);
         } finally { try { db.setAutoCommit(true); } catch (SQLException e) { throw failure(e); } }
     }
+    /** Archive-wide legacy launch evidence; no scheduler authority or metadata migration. */
+    public synchronized boolean hasExecutionHistory() throws IOException {
+        try(var statement=db.prepareStatement("SELECT observation_json FROM admission_observations");var rows=statement.executeQuery()) {
+            while(rows.next()) {
+                Map<?,?> value=JSON.readValue(rows.getString(1),Map.class);
+                if(value.containsKey("worker_pid")||value.containsKey("worker_owner_pid")||value.containsKey("runtime")||"COMMITTED".equals(value.get("admission")))return true;
+            }
+            return false;
+        }catch(SQLException e){throw new IOException("Execution ownership history unavailable",e);}
+    }
     public synchronized Map<String,Object> admissionObservation(String id) throws IOException {
         identifier(id);
         try(PreparedStatement st=db.prepareStatement("SELECT observation_json,observed_at FROM admission_observations WHERE job_id=?")) {
