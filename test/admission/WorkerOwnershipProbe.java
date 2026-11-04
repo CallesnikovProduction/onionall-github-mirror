@@ -28,6 +28,7 @@ public final class WorkerOwnershipProbe {
             require(process.pid()!=ProcessHandle.current().pid(),"never kill probe");
             require(process.destroyForcibly(),"owned wrapper signal rejected");process.onExit().get(5,TimeUnit.SECONDS);
         }
+        boolean exitUnconfirmed=false;
         if(args[0].equals("wait-child")) {
             long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(150);
             Boolean alive;
@@ -37,7 +38,7 @@ public final class WorkerOwnershipProbe {
                 if(Boolean.FALSE.equals(alive))break;
                 Thread.sleep(100);
             }while(System.nanoTime()<until);
-            require(Boolean.FALSE.equals(alive),"bounded Storm child did not exit; retain marker/fixture evidence");
+            exitUnconfirmed=!Boolean.FALSE.equals(alive);
         }
         Map<String,Object> output=new LinkedHashMap<>(WorkerObservation.read(archive.resolve("unused-execution.json"),archive,args[1]).details());
         output.put("marker_phase",marker.get("phase"));output.put("run_id",args[2]);
@@ -48,10 +49,20 @@ public final class WorkerOwnershipProbe {
                 .anyMatch(a->a.equals("org.apache.storm.LocalCluster")||a.equals("org.apache.storm.flux.Flux")));
         }
         output.put("storm_runtime_present",storm);
+        String state="UNAVAILABLE";
+        if(Boolean.TRUE.equals(WorkerObservation.alive(child,childStart))) {
+            try {
+                String stat=Files.readString(Path.of("/proc",Long.toString(child),"stat"));
+                String parsed=stat.substring(stat.lastIndexOf(')')+2).split(" ",2)[0];
+                if(parsed.matches("[A-Z]")&&Boolean.TRUE.equals(WorkerObservation.alive(child,childStart)))state=parsed;
+            }catch(Exception unavailable){ /* diagnostic only; never changes ownership/liveness verdict */ }
+        }
+        output.put("linux_child_state",state);
         if(args[0].equals("guard")) {
             try {CrawlWorker.requireAvailable(lock);throw new IllegalStateException("unsafe guard accepted fixture restart");}
             catch(java.io.IOException blocked){require(blocked.getMessage().contains("BLOCKED"),"unexpected ownership IO failure");output.put("guard_blocked",true);}
         }
         Files.write(Path.of("/evidence",args[3]),new ObjectMapper().writeValueAsBytes(output),StandardOpenOption.CREATE_NEW);
+        require(!exitUnconfirmed,"bounded Storm child exit unconfirmed; pinned child OS state="+state+"; retain BLOCKED marker/fixture evidence");
     }
 }

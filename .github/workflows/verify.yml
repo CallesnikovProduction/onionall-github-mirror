@@ -119,4 +119,5 @@ jobs:
             .runtime/ci/product-images.json
             .runtime/ci/product-logs/
             .runtime/m2/*/admission-local.json
+            .runtime/m2/*/crash-*.json
           if-no-files-found: warn

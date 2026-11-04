@@ -110,7 +110,7 @@ def generated_resources(work):
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
 
-def verify_storm_owner_crash(r, subject, job, cli, snapshot):
+def verify_storm_owner_crash(r, subject, job, cli, snapshot, result):
     """Actual generated Storm, existing completed ledger, no new reservations/fetches."""
     p=r.path
     lock_marker=p/'archive/crawl-worker.lock.owner-v1.json'
@@ -135,6 +135,7 @@ def verify_storm_owner_crash(r, subject, job, cli, snapshot):
                 time.sleep(.1)
             else:
                 raise RuntimeError('Actual generated Storm spout did not prepare before fixture deadline')
+            result['storm_spout_prepared']=True
             run_id=marker['run_id']
             def probe(action,name,timeout=30):
                 r.command(['docker','exec',subject,'java','-cp','/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar',
@@ -146,6 +147,7 @@ def verify_storm_owner_crash(r, subject, job, cli, snapshot):
             require(killed['owner_alive'] is False and killed['child_alive'] is True and killed['ownership_lock_held'] is False,
                     'Actual Storm child did not survive released-wrapper lock')
             require(killed['storm_runtime_present'],'Surviving child is not actual Storm runtime')
+            result['surviving_child_verified']=True
             require(process.wait(timeout=30)!=0,'Killed-wrapper CLI must not report success')
             work=p/'execution'/job
             resources=generated_resources(work)
@@ -159,6 +161,9 @@ def verify_storm_owner_crash(r, subject, job, cli, snapshot):
                 require(session_count(cli(['crawl','status',job,'--runtime','/evidence/runtime.json','--admission-token-file','/evidence/admission-token'],name+'-status',inside=True))==4,
                         'Crash/restart changed authoritative reservation quota')
             rejected('live-orphan-restart')
+            result['live_child_restart_blocked']=True
+            result['live_child_restart_resources_unchanged']=True
+            result['live_child_restart_state_and_quota_unchanged']=True
             stopped=probe('wait-child','crash-child-exited',timeout=165)
             require(stopped['owner_alive'] is False and stopped['child_alive'] is False and stopped['alive'] is None,
                     'Unassisted owner death must remain UNKNOWN after child exit')
@@ -343,7 +348,7 @@ def main(argv=None):
         require(cli(['pages', '--job', job, '--limit', '10'], 'replayed-pages') == pages, 'Repeated start changed archive')
         cli(['archive', 'export', '--job', job, '--output', str(p / 'summary.json')], 'export')
         result['worker_crash_test_executed']=True
-        result.update(verify_storm_owner_crash(r,subject,job,cli,snapshot))
+        result.update(verify_storm_owner_crash(r,subject,job,cli,snapshot,result))
         result.update(passed=True, packaged_cli_verified=True, durable_admission_verified=True, job_id=job, frontier_records=4,
                       graph_edges=len(edges), worker_restart_verified=True, scheduled_retry_verified=True,
                       server_restart_quota_verified=True, repeated_start_verified=True, archive_reopen_verified=True)

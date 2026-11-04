@@ -698,3 +698,14 @@ well before the19:15:13 timeout. Zombie/adoption vs stalled launcher cause still
 unconfirmed; do not clear ownership, auto-kill unknown processes, relax the timeout
 assertion or claim full crash PASS. Next diagnostic must read only the pinned
 child's state and retain partial-stage evidence, preserving fail-closed behavior.
+
+
+ARCH-C service9acca1e883d57c24d8477b02c9a00e81c4431446 immediately pushed;
+remote SHA matched. Crash diagnostic-only follow-up preserves the150s failure and
+UNKNOWN denial. Probe records only birth-pinned /proc child state before throwing,
+with stable-identity checks on both sides; no signal/guard/liveness change. Partial
+spout/live-child/blocked-restart/resources/quota proofs now survive a later failure
+in the structured report. Allowlist uploads crash-*.json probe observations only,
+not token/runtime JSON. Unit verifier6/6 and fixture3/3 PASS; AST/YAML/lint clean.
+Repeat will distinguish actual unknown process state rather than rerun blindly;
+full product/crash acceptance remains FAIL until current evidence proves otherwise.
