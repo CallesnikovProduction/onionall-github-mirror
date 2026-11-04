@@ -1,6 +1,6 @@
 # M5 Operational Closure execution ledger
 
-## Execution boundary Р Р†Р вЂљРІР‚Сњ 2026-11-04
+## Execution boundary Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ 2026-11-04
 
 Owner-approved branch feat/m5-operational-closure starts exactly at
 0a645fdd63b6f21d9af66b988c027d77fb9eb14f. S1-01 remains present and partially
@@ -13,7 +13,7 @@ ARCH read-only model, DOM state/history and REC bounded resume, deployment/servi
 seam. No second scheduler; Frontier owns scheduling/reservation/quota, H2 is an
 observation catalog. External Tor and historical topology retirement excluded.
 
-## DEV-01a Р Р†Р вЂљРІР‚Сњ verification signal and Markdown file links
+## DEV-01a Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ verification signal and Markdown file links
 
 Baseline before implementation: Maven verify on approved JDK25/Maven3.10.0,
 offline cache:124 run,123 PASS,1 SKIP,0 fail/error. Initial sandbox invocation
@@ -60,7 +60,7 @@ Command: python -B scripts/runners/verify.py --offline --maven <verified-mvn.cmd
 Targeted command: python -B -m unittest discover -s test/scripts -p test_verification.py -v.
 No full CI/product acceptance asserted. Diff whitespace and Python AST checks pass.
 
-## DEV-01b вЂ” pinned Maven Wrapper and CI
+## DEV-01b РІР‚вЂќ pinned Maven Wrapper and CI
 
 DEV-01a commit2b12c0688a9508c4f368e03d9194aab73c0953d6 immediately pushed to
 origin/feat/m5-operational-closure; remote SHA matched.
@@ -90,3 +90,37 @@ Final wrapper-backed run: .runtime/verification/run-zfzf9pt1/result.json; Maven
 Frontier4/4 PASS. M2 and scripts platform failures unchanged; overall FAIL retained.
 Command: JAVA_HOME25, URLFRONTIER_BASE_JAR, MAVEN_USER_HOME=<isolated cache>,
 M1_HTTP_SMOKE=1 python -B scripts/runners/verify.py --offline --maven-repository <cache>.
+
+## REC-01 — current-path restart qualification, no production patch
+
+DEV-01b commit51b910e959bd04de8b7988f4cd34ae56c9a3151d immediately pushed; remote
+SHA matched. DEV-01 complete acceptance remains open: native Linux/CI/product
+Docker qualification not credited by Windows local evidence.
+
+Source: RocksDBService constructor170-174 unconditionally selects
+recoveryQscan(true). readQueueInfos690-724 half-open deleteRange and omitted
+incrementActive in recoveryQscan(false)262-264 remain dormant on the current
+public constructors. REC-06/07 rejected as active defects; no schema/counter
+production patch, no unsafe lastKey arithmetic.
+
+Added RecoveryCountersConformance to both build.sh --test and native verify gate.
+Actual fixture has three queues (active2/completed1, active0/completed2,
+active3/completed0), eight durable reservations, a far-future due row and due
+rows. Two clean close/reopens plus deliberate child Runtime.halt23 (no close)
+verify exact active/completed counts, nextFetch dates and reservation/session
+readback against pre-crash snapshot. Due membership exact, no duplicate leasing
+within a call; replay leaves counts/quota/identity unchanged and completed URLs
+unscheduled. Authentication remains covered by actual AdmissionRpcConformance,
+not by this direct owning-service fixture.
+
+Fresh compile with JDK25 --release11 and pinned service JAR; all5 Frontier drivers
+PASS under .runtime/specs-dev01/rec01-final-*/. No prior PASS substituted. JVM-only
+fixture requires no Docker/onion sockets; addresses are inert synthetic test data.
+Clean fixture stats metadata is naturally written; crash skips metadata close.
+No DB deletion, no schema change. Linux build.sh execution NOT RUN here: no Bash.
+Not a power-loss/OS-crash or long-duration soak claim.
+
+Rollback: remove added conformance/test-hook commit; no persistent migration.
+Next ARCH-01 evidence map/ADR, then ARCH-02 requires truthful UNKNOWN for missing
+terminal provenance. A completed storage row cannot prove success vs terminal
+failure; no scheduler/category inferred by subtracting H2 pages.

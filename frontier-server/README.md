@@ -119,3 +119,16 @@ checks do not claim full CLI/Storm/archive integration or real-Tor M2/M3.
 Shutdown conformance blocks a real admission transaction before commit and proves
 close drains it before freeing native handles. Late admissions/status writes fail
 closed; committed reservation/count/queue survive reopening.
+
+## Recovery counter qualification (M5 REC-01)
+
+`build.sh --test` also runs RecoveryCountersConformance: actual RocksDB with
+three queues (mixed active/unscheduled, all unscheduled, all active), two clean
+restarts, and a separate-process Runtime.halt without close. It verifies exact
+counts, due dates, reservation identity/quota, due membership and idempotent replay.
+"Completed" is the storage meaning UNSCHEDULED, not successful fetch or terminal
+reason. Process crash is not an OS/power-loss durability qualification.
+No volumes are deleted. Current candidate forces recoveryQscan(true); alleged
+readQueueInfos/deleteRange and recoveryQscan(false) defects are dormant, so no
+recovery production patch is justified by those findings. Native Windows can run
+the same test via scripts/runners/verify.py with the pinned base JAR/JDK25.
