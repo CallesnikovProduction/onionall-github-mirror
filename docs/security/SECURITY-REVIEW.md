@@ -898,3 +898,17 @@ to separate minimal design approval. ADR0004 records adapter, shared existing
 error budget/backoff, audit-before-write, lost-write/lease and rollback gates.
 No parser/status/Frontier remediation implemented. verify keeps this required
 acceptance NOT RUN; positive defect characterization must not make audit green.
+
+
+REC-C final actual Storm diagnostic run41896563641 atcee2d84: normal core gates
+PASS, actual prepared Storm child survived pinned wrapper kill (S state), lock
+released, attempted start returned ownership BLOCKED with resources/state/quota
+unchanged. After TTL the SAME birth-pinned child was state Z, while Java
+ProcessHandle still reported alive; marker phase remained RUNNING, no cleanup proof.
+[Linux proc state documentation](https://docs.kernel.org/filesystems/proc.html)
+identifies Z as zombie. Observed reaping/Java-liveness limit is CONFIRMED in this
+fixture, not proof of all descendants stopped. No reaper/containment/OS change or
+forced metadata migration applied. Full product/crash gate remains FAIL; recovery
+stays BLOCKED under the approved contract. All owned containers/network removed,
+volume retained, host baseline unchanged; sanitized artifact SHA256
+5926a087afcddba5060660f18ce74417caf9d03f99d9768aa6f113bf84888767 retained.

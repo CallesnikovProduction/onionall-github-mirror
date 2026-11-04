@@ -138,3 +138,13 @@ then TTL child exit still leaves UNKNOWN/BLOCKED. Test-only fixed-archive probe
 never signals from a missing/mismatching identity. New structured report must prove
 this case before verify.py can PASS worker-crash-acceptance; default remains NOT RUN.
 This tests fail-closed recovery, never OS containment or forced whole-tree cleanup.
+
+
+Final full Storm diagnostic41896563641 atcee2d84 confirms live-child restart
+protection with identical Frontier entries/quota/resources. Post-TTL pinned child
+state is Z (zombie), Java liveness remains true and marker RUNNING has no owner
+cleanup witness. Recovery remains BLOCKED and full crash acceptance FAIL; no
+reaper/containment component, OS setting change or migration is introduced. Treat
+process presence telemetry as distinct from active crawling or whole-tree stop.
+A separately reviewed runtime init/reaping contract is needed for stronger automatic
+recovery; current owner decision explicitly permits fail-closed BLOCKED here.

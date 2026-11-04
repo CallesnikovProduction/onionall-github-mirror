@@ -733,3 +733,25 @@ Tested JSoupParserBolt.class SHA256f95500345b75b0fe53b356fc450c8c8bbd6f0036d7bda
 matches the class in packaged app byte-for-byte; core3.7.0 JAR SHA256
 88a39b5fa007c787edbf11109e2c7d1bbfdc56e58933eeb709112374392c8d85.
 Design only, implementation paused per owner's explicit separate-review request.
+
+
+Archive characterization/design62b2e75157c0a5bd83730d4cc14f675ce008c27b pushed
+immediately; remote SHA matched. Latest full local JVM172 run/171 PASS/1 existing
+Windows SKIP,0 failure/error, BUILD SUCCESS (m5-published-scope-final-verify.log).
+Current Linux diagnostic revisioncee2d84: JVM170/170, Python M1 32/M2 113/M3 2/
+archive2/security4/scripts21/CLI17 and6 Frontier drivers PASS. Actual Storm owner
+crash gate FAIL: live child S survived, guard blocked and resources/state/quota
+unchanged; after TTL same pinned child Z remained present to Java. Full-tree stop
+not proved, marker RUNNING retained, restart BLOCKED; no fixture reaper/native/OS
+change or assertion relaxation. Artifact5926a087afcddba5060660f18ce74417caf9d03f99d9768aa6f113bf84888767
+retained at storm-diagnostic-ci-41896563641 with safe partial-stage proof JSON.
+
+Source branch refs checked: mainf878e766a1447ed8986d052ca5bda11656e2c091,
+migration853934e57a17b827487b023e8e2c295375290b65,
+SecurityRC0a645fdd63b6f21d9af66b988c027d77fb9eb14f unchanged. Root AGENTS unchanged
+from SecurityRC; docs/audits and onion_codex_specs remain untracked/preserved.
+Published-turn path/signature review33 files PASS, no runtime/user artifact staged;
+limited signature scan is not a full security/CVE audit. M5 and S1-01 NOT CLOSED.
+Owner now requested standalone distributed AGENTS documentation, retaining root
+HOLD and no source/config changes. Archive parser/status fix awaits the requested
+separate minimal design approval; no unfinished remediation enters docs scope.
