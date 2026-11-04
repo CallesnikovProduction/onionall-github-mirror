@@ -62,3 +62,8 @@ Rollback: prior binaries can read schemaV2 and ignore additive JSON keys. Legacy
 execution/admission guards remain; scripts parsing the obsolete BLOCKED_ADR_0002
 plan value must use UNOBSERVED/admission_basis or the new versioned job view.
 This scope does not qualify full Storm/SOCKS E2E or durable terminal provenance.
+
+REC-B view adds resume_policy=BOUNDED_MANUAL and a PAUSED-only resume_note:
+URLs execute only with a running worker and when due; starting a bounded run
+before next_attempt_at may do no work. UNKNOWN does not retain a cached resume
+hint/note. No retry interval, due time, quota or automatic supervisor change.

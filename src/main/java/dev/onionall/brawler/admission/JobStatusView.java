@@ -38,6 +38,10 @@ final class JobStatusView {
         view.put("last_authoritative_counts",c==null?old.get("last_authoritative_counts"):counts);
         view.put("next_attempt_at",c==null||c.nextAttemptAt()==null?null:c.nextAttemptAt().toString());
         view.put("resume_hint",assessment.state()==JobStatus.State.PAUSED?"crawl start --plan "+catalog.get("plan_id")+" --runtime <descriptor> --admission-token-file <private-file>":null);
+        view.put("resume_policy","BOUNDED_MANUAL");
+        view.put("resume_note",assessment.state()==JobStatus.State.PAUSED
+            ? "Scheduled URLs run only while a worker is active and they are due. A bounded run before next_attempt_at may do no work; no automatic restart is scheduled."
+            : null);
         view.put("legacy_state",catalog.get("state"));view.put("state_semantics","LEGACY_EXECUTION_OBSERVATION");
         view.put("failure_records_truncated",catalog.get("failures") instanceof Number n && catalog.get("failure_records") instanceof List<?> rows && n.longValue()>rows.size());
         view.put("status_transition_limit",32);

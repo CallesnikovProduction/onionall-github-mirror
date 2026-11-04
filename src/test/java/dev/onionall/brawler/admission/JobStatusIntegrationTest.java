@@ -69,12 +69,15 @@ public class JobStatusIntegrationTest {
             assertEquals(0,((Map<?,?>)first.get("worker")).get("exit_code"));
             assertNull(((Map<?,?>)first.get("counts")).get("terminal"));
             assertTrue(((String)first.get("resume_hint")).contains(id));
+            assertEquals("BOUNDED_MANUAL",first.get("resume_policy"));
+            assertTrue(((String)first.get("resume_note")).contains("before next_attempt_at may do no work"));
             failure.set(Status.UNAVAILABLE);
             Map<String,Object> second=CrawlExecution.status(archive,id,runtime,token);
             assertEquals("UNKNOWN",second.get("job_state"));assertEquals("UNKNOWN",second.get("completion"));
             assertEquals(true,second.get("status_stale"));assertEquals(false,second.get("authoritative_readback_current"));
             assertNull(((Map<?,?>)second.get("counts")).get("pending"));
             assertNotNull(second.get("last_authoritative_counts"));
+            assertNull(second.get("resume_hint"));assertNull(second.get("resume_note"));
             assertEquals(false,((Map<?,?>)second.get("scheduler")).get("reachable"));
             assertEquals(3,((List<?>)second.get("status_transitions")).size());
             failure.set(Status.DEADLINE_EXCEEDED);

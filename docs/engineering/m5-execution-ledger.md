@@ -604,3 +604,12 @@ Python AST/diff/limited signatures clean, links PASS(run-i5j76kky). Real Docker
 startup qualification is pending another explicit product dispatch, not local PASS.
 First failed CI artifact and retained volume remain evidence; no assertion relaxed,
 retry shortened, root server fallback or failed startup hidden.
+
+
+Bootstrap correction208a07e26a93253fba8845dabbd06e73e05ef6bc pushed/remote SHA
+verified. Explicit product repeat41890176068 is running; no PASS inferred yet.
+REC-B adds only resume_policy=BOUNDED_MANUAL and PAUSED-only resume_note to the
+existing version1 view, explaining before-due no-work and absence of automatic
+restart. UNKNOWN clears hint/note. Existing output fields remain, no scheduling/
+retry/default120min/quota change. Current status/CLI/scheduler selection21/21 PASS
+(rec-b-manual-view.log). This view gate does not prove actual503 after-due execution.
