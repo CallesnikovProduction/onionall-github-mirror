@@ -7,7 +7,10 @@ check+WriteBatch(sync WAL) for reservation, count and normal Frontier enqueue.
 No H2 counter or second queue decides eligibility. Lease processing is at-least-once.
 
 The operator capability authorizes session opening; untrusted HTML cannot grant
-approval. Protected crawl IDs reject unreserved legacy submissions. New admission
+approval. Protected crawl IDs reject unreserved legacy submissions. PutURLs and
+GetURLs require that same capability for every crawl ID before any write/lease;
+legitimate durable worker channels must authenticate on initial calls and reconnect.
+Administrative mutation remains disabled even with a capability. New admission
 RPC uses a bounded protobuf BytesValue envelope carrying versioned JSON to avoid
 unpinned generators against bundled protobuf. Internal deployment only; never
 expose plaintext capability traffic to an untrusted/public network.

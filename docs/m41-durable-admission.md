@@ -32,7 +32,11 @@ The controlled acceptance substitutes an internal SOCKS fixture for connectivity
 it retains real TorProtocol, StormCrawler and authoritative RocksDB admission.
 Production onion traffic still requires official Tor. Runtime descriptors are
 trusted deployment inputs, never supplied by remote content. The admission RPC
-is internal plaintext capability traffic and must not cross an untrusted network.
+and legacy PutURLs/GetURLs are internal capability traffic and must not cross an
+untrusted network. GetURLs issues leases. The hardened candidate rejects tokenless
+workers; deploy matching CapabilitySpout and CapabilityArchiveStatusUpdaterBolt
+with admission.token.file. Credentials are reread for new calls/recreated streams,
+without anonymous fallback. Stock synthetic fixtures are separate from this mode.
 
 ```sh
 onionall --json crawl plan --seed APPROVED_ONION_URL --depth 2 --max-pages 20
@@ -68,7 +72,8 @@ catalog observation is repaired by querying the identical authoritative session;
 status readback does not reserve or enqueue. Child reservations can commit before
 the parent archive write; an archive failure does not undo those reservations.
 Replayed processing remains idempotent. Terminal failures are recorded by
-ArchiveStatusUpdaterBolt before the normal Frontier status write; stock terminal
+CapabilityArchiveStatusUpdaterBolt before the authenticated Frontier status write;
+the separate local-test stock fixture still uses ArchiveStatusUpdaterBolt. Stock terminal
 Frontier metadata loss still exists, so preserve the associated catalog.
 
 Graph schema2 retains first observed link time with an explicit clock basis,

@@ -1,5 +1,29 @@
 # Onionall Brawler — project context
 
+## S1-01 local authorization hardening — 2026-11-04
+
+The candidate Frontier now requires its existing capability for all PutURLs and
+GetURLs (lease acquisition), as well as Admission/Command. Keep admin mutations
+denied, immutable reservation/quota guards and sync-WAL admission unchanged.
+No protobuf, persistent schema or Tor isolation change. Read-only RPC policy and
+shared operator/worker authority remain separate open risks.
+
+Durable CrawlExecution selects CapabilitySpout and CapabilityArchiveStatusUpdaterBolt.
+CapabilityStatusUpdaterBolt/CapabilitySpout are source-pinned StormCrawler3.7.0
+adapters under src/main/java/org/apache/stormcrawler/urlfrontier; only class identity
+and mandatory CallCredentials wiring differ from upstream. Preserve ACK/scheduler/
+backpressure semantics when updating these copies. FrontierCapability reads the
+existing admission.token.file for each new RPC, including recreated streams;
+missing/invalid file or rejected capability must never retry anonymously.
+Stock M0/M1 and local-test archive fixtures retain their separate stock clients.
+
+Deploy compatible clients/server together: old tokenless workers fail closed.
+Windows CrawlWorkerTest uses nested Java argument files, with original assertions
+and deadlines retained. Current validation and remaining integration/review gates:
+docs/security/SECURITY-REVIEW.md and docs/engineering/security-execution-ledger.md.
+The Security RC task authorizes reviewed local checkpoint commits only.
+No push, merge, PR creation or main/source-branch changes are authorized.
+
 ## Purpose
 
 Onionall Brawler is an open-source-oriented, JVM-first project to build an independent search engine for publicly discoverable and permitted-to-index Tor onion services. Its intended capabilities include seed-based discovery, recurring crawling, a searchable corpus, source metadata, a graph of relationships between services, and a research interface. Optional semantic search, summaries and AI-assisted research may come later; the core search system must work without AI.

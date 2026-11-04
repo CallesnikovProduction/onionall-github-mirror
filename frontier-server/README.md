@@ -40,7 +40,8 @@ original provenance even when rediscovered along another eligible path. Known
 updates cannot create unreserved URLs in protected crawls; Discovered replays of
 reserved URLs use stock deduplication. Administrative mutation RPCs are globally
 disabled on this candidate, so queue deletion or crawl controls cannot bypass
-admission. Legacy read/lease/status APIs remain supported. This is a trusted
+admission. Legacy lease/status APIs remain supported with the existing capability;
+read-only list/status APIs retain their existing policy. This is a trusted
 single-local-deployment capability boundary; do not expose arbitrary clients or
 claim multi-tenant per-worker authorization.
 
@@ -49,9 +50,17 @@ claim multi-tenant per-worker authorization.
 Unary full method: onionall.frontier.admission.v1.Admission/Command.
 Request and response protobuf type: google.protobuf.BytesValue. Value is UTF8
 JSON, maximum32768 request bytes. No generators/new protobuf runtime are needed.
-Every admission RPC requires metadata header x-onionall-admission-token matching
-ONIONALL_ADMISSION_TOKEN. This capability authorizes the trusted local operator
-and pipeline; fetched content never supplies session authority or approval.
+Every admission RPC and every legacy PutURLs/GetURLs RPC requires metadata header
+x-onionall-admission-token matching ONIONALL_ADMISSION_TOKEN, for all crawl IDs.
+GetURLs acquires leases and is not read-only. Missing/wrong tokens are rejected
+before handler dispatch; there is no anonymous fallback. This capability authorizes
+the trusted local operator and pipeline; fetched content never supplies authority.
+Tokenless legacy workers are incompatible with this hardened candidate. Deploy
+the matching CapabilitySpout/CapabilityStatusUpdaterBolt clients with the server;
+they read the existing admission.token.file on each new RPC, including reconnect.
+Stock synthetic M0/M1 and local-test archive fixtures remain separate deployments.
+No protobuf or persisted schema changes are required; worker/operator capability
+separation and plaintext transport remain outside this narrow authorization fix.
 
 Requests:
 
@@ -102,7 +111,9 @@ legacy creation denial, source/scope/content rejection, write-failure atomicity,
 server reopen and actual subprocess halt before commit / after sync-WAL-before
 ACK. AdmissionMigrationConformance exercises fresh schema migration/rollback.
 AdmissionRpcConformance runs a real local gRPC server and validates absent token,
-valid capability, admin denial and legacy read compatibility. These primitive
+valid capability, rejected PutURLs/GetURLs without state or lease mutation,
+separate-process restart/replay, authenticated retry/terminal updates, all six admin
+denials and legacy read compatibility. These primitive
 checks do not claim full CLI/Storm/archive integration or real-Tor M2/M3.
 
 Shutdown conformance blocks a real admission transaction before commit and proves
