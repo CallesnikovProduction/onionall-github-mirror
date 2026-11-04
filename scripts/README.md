@@ -177,3 +177,8 @@ checksum. It executes the same runner and retains failed evidence. It deliberate
 fails closed when product E2E is NOT RUN: this workflow is not product acceptance.
 The full Docker product fixture remains a separate opt-in gate until DEV-02 assembles
 the paired app/server/Storm artifacts. No real Tor workflow is added.
+
+Packaged CLI/PTY/installation tests are an explicit python-cli gate. If the Linux
+CLI bundle is absent, its skipped tests produce NOT RUN (exit2), not PASS. Build
+the package using scripts/cli/build-cli.sh before qualifying that gate on Linux.
+A green Maven build alone neither packages nor qualifies the installed CLI.
