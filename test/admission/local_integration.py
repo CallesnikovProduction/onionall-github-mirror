@@ -5,6 +5,7 @@ M2_STORM_IMAGE=...cleanup2. Never starts Tor, publishes ports or migrates an old
 Fresh uniquely named Frontier volume is retained. No acceptance flag is inferred
 from worker exit0: quota/readback, traffic, archive and restart are checked below.
 """
+import argparse
 import base64
 from collections import Counter
 import hashlib
@@ -17,6 +18,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -102,10 +104,84 @@ def verify_archive(root, host, foreign, job, pages, search, cli):
     return edges
 
 
-def main():
+def generated_resources(work):
+    paths=[work / name for name in ('crawler-conf.json', 'topology.json', 'parsefilters.json', 'urlfilters.json')]
+    paths+=sorted(work.glob('worker-runtime-*.jar'))
+    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
+def verify_storm_owner_crash(r, subject, job, cli, snapshot):
+    """Actual generated Storm, existing completed ledger, no new reservations/fetches."""
+    p=r.path
+    lock_marker=p/'archive/crawl-worker.lock.owner-v1.json'
+    previous=json.loads(lock_marker.read_text())['run_id']
+    (p/'runtime.json').write_text(json.dumps(runtime(60)))
+    command=['docker','exec',subject,'/cli/bin/onionall','--json','--archive-dir','/evidence/archive',
+             'crawl','start','--plan',job,'--runtime','/evidence/runtime.json','--admission-token-file','/evidence/admission-token']
+    before=snapshot('before-owner-crash')
+    with (p/'crashed-start.log').open('w') as log:
+        process=subprocess.Popen(command,cwd=ROOT,env=r.environment,stdout=log,stderr=subprocess.STDOUT)
+        try:
+            until=time.monotonic()+70
+            marker=None
+            while time.monotonic()<until:
+                require(process.poll() is None,'Fixture crawl exited before owned-wrapper crash')
+                marker=json.loads(lock_marker.read_text())
+                execution=json.loads((p/'execution'/job/'execution.json').read_text())
+                if marker['run_id']!=previous and marker['phase']=='RUNNING' and execution.get('worker_owner_pid')==marker['owner_pid']:
+                    relative=Path(execution['worker_log']).relative_to('/evidence')
+                    if ('Initialized URLFrontier CapabilitySpout for crawlId '+job) in (p/relative).read_text(errors='replace'):
+                        break
+                time.sleep(.1)
+            else:
+                raise RuntimeError('Actual generated Storm spout did not prepare before fixture deadline')
+            run_id=marker['run_id']
+            def probe(action,name,timeout=30):
+                r.command(['docker','exec',subject,'java','-cp','/apache-storm/lib/*:/apache-storm/lib-common/*:/evidence/crawler-m2.jar',
+                           'dev.onionall.brawler.admission.WorkerOwnershipProbe',action,job,run_id,name+'.json'],name+'.log',timeout=timeout)
+                return json.loads((p/(name+'.json')).read_text())
+            live=probe('inspect','crash-before')
+            require(live['owner_alive'] is True and live['child_alive'] is True and live['storm_runtime_present'], 'Expected actual live Storm tree')
+            killed=probe('kill-owner','crash-live')
+            require(killed['owner_alive'] is False and killed['child_alive'] is True and killed['ownership_lock_held'] is False,
+                    'Actual Storm child did not survive released-wrapper lock')
+            require(killed['storm_runtime_present'],'Surviving child is not actual Storm runtime')
+            require(process.wait(timeout=30)!=0,'Killed-wrapper CLI must not report success')
+            work=p/'execution'/job
+            resources=generated_resources(work)
+            def rejected(name):
+                value=cli(
+                    ['crawl','start','--plan',job,'--runtime','/evidence/runtime.json','--admission-token-file','/evidence/admission-token'],
+                    name,inside=True,expect_success=False)
+                require('Worker ownership BLOCKED' in json.dumps(value),'Restart failed for a reason other than ownership guard')
+                require(generated_resources(work)==resources,'Blocked start rewrote config/JAR resources')
+                require(snapshot(name+'-state')['entries']==before['entries'],'Blocked restart changed Frontier scheduling')
+                require(session_count(cli(['crawl','status',job,'--runtime','/evidence/runtime.json','--admission-token-file','/evidence/admission-token'],name+'-status',inside=True))==4,
+                        'Crash/restart changed authoritative reservation quota')
+            rejected('live-orphan-restart')
+            stopped=probe('wait-child','crash-child-exited',timeout=165)
+            require(stopped['owner_alive'] is False and stopped['child_alive'] is False and stopped['alive'] is None,
+                    'Unassisted owner death must remain UNKNOWN after child exit')
+            require(probe('guard','crash-guard')['guard_blocked'] is True,'UNKNOWN guard failed')
+            rejected('unknown-owner-restart')
+            return dict(worker_crash_verified=True,storm_spout_prepared=True,surviving_child_verified=True,
+                        live_child_restart_blocked=True,unknown_restart_blocked=True,blocked_restart_resources_unchanged=True,
+                        blocked_restart_state_unchanged=True,os_process_containment=False)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try: process.wait(timeout=10)
+                except subprocess.TimeoutExpired: process.kill();process.wait(timeout=5)
+
+
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--result-file', type=Path, help='New structured verification result; no overwrite')
+    args=parser.parse_args(argv)
     r = Runner()
     p = r.path
-    result = dict(passed=False, durable_admission_verified=False, m2_verified=False, m3_verified=False,
+    result = dict(result_version=1,passed=False, durable_admission_verified=False, m2_verified=False, m3_verified=False,
+                  worker_crash_test_executed=False,worker_crash_verified=False,
                   transport='internal controlled SOCKS, production TorProtocol',
                   scheduling_owner='URLFrontier', admission_owner='server-owned RocksDB transaction')
     before = host_state()
@@ -172,7 +248,7 @@ def main():
         probe = (ROOT / 'test/m2/FrontierProbe.java').read_text().replace(
             'private static final String CRAWL = "m2";', 'private static final String CRAWL = ' + json.dumps(job) + ';')
         (p / 'FrontierProbe.java').write_text(probe)
-        r.command([r.tool('javac'), '--release', '25', '-cp', artifact, '-d', p / 'classes', p / 'FrontierProbe.java', ROOT / 'test/admission/AdmissionProbe.java'],
+        r.command([r.tool('javac'), '--release', '25', '-cp', artifact, '-d', p / 'classes', p / 'FrontierProbe.java', ROOT / 'test/admission/AdmissionProbe.java', ROOT / 'test/admission/WorkerOwnershipProbe.java'],
                   'compile-probe.log', timeout=30)
         r.command([r.tool('jar'), '--update', '--file', p / 'crawler-m2.jar', '-C', p / 'classes', '.'],
                   'package-probe.log', timeout=20)
@@ -266,6 +342,8 @@ def main():
         require(snapshot('replayed-frontier')['entries'] == final['entries'], 'Repeated start rewrote completed state')
         require(cli(['pages', '--job', job, '--limit', '10'], 'replayed-pages') == pages, 'Repeated start changed archive')
         cli(['archive', 'export', '--job', job, '--output', str(p / 'summary.json')], 'export')
+        result['worker_crash_test_executed']=True
+        result.update(verify_storm_owner_crash(r,subject,job,cli,snapshot))
         result.update(passed=True, packaged_cli_verified=True, durable_admission_verified=True, job_id=job, frontier_records=4,
                       graph_edges=len(edges), worker_restart_verified=True, scheduled_retry_verified=True,
                       server_restart_quota_verified=True, repeated_start_verified=True, archive_reopen_verified=True)
@@ -288,6 +366,8 @@ def main():
             result.update(passed=False, host_check_blocker=str(error))
         result['durable_admission_verified'] = bool(result['passed'] and result['durable_admission_verified'])
         r.save('admission-local.json', result)
+        if args.result_file is not None:
+            with args.result_file.open('x',encoding='utf-8') as output:json.dump(result,output,indent=2)
         print(p, flush=True)
         print(json.dumps(result, indent=2), flush=True)
     return 0 if result['passed'] else 1

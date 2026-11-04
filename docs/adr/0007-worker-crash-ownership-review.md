@@ -128,3 +128,13 @@ are skipped. Readiness carries the child's already pinned clock instead of a lat
 PID lookup after readiness. CLI cleanup never publishes STOPPED or deletes proof;
 Windows interrupted/unsupported cleanup may still leave UNKNOWN/BLOCKED. This
 adds no supervisor/OS containment, external PID adoption or retrospective migration.
+
+
+Actual normal generated Storm/SOCKS fixture41890176068 PASSED at208a07e,
+including retry/restart and quota-idempotent replay. Added full Storm crash fixture
+is a separate gate: wait for actual spout preparation, pinned current wrapper kill,
+live child/released lock, blocked start with unchanged resources/Frontier/quota,
+then TTL child exit still leaves UNKNOWN/BLOCKED. Test-only fixed-archive probe
+never signals from a missing/mismatching identity. New structured report must prove
+this case before verify.py can PASS worker-crash-acceptance; default remains NOT RUN.
+This tests fail-closed recovery, never OS containment or forced whole-tree cleanup.

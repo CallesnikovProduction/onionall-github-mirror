@@ -57,6 +57,15 @@ def aggregate(gates):
     return 'PASS', 0
 
 
+def product_verdict(returncode, report):
+    """Exit zero alone cannot qualify a product or forced-owner recovery gate."""
+    valid = isinstance(report, dict) and type(report.get('result_version')) is int and report.get('result_version') == 1
+    product = 'PASS' if returncode == 0 and valid and report.get('passed') is True else 'FAIL'
+    attempted = valid and report.get('worker_crash_test_executed') is True
+    worker = 'PASS' if product == 'PASS' and attempted and report.get('worker_crash_verified') is True else 'FAIL' if attempted else 'NOT RUN'
+    return product, worker
+
+
 def python_suite(directory, report):
     suite = unittest.defaultTestLoader.discover(str(ROOT / 'test' / directory))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -185,13 +194,21 @@ def main(argv=None):
             counts = json.loads(report.read_text(encoding='utf-8')) if report.exists() else None
             verify.record('python-' + directory, {0: 'PASS', 2: 'NOT RUN'}.get(rc, 'FAIL'), counts=counts, log=str(log))
         verify.frontier(os.environ.get('URLFRONTIER_BASE_JAR'), java_home if jdk25 else None)
-        verify.record('worker-crash-acceptance', 'NOT RUN',
-                      reason='REC-C JVM fail-closed regression exists; full generated Storm process-tree crash qualification remains open')
         if args.product_e2e:
-            rc, log = verify.run('product-e2e', [sys.executable, '-B', str(ROOT / 'test/admission/local_integration.py')], timeout=1800)
-            verify.record('product-e2e', 'PASS' if rc == 0 else 'FAIL', log=str(log))
+            result_file = evidence / 'product-result.json'
+            rc, log = verify.run('product-e2e', [sys.executable, '-B', str(ROOT / 'test/admission/local_integration.py'),
+                                                '--result-file', str(result_file)], timeout=1800)
+            try:
+                report = json.loads(result_file.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                report = None
+            product, worker = product_verdict(rc, report)
+            verify.record('product-e2e', product, log=str(log), report=str(result_file))
+            verify.record('worker-crash-acceptance', worker, os_process_containment=False,
+                          reason='Actual generated Storm: live-child and UNKNOWN restart must fail closed')
         else:
             verify.record('product-e2e', 'NOT RUN', reason='Opt-in local Linux Docker fixture: --product-e2e')
+            verify.record('worker-crash-acceptance', 'NOT RUN', reason='Requires actual generated Storm forced-owner fixture')
     status, exit_code = aggregate(verify.gates)
     result = dict(schema_version=1, observed_at=datetime.now(timezone.utc).isoformat(),
                   scope='links' if args.links_only else 'local-verification', status=status,

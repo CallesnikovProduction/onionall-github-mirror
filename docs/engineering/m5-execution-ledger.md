@@ -632,3 +632,31 @@ SKIP,0 failure/error, BUILD SUCCESS (m5-ownership-final-verify.log). Changed-mai
 Xlint exit0/no warnings(rec-c-cleanup-lint-sdkpyd7d), links PASS(run-6envkc1l),
 diff and limited scoped signatures PASS. Real Storm forced-owner/unknown recovery
 stays separate; native stand-in/full JVM success never implies OS containment.
+
+
+CLI cleanup1eabe2f1ce53fca2db3a929d9be4a9fa256ac1eb immediately pushed;
+remote SHA matched. Product repeat41890176068 at208a07e PASSED actual generated
+Storm/SOCKS plan/approve/admit/archive/503/retry/server restart/quota replay, with
+containers/network removed, volume retained and host unchanged. Artifact verified
+SHA256fe805f473706a0adc705d0b0ab9497bc8bcad0e6393fbe5186d0c32c45feb85c.
+This is exact-SHA evidence, not a run of newer CLI cleanup code. Whole run remained
+NOT RUN solely because the separate actual Storm owner-crash gate was not present.
+
+New test-only full Storm crash gate extends that same unchanged successful flow:
+launch an idle replay of the already admitted/completed fixture, wait for its actual
+CapabilitySpout preparation and pinned live Storm role, force-kill ONLY its current
+wrapper after run/job/birth/role checks. Assert live child and released archive lock;
+actual new crawl start must reject with ownership BLOCKED, unchanged config/runtime
+JAR set, unchanged Frontier entries and quota4. Let bounded Storm child exit on its
+own TTL; unassisted owner death still leaves UNKNOWN and rejects another start.
+No automatic orphan killing, marker rewrite or retrospective cleanup adoption.
+
+WorkerOwnershipProbe is compiled into the COPIED fixture JAR only, fixed to
+/evidence/archive and UUID-bound fixture run, never installed as production CLI.
+Structured product-result v1 is now required by verifier: zero exit without report
+cannot PASS; forced-owner gate passes only on explicit attempted+verified proof.
+Default no-Docker run keeps both required product/crash gates NOT RUN. No OS process
+containment is claimed. Six verification signal tests, three fixture-input/resource
+snapshot tests and two SOCKS tests PASS; helper javac-Xlint exit0/no warnings
+(storm-crash-probe-s0dl2ezu). Actual added Storm crash path remains pending new
+explicit dispatch; previous successful normal-flow result is not reused for it.

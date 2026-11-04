@@ -112,3 +112,8 @@ schema is introduced. STATE_LIST/STATE_COUNTS in the existing authenticated Comm
 provide bounded observations; see the current frontier-server README. Future due
 is SCHEDULED_WAIT, not automatically a retry. UNSCHEDULED remains unresolved
 completion. Product graph E2E gates above remain open independently of this decision.
+
+Current exact-SHA generated product qualification: hosted Linux run41890176068
+PASS at208a07e (plan/admit/archive/503/retry/restart/quota replay). This supersedes
+the earlier NOT RUN for that revision only. Newer process cleanup/crash gates
+require their own run. Full archive-write-failure-before-parent-ACK remains OPEN.

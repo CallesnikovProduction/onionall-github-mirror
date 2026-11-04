@@ -18,6 +18,16 @@ class VerificationTest(unittest.TestCase):
         self.assertEqual(verify.aggregate([dict(status='PASS'), dict(status='NOT RUN')]), ('NOT RUN', 2))
         self.assertEqual(verify.aggregate([dict(status='NOT RUN'), dict(status='FAIL')]), ('FAIL', 1))
 
+    def test_product_exit_zero_without_structured_crash_proof_cannot_pass(self):
+        self.assertEqual(('FAIL', 'NOT RUN'), verify.product_verdict(0, None))
+        self.assertEqual(('FAIL', 'NOT RUN'), verify.product_verdict(0, {'passed': True}))
+        self.assertEqual(('PASS', 'NOT RUN'), verify.product_verdict(0, {'result_version': 1, 'passed': True}))
+        proof = dict(result_version=1, passed=True, worker_crash_test_executed=True, worker_crash_verified=True)
+        self.assertEqual(('PASS', 'PASS'), verify.product_verdict(0, proof))
+        self.assertEqual(('FAIL', 'FAIL'), verify.product_verdict(1, proof))
+        proof['worker_crash_verified'] = False
+        self.assertEqual(('PASS', 'FAIL'), verify.product_verdict(0, proof))
+
     def test_broken_link_fails_then_passes_after_target_exists(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
