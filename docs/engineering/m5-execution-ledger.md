@@ -557,3 +557,34 @@ files are excluded from upload; copied product *.log diagnostics redact exact
 fixture capabilities, originals preserved. Generated topology/503/restart/quota
 acceptance remains pending actual dispatch. No product PASS from static syntax
 or build success, and Storm forced-owner containment gate stays separately OPEN.
+
+
+Product harness5566eb2475a7ccfb2882a834366251676e9c4611 immediately pushed;
+remote HEAD matched; explicit gh workflow dispatch product_e2e=true succeeded
+(run41888795769). Paired assembly and pinned cleanup2 image build PASS there;
+actual generated topology acceptance still running at this checkpoint. Completed
+correction CI41888372024: Maven, all Python suites including scripts/packaged CLI,
+and6 Frontier PASS; whole result NOT RUN solely for separate product/crash gates.
+
+DEV-C direct discovery regression prerequisite (no production/refactor change):
+actual DurableDiscoveryFilter callback + authenticated loopback Admission wire
+fixture verifies reservation-before-child ordering, accepted/duplicate/depth/quota/
+metadata-only/foreign edge dispositions, fragment duplicate suppression, graph
+source/job attribution and no legacy outlinks. Repeated parse consumes the fixture's
+idempotent server result; it is NOT a real RocksDB quota proof (separate conformance).
+Missing parent/unknown outcome/RPC error throws before successful edges/outlink
+publication; invalid session/missing capability/oversize body makes zero RPC calls.
+Default120min/three-error Storm scheduler and archive callback selection9/9 PASS
+(dev-direct-discovery.log). No parser ACK/real-Storm success inferred from this
+wire fixture, no Tor request made. Final checks and publication follow.
+
+Final direct-filter selection9/9 PASS (dev-direct-discovery-final.log), changed-test
+javac -Xlint:all exit0/no warnings (dev-discovery-lint-nvh4wo8y), links PASS
+(run-r6bl8udr), diff/limited signatures clean. Product run41888795769 completed
+FAIL at startup before admission: stock frontier-init assigns urlfrontier image UID,
+but owning server runs as runner1001, giving RocksDB LOG Permission denied. No
+crawl/admission proof from this run. Cleanup containers/network PASS, fresh volume
+retained, host baseline unchanged. Sanitized artifact SHA256
+95e41fce25ae50a6a761e92a627601d6432d218603394b5078db0626a1df6be2 retained.
+Next minimal deployment correction must initialize only the fixture's fresh volume
+for the exact selected owning-server UID/GID; no production volume/schema rewrite.
