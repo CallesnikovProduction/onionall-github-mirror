@@ -3,6 +3,7 @@ package dev.onionall.brawler.admission;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +27,9 @@ public class CrawlWorkerTest {
         StringBuilder text=new StringBuilder();
         for(String value:values) text.append('"').append(value.replace("\\","\\\\").replace("\"","\\\"")
             .replace("\r","\\r").replace("\n","\\n").replace("\t","\\t")).append("\"\n");
-        Files.writeString(arguments,text);
+        // The native Java launcher reads @files using the platform encoding,
+        // not Java's UTF-8 default. Preserve non-ASCII Windows Maven-cache paths.
+        Files.writeString(arguments,text,Charset.forName(System.getProperty("native.encoding","UTF-8")));
         // Disable further expansion before main so a nested child's @file reaches
         // ProcessBuilder literally instead of expanding into another long command.
         return new ArrayList<>(List.of(Path.of(System.getProperty("java.home"),"bin","java").toString(),"@"+arguments));
@@ -92,7 +95,9 @@ public class CrawlWorkerTest {
         Process child=new ProcessBuilder(javaWithClasspath(root,classpath.toString(),ArgumentFixture.class.getName(),output.toString(),value))
             .redirectErrorStream(true).redirectOutput(root.resolve("launcher.log").toFile()).start();
         try {
-            assertTrue(child.waitFor(5,TimeUnit.SECONDS));assertEquals(0,child.exitValue());
+            assertTrue(child.waitFor(5,TimeUnit.SECONDS));
+            assertEquals(Files.readString(root.resolve("launcher.log"),
+                Charset.forName(System.getProperty("native.encoding","UTF-8"))),0,child.exitValue());
             assertEquals(value,Files.readString(output));
         } finally {child.destroyForcibly();child.waitFor(5,TimeUnit.SECONDS);}
     }
