@@ -1,6 +1,6 @@
 # M5 Operational Closure execution ledger
 
-## Execution boundary Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р В Р вЂ№Р В Р Р‹Р РЋРІвЂћСћ 2026-11-04
+## Execution boundary — 2026-11-04
 
 Owner-approved branch feat/m5-operational-closure starts exactly at
 0a645fdd63b6f21d9af66b988c027d77fb9eb14f. S1-01 remains present and partially
@@ -13,7 +13,7 @@ ARCH read-only model, DOM state/history and REC bounded resume, deployment/servi
 seam. No second scheduler; Frontier owns scheduling/reservation/quota, H2 is an
 observation catalog. External Tor and historical topology retirement excluded.
 
-## DEV-01a Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р вЂ™Р’В Р В Р’В Р вЂ™Р’В Р В РІР‚в„ўР вЂ™Р’В Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р Р†РІР‚С›РЎС›Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р В Р вЂ№Р В Р Р‹Р РЋРІвЂћСћ verification signal and Markdown file links
+## DEV-01a — verification signal and Markdown file links
 
 Baseline before implementation: Maven verify on approved JDK25/Maven3.10.0,
 offline cache:124 run,123 PASS,1 SKIP,0 fail/error. Initial sandbox invocation
@@ -60,7 +60,7 @@ Command: python -B scripts/runners/verify.py --offline --maven <verified-mvn.cmd
 Targeted command: python -B -m unittest discover -s test/scripts -p test_verification.py -v.
 No full CI/product acceptance asserted. Diff whitespace and Python AST checks pass.
 
-## DEV-01b Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р В РІР‚С™Р РЋРЎС™ pinned Maven Wrapper and CI
+## DEV-01b — pinned Maven Wrapper and CI
 
 DEV-01a commit2b12c0688a9508c4f368e03d9194aab73c0953d6 immediately pushed to
 origin/feat/m5-operational-closure; remote SHA matched.
@@ -91,7 +91,7 @@ Frontier4/4 PASS. M2 and scripts platform failures unchanged; overall FAIL retai
 Command: JAVA_HOME25, URLFRONTIER_BASE_JAR, MAVEN_USER_HOME=<isolated cache>,
 M1_HTTP_SMOKE=1 python -B scripts/runners/verify.py --offline --maven-repository <cache>.
 
-## REC-01 Р Р†Р вЂљРІР‚Сњ current-path restart qualification, no production patch
+## REC-01 — current-path restart qualification, no production patch
 
 DEV-01b commit51b910e959bd04de8b7988f4cd34ae56c9a3151d immediately pushed; remote
 SHA matched. DEV-01 complete acceptance remains open: native Linux/CI/product
@@ -125,7 +125,7 @@ Next ARCH-01 evidence map/ADR, then ARCH-02 requires truthful UNKNOWN for missin
 terminal provenance. A completed storage row cannot prove success vs terminal
 failure; no scheduler/category inferred by subtracting H2 pages.
 
-## DEV-01c РІР‚вЂќ Linux fresh-checkout fixture defect
+## DEV-01c — Linux fresh-checkout fixture defect
 
 REC-01 commit54da938665b8d93acfa9fc77cdf4e784145345ad immediately pushed and
 remote SHA verified.
@@ -147,7 +147,7 @@ Product Docker E2E remains NOT RUN. Newer CI must independently qualify REC5/5
 and this fix; these results are scoped to exact commit51b910e.
 Rollback: revert additive test setup correction. No persistent migration.
 
-## ARCH-01 вЂ” canonical topology ADR and acceptance inventory
+## ARCH-01 — canonical topology ADR and acceptance inventory
 
 DEV-01c commitd133f2be015f7e63178ba17ae962645eba195d7e immediately pushed;
 remote SHA matched. Added ADR0004 from actual CrawlExecution, root Flux and
@@ -185,3 +185,38 @@ changed. Existing verifier regression5/5 PASS (exit/result aggregation already
 checks required skips cannot be green). Package build/PTY qualification requires
 Linux and remains a deployment prerequisite. No product logic/schema change.
 Rollback: remove additive suite registration; no data migration.
+
+## Current checkpoint / blocked dependent work
+
+DEV-01d commit0581cbc9d90944b9a48c83f1f89b6f29a75f5267 immediately pushed and
+remote SHA verified. A subsequent documentation-only correction repaired UTF-8
+heading corruption introduced by Windows default-codepage read_text during ledger
+append. Six affected headings restored; other changed Markdown inspected, no
+product source/evidence change. Future ledger edits explicitly use UTF-8.
+
+Actual Linux CI run41841699632 at b2daf99 completed every selected core gate PASS:
+Maven, Python M1/M2/M3/archive/security/scripts, five Frontier conformance drivers
+and local file links. Overall NOT RUN, exit2 because product E2E is not executed;
+GitHub correctly shows an unsuccessful required gate. This supersedes M3's earlier
+fresh-checkout error for that SHA only, not a current full product acceptance.
+https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/41841699632
+Artifact13328558207 SHA256b4aecf527fb8d5b812158d0934acc6a70bf9d6b640e7754646a0efb5fb25b79c.
+CLI gate added later at0581cbc: Windows12 skipped/NOT RUN, not covered by the
+b2daf99 run. Latest hosted runs must be inspected separately, no inherited PASS.
+
+Completed local increments: explicit baseline/link gate, pinned wrapper/CI,
+REC-01 characterization, fresh-checkout fixture fix, ARCH-01 ADR/inventory and
+explicit CLI gate. Full DEV/ARCH acceptance remains PARTIAL. ARCH-02 and DOM plus
+REC retry/resume remain held at the specification's required state-inference
+decision; options sent to owner (UNKNOWN/null, or separately reviewed durable
+terminal provenance). DEV-02 full paired deployment/E2E and service extraction
+not implemented ahead of their read-model dependencies. No root AGENTS refactor,
+schema change, recovery product patch, external Tor, source-branch change or merge.
+
+Final checks: Python/XML/YAML syntax, tracked Markdown file links, diff whitespace,
+limited secret signatures (synthetic baseline credential-URL fixtures only),
+13-file audit SHA256 preservation, protected source/AGENTS unchanged. This is not
+a complete entropy/secrets/CVE scan. All completed commits immediately pushed
+to feat/m5-operational-closure and remote SHA verified. Final self-hash resolves
+with git log; no recursive documentation commit. Continue from owner read-model
+decision, then qualify packaged CLI and paired product fixture before claiming M5.
