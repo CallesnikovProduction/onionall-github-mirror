@@ -138,6 +138,20 @@ public final class ArchiveStore implements AutoCloseable {
             return plan(id);
         } catch (SQLException e) { throw failure(e); }
     }
+    /** Live catalog keyset, not a scheduler or a frozen membership snapshot. */
+    public synchronized Map<String,Object> plans(String after,int limit) throws IOException {
+        bound(limit);if(after!=null)identifier(after);
+        List<String> ids=new ArrayList<>();
+        try(var query=db.prepareStatement("SELECT id FROM crawl_plans WHERE id>? ORDER BY id LIMIT ?")) {
+            query.setString(1,after==null?"":after);query.setInt(2,limit+1);
+            try(var rows=query.executeQuery()){while(rows.next())ids.add(rows.getString(1));}
+        }catch(SQLException e){throw failure(e);}
+        boolean more=ids.size()>limit;if(more)ids.removeLast();
+        List<Map<String,Object>> plans=new ArrayList<>();for(String id:ids)plans.add(plan(id));
+        Map<String,Object> result=new LinkedHashMap<>();result.put("plan_list_version",1);result.put("plans",plans);
+        result.put("limit",limit);result.put("truncated",more);result.put("next_cursor",more?ids.getLast():null);
+        result.put("order","plan_id");result.put("membership_snapshot",false);return result;
+    }
     public synchronized Map<String,Object> plan(String id) throws IOException {
         identifier(id);
         try (PreparedStatement query = db.prepareStatement("SELECT * FROM crawl_plans WHERE id=?")) {

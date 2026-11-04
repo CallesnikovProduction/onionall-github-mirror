@@ -3,7 +3,7 @@ package dev.onionall.brawler.cli;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.onionall.brawler.archive.ArchiveStore;
 import dev.onionall.brawler.archive.SearchProvider;
-import dev.onionall.brawler.admission.CrawlExecution;
+import dev.onionall.brawler.admission.CrawlService;
 import dev.onionall.brawler.tor.TorPolicy;
 import java.net.URI;
 import java.io.*;
@@ -17,7 +17,7 @@ import picocli.CommandLine.*;
 public final class ArchiveCommands {
     private ArchiveCommands() { }
     private static ArchiveStore store(Onionall root) throws IOException { return new ArchiveStore(root.archiveDirectory()); }
-    private static final String ADMISSION_BLOCKER = "Configure a compatible durable Frontier server and pass --runtime with --admission-token-file; stock Frontier has no safe admission fallback";
+    private static CrawlService service(Onionall root) { return new CrawlService(root.archiveDirectory()); }
 
     private static List<Map<String,Object>> manualLinks(byte[] html, String source) throws IOException {
         URI base = URI.create(source);
@@ -49,7 +49,7 @@ public final class ArchiveCommands {
     public static final class Crawl implements Callable<Integer> {
         @ParentCommand Onionall root;
         public Integer call() throws IOException {
-            root.print(Map.of("commands",List.of("plan","show","approve","start","status","errors"),"admission","BLOCKED","blocker",ADMISSION_BLOCKER));
+            root.print(Map.of("commands",List.of("plan","show","approve","start","status","errors"),"admission","BLOCKED","blocker",CrawlService.ADMISSION_BLOCKER));
             return 0;
         }
     }
@@ -77,7 +77,7 @@ public final class ArchiveCommands {
             }
             if(all.isEmpty() || all.size()>100 || all.stream().anyMatch(url->url.length()>2048))
                 throw new IllegalArgumentException("Require1..100 bounded seed URLs");
-            try(var archive=store(parent.root)) { parent.root.print(archive.createPlan(all,depth,maxPages,provider)); }
+            parent.root.print(service(parent.root).createPlan(all,depth,maxPages,provider));
             return 0;
         }
     }
@@ -85,13 +85,13 @@ public final class ArchiveCommands {
     public static final class ShowPlan implements Callable<Integer> {
         @ParentCommand Crawl parent;
         @Parameters(index="0") String id;
-        public Integer call() throws Exception { try(var archive=store(parent.root)) { parent.root.print(archive.plan(id)); } return 0; }
+        public Integer call() throws Exception { parent.root.print(service(parent.root).plan(id));return 0; }
     }
     @Command(name="approve", mixinStandardHelpOptions=true, description="Explicitly approve a stored plan. Does not start crawling.")
     public static final class Approve implements Callable<Integer> {
         @ParentCommand Crawl parent;
         @Parameters(index="0") String id;
-        public Integer call() throws Exception { try(var archive=store(parent.root)) { parent.root.print(archive.approvePlan(id)); } return 0; }
+        public Integer call() throws Exception { parent.root.print(service(parent.root).approve(id));return 0; }
     }
     @Command(name="start", mixinStandardHelpOptions=true, description="Commit approved seeds through durable Frontier admission and run a bounded Storm worker.")
     public static final class Start implements Callable<Integer> {
@@ -100,14 +100,9 @@ public final class ArchiveCommands {
         @Option(names="--runtime", description="Operator-provided local Storm runtime JSON.") Path runtime;
         @Option(names="--admission-token-file", description="Private admission capability file.") Path token;
         public Integer call() throws Exception {
-            if(runtime != null) {
-                var result=CrawlExecution.start(parent.root.archiveDirectory(),id,runtime,token);
-                parent.root.print(result);
-                return Boolean.TRUE.equals(result.get("passed")) ? 0 : 6;
-            }
-            try(var archive=store(parent.root)) { archive.job(id); }
-            parent.root.print(Map.of("passed",false,"exit_code",7,"plan_id",id,"admission","BLOCKED","blocker",ADMISSION_BLOCKER,"network_requests",0));
-            return 7;
+            var result=service(parent.root).start(id,runtime,token);
+            parent.root.print(result);
+            return runtime==null?7:Boolean.TRUE.equals(result.get("passed"))?0:6;
         }
     }
     @Command(name="status", mixinStandardHelpOptions=true, description="Read catalog outcomes and optional authoritative Frontier admission; never accesses Tor.")
@@ -117,7 +112,7 @@ public final class ArchiveCommands {
         @Option(names="--runtime") Path runtime;
         @Option(names="--admission-token-file") Path token;
         public Integer call() throws Exception {
-            var result=CrawlExecution.status(parent.root.archiveDirectory(),id,runtime,token);parent.root.print(result);
+            var result=service(parent.root).status(id,runtime,token);parent.root.print(result);
             return runtime!=null && !Boolean.TRUE.equals(result.get("authoritative_readback_current"))?6:0;
         }
     }
@@ -128,7 +123,7 @@ public final class ArchiveCommands {
         @Option(names="--limit",defaultValue="20") int limit;
         @Option(names="--cursor") String cursor;
         public Integer call() throws Exception {
-            try(var archive=store(parent.root)){parent.root.print(archive.failureHistory(id,cursor,limit));}
+            parent.root.print(service(parent.root).errors(id,cursor,limit));
             return 0;
         }
     }

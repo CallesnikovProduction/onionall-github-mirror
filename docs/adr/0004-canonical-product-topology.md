@@ -119,3 +119,15 @@ Current exact-SHA generated product qualification: hosted Linux run41890176068
 PASS at208a07e (plan/admit/archive/503/retry/restart/quota replay). This supersedes
 the earlier NOT RUN for that revision only. Newer process cleanup/crash gates
 require their own run. Full archive-write-failure-before-parent-ACK remains OPEN.
+
+
+ARCH-C application boundary: crawl CLI commands now use CrawlService for catalog
+plan/create/approve/error reads and run/status delegation. Its Execution interface
+binds to the SAME CrawlExecution by default, enabling deterministic tests without
+Storm. No second scheduler/authorization/retry path. Existing CLI fields/exit codes
+remain, including unconfigured BLOCKED7 and configured unavailable6.
+CrawlService.plans(cursor,limit1..100) provides read-only catalog plans ordered by
+UUID, live keyset next_cursor/truncated, membership_snapshot=false. New appends
+behind the cursor may appear only in a new traversal; preexisting rows are not
+skipped/duplicated. It is not Frontier membership/admission or a new CLI feature.
+No new persistent schema/index or concurrent-H2 mode; busy catalog still errors.

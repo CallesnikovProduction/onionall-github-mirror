@@ -672,3 +672,29 @@ CrawlExecution remains sole orchestrator, delegates its private topology method.
 No legacy retirement, scheduler/auth/Tor/config/schema or product graph change.
 Pure graph3 + actual start/status4 + capability clients5 =12/12 PASS
 (arch-topology-seam.log). Full Storm latest-source qualification remains separate.
+
+
+Topology seam a8f709c2388389cfa7616fc576c2b8841c29ab3c immediately pushed;
+remote HEAD matched. ARCH-C adds thin CrawlService with injected Execution seam;
+default routes to unchanged owning CrawlExecution, while catalog operations use
+short existing ArchiveStore lifetimes. CLI output/exit policy remains compatible;
+unconfigured start checks plan then BLOCKED7/no network, no anonymous fallback.
+Bounded catalog plan keyset API reuses UUID primary key, no DDL/migration/index.
+Limit1..100, explicit next_cursor/truncated/order, live membership_snapshot=false;
+not a scheduler counter or a frozen Frontier snapshot. Existing plans remain
+UNOBSERVED for admission. No new CLI command/provider/UI or host/runtime component.
+
+Service/catalog/CLI/status selection28 run/27 PASS/1 existing Windows SKIP;
+full offline JVM170 run/169 PASS/1 same SKIP,0 failure/error, BUILD SUCCESS
+(arch-service-full-verify.log). Xlint exit0/no warnings(arch-service-lint-i6jeo83m).
+No historical evidence promoted to current service/Storm acceptance.
+
+Actual Storm crash run41893331580 atdfb5652 is FAIL: actual spout prepared,
+wrapper killed, live child/released lock and BLOCKED restart with unchanged
+resources/Frontier/quota passed; Java child exit was NOT confirmed after150s.
+Sanitized artifactf520767fc9139010d4d36f9f7433fca002f0f963afb1044397f5c6a428917ab5
+retained. Storm log finishes LocalCluster/ZooKeeper shutdown at19:13:25 UTC,
+well before the19:15:13 timeout. Zombie/adoption vs stalled launcher cause still
+unconfirmed; do not clear ownership, auto-kill unknown processes, relax the timeout
+assertion or claim full crash PASS. Next diagnostic must read only the pinned
+child's state and retain partial-stage evidence, preserving fail-closed behavior.
