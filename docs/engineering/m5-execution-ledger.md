@@ -588,3 +588,19 @@ retained, host baseline unchanged. Sanitized artifact SHA256
 95e41fce25ae50a6a761e92a627601d6432d218603394b5078db0626a1df6be2 retained.
 Next minimal deployment correction must initialize only the fixture's fresh volume
 for the exact selected owning-server UID/GID; no production volume/schema rewrite.
+
+
+Direct-filter regression47f282ffbcfb9ca0bd1ea602290eca670bf8cbc3 immediately
+pushed; remote SHA matched. Actual product bootstrap blocker is isolated to fresh
+fixture volume ownership. Local overlay now uses the SAME owning Storm image and
+numeric M2_RUNTIME_USER for root/network-none init, then server remains the selected
+non-root runtime user. Only /crawldir and /crawldir/rocksdb directory ownership is
+initialized; no recursive chown, database rewrite, production volume or host change.
+Shared stock Frontier initializer remains unchanged. Compose-escaped container
+variable prevents using the stock image's hard-coded urlfrontier UID assumption.
+
+Initializer input/UID regression2/2 PASS and SOCKS fixture regressions2/2 PASS;
+Python AST/diff/limited signatures clean, links PASS(run-i5j76kky). Real Docker
+startup qualification is pending another explicit product dispatch, not local PASS.
+First failed CI artifact and retained volume remain evidence; no assertion relaxed,
+retry shortened, root server fallback or failed startup hidden.

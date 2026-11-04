@@ -10,6 +10,7 @@ from collections import Counter
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import shutil
@@ -33,6 +34,16 @@ def onion(number):
     key = bytes([number]) * 32
     payload = key + hashlib.sha3_256(b'.onion checksum' + key + b'\3').digest()[:2] + b'\3'
     return base64.b32encode(payload).decode().lower() + '.onion'
+
+
+def frontier_initializer(image, runtime_user):
+    """Only the fresh uniquely named fixture volume; match its actual service owner."""
+    require(isinstance(runtime_user, str) and re.fullmatch(r'[0-9]+:[0-9]+', runtime_user),
+            'Fixture runtime owner must be numeric UID:GID')
+    return dict(image=image, user='0:0', network_mode='none',
+                environment={'M2_RUNTIME_USER': runtime_user},
+                entrypoint=['/bin/sh', '-ec',
+                            'mkdir -p /crawldir/rocksdb; chown "$$M2_RUNTIME_USER" /crawldir /crawldir/rocksdb'])
 
 
 def runtime(seconds):
@@ -167,8 +178,10 @@ def main():
                   'package-probe.log', timeout=20)
         # Read the capability inside the container. Resolved Compose evidence never contains it.
         launcher = 'export ONIONALL_ADMISSION_TOKEN="$(cat /evidence/admission-token)"; exec java -cp /evidence/frontier-admission.jar crawlercommons.urlfrontier.service.URLFrontierServer "$@"'
+        owning_image=r.environment.get('M2_STORM_IMAGE', 'storm:3.1.0-jre25')
         overlay = {'services': {'crawler': {'volumes': [str(ROOT / 'target/onionall') + ':/cli:ro']},
-            'frontier': {'image': r.environment.get('M2_STORM_IMAGE', 'storm:3.1.0-jre25'),
+            'frontier-init': frontier_initializer(owning_image, r.environment['M2_RUNTIME_USER']),
+            'frontier': {'image': owning_image,
                          'user': r.environment['M2_RUNTIME_USER'],
                          'entrypoint': ['/bin/sh', '-ec', launcher, 'frontier-entrypoint'],
                          'command': ['rocksdb.path=/crawldir/rocksdb'],
