@@ -144,7 +144,8 @@ public final class ArchiveStore implements AutoCloseable {
                 result.put("plan_id",id); result.put("job_id",id); result.put("seeds",JSON.readValue(rs.getString("seeds_json"), new TypeReference<List<String>>(){}));
                 result.put("origin",rs.getString("origin")); result.put("scope","same-host"); result.put("depth",rs.getInt("max_depth"));
                 result.put("max_pages",rs.getInt("max_pages")); result.put("provider",rs.getString("provider")); result.put("approved",rs.getBoolean("approved"));
-                result.put("state",rs.getBoolean("approved") ? "APPROVED" : "DRAFT"); result.put("admission","BLOCKED_ADR_0002"); result.put("created_at",rs.getString("created_at"));
+                result.put("state",rs.getBoolean("approved") ? "APPROVED" : "DRAFT"); result.put("admission","UNOBSERVED");
+                result.put("admission_basis","CATALOG_PLAN_ONLY"); result.put("created_at",rs.getString("created_at"));
                 return result;
             }
         } catch (SQLException e) { throw failure(e); }
@@ -163,11 +164,52 @@ public final class ArchiveStore implements AutoCloseable {
             throw new IOException("Admission observations cannot change plan authority");
         if (observation.containsKey("session_id") && !id.equals(observation.get("session_id")))
             throw new IOException("Admission session mismatch");
-        String value = JSON.writeValueAsString(observation);
-        if(value.length()>16384) throw new IOException("Admission observation exceeds bound");
-        try(PreparedStatement st=db.prepareStatement("MERGE INTO admission_observations(job_id,observation_json,observed_at) KEY(job_id) VALUES(?,?,?)")) {
-            st.setString(1,id);st.setString(2,value);st.setString(3,Instant.now().toString());st.executeUpdate();
-        } catch(SQLException e) { throw failure(e); }
+        writeObservation(id, observation, null);
+    }
+    /** Bounded observational audit in existing schemaV2 JSON; never scheduling authority. */
+    public synchronized void recordJobStatus(String id, Map<String,Object> status) throws IOException {
+        plan(id);
+        if (!Objects.equals(status.get("plan_id"), id) || !Objects.equals(status.get("job_status_version"), 1))
+            throw new IOException("Invalid job status observation");
+        writeObservation(id, Map.of(), status);
+    }
+    private void writeObservation(String id, Map<String,Object> update, Map<String,Object> status) throws IOException {
+        try {
+            db.setAutoCommit(false);
+            try (var lock = db.prepareStatement("SELECT id FROM catalog_guard WHERE id=1 FOR UPDATE"); var row = lock.executeQuery()) { row.next(); }
+            Map<String,Object> old = new LinkedHashMap<>(admissionObservation(id));
+            Object admissionClock = old.get("admission_observed_at");
+            old.remove("admission_observed_at"); old.remove("admission_authority");
+            Map<String,Object> value = status == null ? new LinkedHashMap<>(update) : new LinkedHashMap<>(old);
+            if (status == null) {
+                for (String key : List.of("job_status", "status_transitions", "status_transitions_dropped"))
+                    if (old.containsKey(key)) value.put(key, old.get(key));
+            } else {
+                List<Object> history = new ArrayList<>();
+                if (old.get("status_transitions") instanceof List<?> entries) history.addAll(entries);
+                else if (old.containsKey("status_transitions")) throw new IOException("Malformed status audit");
+                Map<?,?> previous = old.get("job_status") instanceof Map<?,?> m ? m : Map.of();
+                if (List.of("job_state", "completion", "state_basis").stream().anyMatch(k -> !Objects.equals(previous.get(k), status.get(k)))) {
+                    Map<String,Object> event = new LinkedHashMap<>();
+                    for (String key : List.of("job_state", "completion", "state_basis", "observed_at")) event.put(key, status.get(key));
+                    history.add(event);
+                }
+                long dropped = old.get("status_transitions_dropped") instanceof Number n ? n.longValue() : 0;
+                if (dropped < 0 || dropped > 1_000_000_000) throw new IOException("Invalid status audit bound");
+                while (history.size() > 32) { history.removeFirst(); dropped++; }
+                value.put("job_status", status); value.put("status_transitions", history); value.put("status_transitions_dropped", dropped);
+            }
+            String encoded = JSON.writeValueAsString(value);
+            if (encoded.length() > 16384) throw new IOException("Admission observation exceeds bound");
+            try (var st = db.prepareStatement("MERGE INTO admission_observations(job_id,observation_json,observed_at) KEY(job_id) VALUES(?,?,?)")) {
+                st.setString(1,id);st.setString(2,encoded);
+                st.setString(3,status!=null && admissionClock instanceof String clock ? clock : Instant.now().toString());st.executeUpdate();
+            }
+            db.commit();
+        } catch (SQLException | IOException e) {
+            try { db.rollback(); } catch (SQLException rollback) { e.addSuppressed(rollback); }
+            throw e instanceof IOException io ? io : failure((SQLException)e);
+        } finally { try { db.setAutoCommit(true); } catch (SQLException e) { throw failure(e); } }
     }
     public synchronized Map<String,Object> admissionObservation(String id) throws IOException {
         identifier(id);

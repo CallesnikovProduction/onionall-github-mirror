@@ -285,3 +285,61 @@ Targeted fresh command: mvnw -o -B -Dmaven.repo.local=<cache>
 .runtime/specs-dev01/dom01-policy.log. This is pure semantic verification, not
 CLI/product E2E. No runtime policy/schema migration, Tor or scheduling change.
 Rollback is binary-only; status assembly/audit wiring is the next bounded scope.
+
+## DOM-01b - live versioned status/start, process observation and bounded audit
+
+DOM predicate commitf1d2c7932a346f2b63a418d3caf066f04fbcf583 immediately pushed
+and remote SHA verified. Status/start now use authenticated typed Frontier counts
+and the same JobStatus/JobStatusView schema. Legacy state/passed execution fields
+remain, explicitly marked legacy. UNOBSERVED/CATALOG_PLAN_ONLY replaces stale
+BLOCKED_ADR_0002 in plan presentation; related contract assertions updated to the
+new required value, not weakened. Unknown success/terminal remains null and v1
+exhaustion cannot manufacture COMPLETE/PARTIAL.
+
+WorkerObservation requires local process scope plus matching PID start instant;
+probes existing ownership lock without creating/writing it. Foreign/legacy/bad
+markers or lock without identified process are UNKNOWN. New starts record process
+identity; status never kills processes. Pinned metadata is observational, not
+authorization. Status returns current or explicitly stale/null counts after RPC
+failure, with no anonymous/stock fallback; start retains final worker evidence
+when post-exit admission readback is unavailable.
+
+Existing H2 schemaV2 JSON stores latest status and bounded32-transition audit.
+Existing catalog guard serializes concurrent observations, preserves audit through
+execution writes and retains the original admission observation clock on status-only
+updates. Dropped/truncated transition count is explicit. No new table/schema or
+H2 network/server mode; two-JVM contention is an explicit error, never empty.
+
+Actual tests: targeted JobStatus/WorkerObservation/JobStatusIntegration/AdmissionClient/
+ArchiveStore/ArchiveCommands/CrawlWorker:38 run/37 PASS/1 existing Windows SKIP.
+Concurrent two-store audit:40 observations ->32 retained+8 dropped, no lost updates;
+H2 schema remains2. Actual separate JVM holds catalog and causes explicit status
+IOException, then normal status after owner exits. PID/start/scope, stale markers
+and unchanged lock bytes checked. First Windows fixture failed reading through a
+second handle under mandatory exclusive lock; corrected test to use its owning
+handle, retaining before/after byte assertions and all deadlines/skips. Failure log
+.runtime/specs-dev01/dom01-integration.log retained; corrected run
+dom01-integration-after.log passed.
+
+Actual CrawlExecution.start with valid local descriptor/mock admission and Java
+executable rejecting Storm arguments returns versioned INCOMPLETE/PAUSED-or-UNKNOWN,
+never COMPLETE/FAILED job inference. Not actual Storm graph E2E. Initial fixture
+missing socks_host rejected before start; completed fixture passed7/7 with process
+identity tests (dom01-start-after.log); negative logs retained. No external SOCKS/Tor
+requests made. New main-class javac --release25 -Xlint:all exit0/no warnings at
+.runtime/specs-dev01/dom01-lint-znptxdwt. Full verify follows.
+
+Compatibility: additive job_status_version1 fields; old execution keys preserved.
+Plan admission string intentionally corrected; old parsing of ADR blocker must
+update. Old worker markers may return UNKNOWN until a new run records identity.
+Rollback uses prior binaries against unchanged schemaV2; additive JSON fields are
+ignored, audit retained. No source branch/main/security-RC changes.
+
+Final DOM-01b full offline verify:141 run/140 PASS/1 existing Windows SKIP,
+0 failures/errors; .runtime/specs-dev01/dom01-final-verify.log (BUILD SUCCESS).
+Secondary diff review replaced nullable-Boolean ternaries with explicit branches;
+added deadline reachability-null and precise held-lock basis assertions so generic
+UNKNOWN exception handling cannot mask an internal branch error. Final changed
+main classes -Xlint:all exit0/no warnings. Markdown links/diff/signature gates PASS.
+No timing/security assertion weakened; S1-01 capability wiring/guards, protobuf,
+Tor isolation and persistent schema remain unchanged in this scope.

@@ -96,3 +96,13 @@ Exact executed results and failures: engineering/m41-execution-ledger.md.
 Verified packaged acceptance: a7c09e2448f4,4 durable reservations,3 archived pages,
 8 directed edges; restart/retry/replay and cleanup all pass. See the ledger for
 exact artifact hashes and raw evidence paths. This does not qualify real Tor.
+
+## M5 job observation contract
+
+Configured crawl status and start now expose a versioned job view distinct from
+legacy worker execution state. See [ADR0005](adr/0005-job-state-and-completion.md).
+Exit0 does not prove COMPLETE; stopped work with pending/future scheduling is
+PAUSED, and current Frontier v1 UNSCHEDULED rows have UNKNOWN success/terminal
+provenance. Current/stale readback, worker identity evidence and truncation are
+explicit. H2 contention remains an explicit error, never an empty catalog.
+No Tor policy, admission/quota authority or persistent schema changes.

@@ -14,7 +14,7 @@ import static org.junit.Assert.*;
 
 public class CrawlWorkerTest {
     @Rule public TemporaryFolder temporary=new TemporaryFolder();
-    private static List<String> java(Path root,String main,String...args) throws IOException {
+    static List<String> java(Path root,String main,String...args) throws IOException {
         return javaWithClasspath(root,System.getProperty("java.class.path"),main,args);
     }
     private static List<String> javaWithClasspath(Path root,String classpath,String main,String...args) throws IOException {

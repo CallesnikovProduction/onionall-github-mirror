@@ -25,7 +25,7 @@ public class ArchiveStoreTest {
             String id=(String)draft.get("plan_id");
             assertThrows(IOException.class,()->store.archive(id,URL,0,URL,200,"text/html",html("safe"),List.of()));
             assertEquals(true,store.approvePlan(id).get("approved"));
-            assertEquals("BLOCKED_ADR_0002",store.plan(id).get("admission"));
+            assertEquals("UNOBSERVED",store.plan(id).get("admission"));
             assertThrows(IOException.class,()->store.createPlan(List.of(URL,"https://"+HOST+"/"),1,2,"user"));
             assertThrows(IOException.class,()->store.createPlan(List.of(URL),6,1,"user"));
         }

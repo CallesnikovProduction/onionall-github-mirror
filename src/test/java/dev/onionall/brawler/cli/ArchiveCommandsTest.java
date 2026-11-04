@@ -25,7 +25,7 @@ public class ArchiveCommandsTest {
     }
     private String plan(Path archive)throws Exception {
         Result result=run(archive,"crawl","plan","--seed",URL,"--depth","2","--max-pages","5");
-        assertEquals(result.output,0,result.code);assertEquals("BLOCKED_ADR_0002",result.json.path("admission").asText());
+        assertEquals(result.output,0,result.code);assertEquals("UNOBSERVED",result.json.path("admission").asText());
         return result.json.path("plan_id").asText();
     }
     @Test public void approvedPlanAndOfflineArchiveSurviveCliRecreation()throws Exception {
@@ -54,7 +54,7 @@ public class ArchiveCommandsTest {
         Path seeds=directory.resolve("urls.txt");Files.writeString(seeds,"# manually selected\n"+URL+"\n"+URL+"\n");
         Result result=run(archive,"crawl","plan","--import",seeds.toString(),"--provider","manual-selection","--depth","1","--max-pages","3");
         assertEquals(result.output,0,result.code);
-        assertEquals("BLOCKED_ADR_0002",result.json.path("admission").asText());
+        assertEquals("UNOBSERVED",result.json.path("admission").asText());
         assertNotEquals(0,run(archive,"crawl","plan","--seed",URL,"--scope","all-hosts").code);
         assertNotEquals(0,run(archive,"crawl","plan","--seed",URL,"--depth","-1").code);
         assertNotEquals(0,run(archive,"crawl","plan","--seed","https://example.com/").code);

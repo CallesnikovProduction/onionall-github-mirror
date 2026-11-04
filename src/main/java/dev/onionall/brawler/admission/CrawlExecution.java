@@ -44,13 +44,38 @@ public final class CrawlExecution {
     public static Map<String,Object> status(Path archive,String id,Path runtimeFile,Path tokenFile) throws IOException {
         Map<String,Object> result;
         try(var store=new ArchiveStore(archive)) { result=new LinkedHashMap<>(store.job(id)); }
+        String catalogAt=Instant.now().toString();
+        WorkerObservation.Observation worker=WorkerObservation.unavailable("NO_RUNTIME_OBSERVATION");
+        FrontierReadback.Counts counts=null;Boolean reachable=null;
         if(runtimeFile!=null) {
-            try(var rpc=client(descriptor(runtimeFile),token(tokenFile))) {
-                Map<String,Object> session=rpc.command(Map.of("action","session","session_id",id));
+            Map<String,Object> runtime=descriptor(runtimeFile);
+            if(runtime.get("work_directory") instanceof String directory && !directory.isBlank() && directory.length()<=4096)
+                worker=WorkerObservation.read(Path.of(directory).toAbsolutePath().normalize().resolve(id).resolve("execution.json"),archive,id);
+            Map<String,Object> session=null;
+            try(var rpc=client(runtime,token(tokenFile))) {
+                session=rpc.command(Map.of("action","session","session_id",id));reachable=true;
                 if(!"SESSION_OPEN".equals(session.get("outcome"))) throw new IOException("Authoritative session unavailable: "+session.get("outcome"));
+                if(!Boolean.TRUE.equals(result.get("approved"))) throw new IOException("Stored plan is not approved");
                 verifySession(session,result);
-                result.put("authoritative_admission",session);
-                result.put("admission","SERVER_READBACK");
+                if(!(session.get("reserved_count") instanceof Integer || session.get("reserved_count") instanceof Long))
+                    throw new IOException("Invalid authoritative reservation count");
+                long sessionReserved=((Number)session.get("reserved_count")).longValue();
+                if(sessionReserved<0 || sessionReserved>((Number)result.get("max_pages")).intValue())
+                    throw new IOException("Invalid authoritative reservation count");
+                counts=rpc.counts(id);
+                if(counts.reserved()>((Number)result.get("max_pages")).intValue()
+                    || counts.reserved()<sessionReserved) throw new IOException("Inconsistent Frontier readback");
+            } catch(IOException e) {
+                counts=null;
+                if(e.getCause() instanceof io.grpc.StatusRuntimeException rpcFailure) {
+                    var code=rpcFailure.getStatus().getCode();
+                    if(code==io.grpc.Status.Code.UNAVAILABLE) reachable=Boolean.FALSE;
+                    else if(code==io.grpc.Status.Code.DEADLINE_EXCEEDED) reachable=null;
+                    else reachable=Boolean.TRUE;
+                }
+            }
+            if(counts!=null) {
+                result.put("authoritative_admission",session);result.put("admission","SERVER_READBACK");
                 try(var store=new ArchiveStore(archive)) {
                     var observation=new LinkedHashMap<String,Object>(store.admissionObservation(id));
                     observation.putIfAbsent("state","ADMITTED");observation.put("admission","COMMITTED");
@@ -60,6 +85,15 @@ public final class CrawlExecution {
                 }
             }
         }
+        Map<String,Object> view=JobStatusView.assemble(result,counts,worker,reachable,runtimeFile!=null,catalogAt);
+        try(var store=new ArchiveStore(archive)) {
+            store.recordJobStatus(id,view);
+            Map<String,Object> recorded=store.admissionObservation(id);
+            result.put("status_transitions",recorded.get("status_transitions"));
+            result.put("status_transitions_dropped",recorded.get("status_transitions_dropped"));
+        }
+        result.put("job_status",view);
+        result.putAll(view);
         return result;
     }
     public static Map<String,Object> start(Path archive,String id,Path runtimeFile,Path tokenFile) throws Exception {
@@ -137,6 +171,9 @@ public final class CrawlExecution {
             }
             var result=new LinkedHashMap<String,Object>();result.put("plan_id",id);result.put("admission","COMMITTED");
             result.put("authoritative_admission",session);result.put("worker_pid",readiness.get("worker_pid"));result.put("worker_owner_pid",worker.pid());result.put("worker_log",log.toString());
+            result.put("process_scope",WorkerObservation.scope());
+            result.put("worker_owner_start_instant",WorkerObservation.start(worker.pid()));
+            result.put("worker_start_instant",readiness.get("worker_pid") instanceof Number pid ? WorkerObservation.start(pid.longValue()) : null);
             result.put("started_at",Instant.now().toString());result.put("state","RUNNING");
             // Do not reopen embedded H2 while the live worker can own a callback connection.
             write(work.resolve("execution.json"),result);
@@ -154,8 +191,17 @@ public final class CrawlExecution {
             // Exit0 is not a crawl-completion assertion. Pending work/failures are read from owning systems.
             result.put("passed",worker.exitValue()==0);result.put("crawl_completed_verified",false);
             try(var rpc=client(runtime,capability)) { result.put("authoritative_admission",rpc.command(Map.of("action","session","session_id",id))); }
+            catch(IOException e) { result.put("admission_readback_error","AUTHORITATIVE_READBACK_UNAVAILABLE"); }
             write(work.resolve("execution.json"),result);
             try(var store=new ArchiveStore(archive)) { store.recordAdmission(id,result); }
+            // Expose the same versioned job view as status; legacy passed/state
+            // continue to describe execution only, never crawl completion.
+            Map<String,Object> observed=status(archive,id,runtimeFile,tokenFile);
+            if(observed.get("job_status") instanceof Map<?,?> view) {
+                for(var entry:view.entrySet()) result.put((String)entry.getKey(),entry.getValue());
+                result.put("job_status",view);
+            }
+            write(work.resolve("execution.json"),result);
             return result;
         }
     }
