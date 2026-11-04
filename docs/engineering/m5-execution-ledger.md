@@ -1,6 +1,6 @@
 # M5 Operational Closure execution ledger
 
-## Execution boundary Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ 2026-11-04
+## Execution boundary Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р В РІР‚С™Р РЋРЎС™ 2026-11-04
 
 Owner-approved branch feat/m5-operational-closure starts exactly at
 0a645fdd63b6f21d9af66b988c027d77fb9eb14f. S1-01 remains present and partially
@@ -13,7 +13,7 @@ ARCH read-only model, DOM state/history and REC bounded resume, deployment/servi
 seam. No second scheduler; Frontier owns scheduling/reservation/quota, H2 is an
 observation catalog. External Tor and historical topology retirement excluded.
 
-## DEV-01a Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ verification signal and Markdown file links
+## DEV-01a Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р В РІР‚С™Р РЋРЎС™ verification signal and Markdown file links
 
 Baseline before implementation: Maven verify on approved JDK25/Maven3.10.0,
 offline cache:124 run,123 PASS,1 SKIP,0 fail/error. Initial sandbox invocation
@@ -60,7 +60,7 @@ Command: python -B scripts/runners/verify.py --offline --maven <verified-mvn.cmd
 Targeted command: python -B -m unittest discover -s test/scripts -p test_verification.py -v.
 No full CI/product acceptance asserted. Diff whitespace and Python AST checks pass.
 
-## DEV-01b РІР‚вЂќ pinned Maven Wrapper and CI
+## DEV-01b Р Р†Р вЂљРІР‚Сњ pinned Maven Wrapper and CI
 
 DEV-01a commit2b12c0688a9508c4f368e03d9194aab73c0953d6 immediately pushed to
 origin/feat/m5-operational-closure; remote SHA matched.
@@ -91,7 +91,7 @@ Frontier4/4 PASS. M2 and scripts platform failures unchanged; overall FAIL retai
 Command: JAVA_HOME25, URLFRONTIER_BASE_JAR, MAVEN_USER_HOME=<isolated cache>,
 M1_HTTP_SMOKE=1 python -B scripts/runners/verify.py --offline --maven-repository <cache>.
 
-## REC-01 — current-path restart qualification, no production patch
+## REC-01 вЂ” current-path restart qualification, no production patch
 
 DEV-01b commit51b910e959bd04de8b7988f4cd34ae56c9a3151d immediately pushed; remote
 SHA matched. DEV-01 complete acceptance remains open: native Linux/CI/product
@@ -124,3 +124,25 @@ Rollback: remove added conformance/test-hook commit; no persistent migration.
 Next ARCH-01 evidence map/ADR, then ARCH-02 requires truthful UNKNOWN for missing
 terminal provenance. A completed storage row cannot prove success vs terminal
 failure; no scheduler/category inferred by subtracting H2 pages.
+
+## DEV-01c — Linux fresh-checkout fixture defect
+
+REC-01 commit54da938665b8d93acfa9fc77cdf4e784145345ad immediately pushed and
+remote SHA verified.
+
+Actual hosted Linux run41840064032 (commit51b910e) completed FAIL, not merely
+assumed to be missing E2E: Maven124/124 PASS, M1 localhost32/32, M2 113/113,
+archive2/2, security4/4, scripts15/15 and Frontier4/4 PASS. M3 had1 error because
+test_prepare used TemporaryDirectory(dir=.runtime/m3) before creating that parent.
+Artifact13327544794 downloaded via GitHub connector, SHA256
+bd25ef897dd7e38451cb4818965f8b053644730be3716a1054178528951c6245 verified;
+logs under .runtime/specs-dev01/ci-41840064032.zip. Run URL:
+https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/41840064032
+
+One-line test setup correction creates its owned parent; all assertions unchanged.
+Reproduced a fresh project namespace with no .runtime, invoking the actual test
+and prepare() against copied crawler.flux: PASS1/1. Normal M3 suite PASS2/2.
+No legacy/product topology substitution, network change or scheduler change.
+Product Docker E2E remains NOT RUN. Newer CI must independently qualify REC5/5
+and this fix; these results are scoped to exact commit51b910e.
+Rollback: revert additive test setup correction. No persistent migration.
