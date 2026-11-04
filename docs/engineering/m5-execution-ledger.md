@@ -1,6 +1,6 @@
 # M5 Operational Closure execution ledger
 
-## Execution boundary вЂ” 2026-11-04
+## Execution boundary Р Р†Р вЂљРІР‚Сњ 2026-11-04
 
 Owner-approved branch feat/m5-operational-closure starts exactly at
 0a645fdd63b6f21d9af66b988c027d77fb9eb14f. S1-01 remains present and partially
@@ -13,7 +13,7 @@ ARCH read-only model, DOM state/history and REC bounded resume, deployment/servi
 seam. No second scheduler; Frontier owns scheduling/reservation/quota, H2 is an
 observation catalog. External Tor and historical topology retirement excluded.
 
-## DEV-01a вЂ” verification signal and Markdown file links
+## DEV-01a Р Р†Р вЂљРІР‚Сњ verification signal and Markdown file links
 
 Baseline before implementation: Maven verify on approved JDK25/Maven3.10.0,
 offline cache:124 run,123 PASS,1 SKIP,0 fail/error. Initial sandbox invocation
@@ -59,3 +59,34 @@ Command: python -B scripts/runners/verify.py --offline --maven <verified-mvn.cmd
 --maven-repository <local-cache>, with JAVA_HOME25 and URLFRONTIER_BASE_JAR set.
 Targeted command: python -B -m unittest discover -s test/scripts -p test_verification.py -v.
 No full CI/product acceptance asserted. Diff whitespace and Python AST checks pass.
+
+## DEV-01b вЂ” pinned Maven Wrapper and CI
+
+DEV-01a commit2b12c0688a9508c4f368e03d9194aab73c0953d6 immediately pushed to
+origin/feat/m5-operational-closure; remote SHA matched.
+
+Wrapper3.3.4 source-only scripts from official Maven Central, upstream SHA1 matched,
+local archive SHA2566cb584c2bc907b849a0b931d8266d3ff3214cdd3127115ed4f49fb7176413d36.
+Maven3.10.0 ZIP matched previously verified publisher SHA512; pinned SHA256
+1f6d9909266510f039f59aa0e13dcd2c66da85f043e56276e41f2918f8bddaff. No binary in Git.
+First Windows wrapper download/version invocation PASS on JDK25.0.5. Negative
+fixture with false distribution checksum exited1 before Maven; actual log retained
+under .runtime/specs-dev01/wrapper-negative-*/. Wrapper regression2/2, verifier5/5
+PASS. YAML parse and Python AST checks PASS. Linux wrapper/hosted CI NOT RUN locally.
+
+CI added for M5 pushes, PRs and manual dispatch, with read-only token, SHA-pinned
+official Actions and JDK25. No image execution during base JAR recovery. CI must
+remain non-green if required product E2E is NOT RUN; no continue-on-error or
+acceptance assertion weakened. Product Docker assembly/qualification remains
+DEV-02/G6 prerequisite, not silently credited by local JVM PASS.
+
+Rollback: remove the additive workflow/wrapper/tests commit; no persistent migration
+or runtime network policy changed. Wrapper first bootstrap needs Maven Central;
+Maven -o does not prevent that first download. Existing S1-01 guard/client wiring
+is untouched. Root AGENTS and user untracked files unchanged.
+
+Final wrapper-backed run: .runtime/verification/run-zfzf9pt1/result.json; Maven
+124 run/123 PASS/1 SKIP with fresh-report filtering, M1_HTTP_SMOKE=1:32/32 PASS,
+Frontier4/4 PASS. M2 and scripts platform failures unchanged; overall FAIL retained.
+Command: JAVA_HOME25, URLFRONTIER_BASE_JAR, MAVEN_USER_HOME=<isolated cache>,
+M1_HTTP_SMOKE=1 python -B scripts/runners/verify.py --offline --maven-repository <cache>.

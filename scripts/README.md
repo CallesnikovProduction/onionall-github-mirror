@@ -160,3 +160,20 @@ Linux Docker product fixture. Real Tor is out of scope and never started.
 No dependencies, Docker images or runtime tools are installed by this runner.
 Maven without --offline may resolve normal build dependencies. Existing Windows
 POSIX permissions/Bash failures remain failures, never auto-skipped.
+
+### Maven Wrapper / CI provenance
+
+The source-only Apache Maven Wrapper3.3.4 pins Maven3.10.0 and its ZIP SHA256.
+Use ./mvnw (Linux) or ./mvnw.cmd (Windows); JAVA_HOME must select JDK25. The first
+wrapper use downloads the Maven distribution, even if Maven itself is passed -o;
+subsequent offline use needs its existing cache. MAVEN_USER_HOME can isolate that
+cache under .runtime. No wrapper JAR is committed. Official source/properties:
+https://maven.apache.org/tools/wrapper/ and
+https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper-distribution/3.3.4/ .
+
+GitHub verify.yml uses SHA-pinned official Actions, read-only permissions and JDK25.
+It extracts (never runs) the digest-pinned Frontier base image and verifies the JAR
+checksum. It executes the same runner and retains failed evidence. It deliberately
+fails closed when product E2E is NOT RUN: this workflow is not product acceptance.
+The full Docker product fixture remains a separate opt-in gate until DEV-02 assembles
+the paired app/server/Storm artifacts. No real Tor workflow is added.
