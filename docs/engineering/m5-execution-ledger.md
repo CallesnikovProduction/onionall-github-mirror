@@ -1,6 +1,6 @@
 # M5 Operational Closure execution ledger
 
-## Execution boundary Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р В РІР‚С™Р РЋРЎС™ 2026-11-04
+## Execution boundary Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р РЋРЎв„ў 2026-11-04
 
 Owner-approved branch feat/m5-operational-closure starts exactly at
 0a645fdd63b6f21d9af66b988c027d77fb9eb14f. S1-01 remains present and partially
@@ -13,7 +13,7 @@ ARCH read-only model, DOM state/history and REC bounded resume, deployment/servi
 seam. No second scheduler; Frontier owns scheduling/reservation/quota, H2 is an
 observation catalog. External Tor and historical topology retirement excluded.
 
-## DEV-01a Р В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р вЂ Р В РІР‚С™Р РЋРЎС™ verification signal and Markdown file links
+## DEV-01a Р В Р’В Р вЂ™Р’В Р В Р’В Р Р†Р вЂљР’В Р В Р’В Р вЂ™Р’В Р В Р вЂ Р В РІР‚С™Р РЋРІвЂћСћР В Р’В Р В РІР‚В Р В Р’В Р Р†Р вЂљРЎв„ўР В Р Р‹Р РЋРЎв„ў verification signal and Markdown file links
 
 Baseline before implementation: Maven verify on approved JDK25/Maven3.10.0,
 offline cache:124 run,123 PASS,1 SKIP,0 fail/error. Initial sandbox invocation
@@ -60,7 +60,7 @@ Command: python -B scripts/runners/verify.py --offline --maven <verified-mvn.cmd
 Targeted command: python -B -m unittest discover -s test/scripts -p test_verification.py -v.
 No full CI/product acceptance asserted. Diff whitespace and Python AST checks pass.
 
-## DEV-01b Р Р†Р вЂљРІР‚Сњ pinned Maven Wrapper and CI
+## DEV-01b Р В Р вЂ Р В РІР‚С™Р Р†Р вЂљРЎСљ pinned Maven Wrapper and CI
 
 DEV-01a commit2b12c0688a9508c4f368e03d9194aab73c0953d6 immediately pushed to
 origin/feat/m5-operational-closure; remote SHA matched.
@@ -91,7 +91,7 @@ Frontier4/4 PASS. M2 and scripts platform failures unchanged; overall FAIL retai
 Command: JAVA_HOME25, URLFRONTIER_BASE_JAR, MAVEN_USER_HOME=<isolated cache>,
 M1_HTTP_SMOKE=1 python -B scripts/runners/verify.py --offline --maven-repository <cache>.
 
-## REC-01 вЂ” current-path restart qualification, no production patch
+## REC-01 РІР‚вЂќ current-path restart qualification, no production patch
 
 DEV-01b commit51b910e959bd04de8b7988f4cd34ae56c9a3151d immediately pushed; remote
 SHA matched. DEV-01 complete acceptance remains open: native Linux/CI/product
@@ -125,7 +125,7 @@ Next ARCH-01 evidence map/ADR, then ARCH-02 requires truthful UNKNOWN for missin
 terminal provenance. A completed storage row cannot prove success vs terminal
 failure; no scheduler/category inferred by subtracting H2 pages.
 
-## DEV-01c — Linux fresh-checkout fixture defect
+## DEV-01c вЂ” Linux fresh-checkout fixture defect
 
 REC-01 commit54da938665b8d93acfa9fc77cdf4e784145345ad immediately pushed and
 remote SHA verified.
@@ -146,3 +146,26 @@ No legacy/product topology substitution, network change or scheduler change.
 Product Docker E2E remains NOT RUN. Newer CI must independently qualify REC5/5
 and this fix; these results are scoped to exact commit51b910e.
 Rollback: revert additive test setup correction. No persistent migration.
+
+## ARCH-01 — canonical topology ADR and acceptance inventory
+
+DEV-01c commitd133f2be015f7e63178ba17ae962645eba195d7e immediately pushed;
+remote SHA matched. Added ADR0004 from actual CrawlExecution, root Flux and
+fixture callers: product5 bolts/7 streams vs legacy9/15; mandatory capability
+clients and ordered durable-discovery/archive filters documented. Exact test
+entrypoints classified by topology; neither component tests nor stock fixture
+PASS is inherited as generated product E2E. No topology extraction, retirement
+or feature merge: working graph remains unchanged. Full archive-write-failure
+ACK behavior on generated product still needs isolated E2E qualification.
+
+Read-model stop condition reached per 01_ARCH.md: terminal writes delete
+scheduling metadata and retain only an empty existence pointer. Storage completed
+is UNSCHEDULED, not success/terminal reason. ARCH-02/DOM dependent implementation
+held for owner contract decision (question sent): bounded UNKNOWN/null outcome
+counts with proof-required COMPLETE, or separate durable terminal provenance
+design/compatibility review. No H2 scheduling or silent DONE inference. Independent
+documentation and verification work can continue.
+
+ADR local file-link validation and diff whitespace PASS; no runtime claim from
+this documentation-only scope. Product E2E NOT RUN, archive failure graph gate OPEN.
+Rollback: documentation-only revert; no migration or behavior change.
