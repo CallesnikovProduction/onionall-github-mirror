@@ -6,7 +6,8 @@ Date: 2026-11-04. No topology retirement or production wiring change in this ADR
 ## Decision and invariants
 
 `CrawlExecution.start()` generates resources and invokes
-`CrawlExecution.topology(Path)` as the single product topology builder. Do not
+`CrawlExecution.topology(Path)`, delegating to pure `CrawlTopology.build(Path)`,
+as the single product topology builder. Do not
 merge historical capabilities into that chain. Frontier remains the only owner
 of admission, reservations, quota, scheduling, leases and retry due dates; H2
 records observations. S1-01 capability clients/server must remain paired.
@@ -40,7 +41,8 @@ not a valid acceptance substitution.
 `start()` writes config, ordered parse filters and topology.json, publishes the
 job resources into a unique runtime JAR and starts the worker. `configuration()`
 sets both protocol implementations, ONLY mode, scope, robots, no redirects,
-HTML/content limits and no transferred credentials. `topology()` owns the graph.
+HTML/content limits and no transferred credentials. `topology()` delegates the
+unchanged graph to pure CrawlTopology; it never selects the historical Flux.
 
 `ArchiveParseFilter` commits archive data before parser emission;
 `CapabilityArchiveStatusUpdaterBolt.store()` calls the shared

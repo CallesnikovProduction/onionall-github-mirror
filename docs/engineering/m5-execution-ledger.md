@@ -660,3 +660,15 @@ containment is claimed. Six verification signal tests, three fixture-input/resou
 snapshot tests and two SOCKS tests PASS; helper javac-Xlint exit0/no warnings
 (storm-crash-probe-s0dl2ezu). Actual added Storm crash path remains pending new
 explicit dispatch; previous successful normal-flow result is not reused for it.
+
+
+Storm crash harnessdfb56525072f6c51c97d6a63c361da7a67796eb7 immediately
+pushed/remote SHA verified; explicit full product/crash run41893331580 is ongoing.
+ARCH-C pure graph prerequisite: pre-extraction actual topology JSON captured from
+compiled CrawlExecution, then moved builder body unchanged into CrawlTopology.
+Pre/post semantic equality PASS (arch-topology-parity-cg68vduo/proof.json):5 bolts,
+7 streams, capability adapters, grouping/status streams and includes unchanged.
+CrawlExecution remains sole orchestrator, delegates its private topology method.
+No legacy retirement, scheduler/auth/Tor/config/schema or product graph change.
+Pure graph3 + actual start/status4 + capability clients5 =12/12 PASS
+(arch-topology-seam.log). Full Storm latest-source qualification remains separate.
