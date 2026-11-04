@@ -613,3 +613,22 @@ existing version1 view, explaining before-due no-work and absence of automatic
 restart. UNKNOWN clears hint/note. Existing output fields remain, no scheduling/
 retry/default120min/quota change. Current status/CLI/scheduler selection21/21 PASS
 (rec-b-manual-view.log). This view gate does not prove actual503 after-due execution.
+
+
+REC-B view0224e092ebcc9f87f875e7c91e14b6cc25b7ce18 immediately pushed;
+remote SHA matched. REC-C source follow-up found CLI stop still lacked explicit
+birth checks, despite the marker path denying unsafe restart. Minimal cleanup fix
+pins wrapper clock at launch, never queries exited/unknown wrapper PID descendants,
+and signals only birth-matching same handles. Readiness transfers pinned child
+clock; no late PID lookup for execution evidence. Unknown identity means no signal
+and retained BLOCKED marker, never ownership adoption or STOPPED by CLI.
+Cleanup mismatch/owned-stop plus ownership/status selection22/22 PASS
+(rec-c-cli-cleanup.log); simulated PID mismatch on owned processes, not actual OS
+PID recycling. Original child deadlines and auth/scheduling assertions unchanged.
+Full JVM verify and final lint/diff/signature gates follow before publication.
+
+CLI identity follow-up full offline JVM verify163 run/162 PASS/1 existing Windows
+SKIP,0 failure/error, BUILD SUCCESS (m5-ownership-final-verify.log). Changed-main
+Xlint exit0/no warnings(rec-c-cleanup-lint-sdkpyd7d), links PASS(run-6envkc1l),
+diff and limited scoped signatures PASS. Real Storm forced-owner/unknown recovery
+stays separate; native stand-in/full JVM success never implies OS containment.

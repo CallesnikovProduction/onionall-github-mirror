@@ -165,34 +165,35 @@ public final class CrawlExecution {
                 .directory(work.toFile()).redirectErrorStream(true).redirectOutput(log.toFile());
             launcher.environment().put(WorkerOwnership.HANDOFF,preparation.handoff());
             Process worker=launcher.start();
-            Thread stopping=new Thread(()->stop(worker),"onionall-cli-worker-stop");
+            Instant workerIdentity=worker.info().startInstant().orElse(null);
+            Thread stopping=new Thread(()->stop(worker,workerIdentity),"onionall-cli-worker-stop");
             Runtime.getRuntime().addShutdownHook(stopping);
             long readyDeadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(10);
             try {
                 while(!Files.exists(ready) && worker.isAlive() && System.nanoTime()<readyDeadline) Thread.sleep(25);
-            } catch(InterruptedException e) {stop(worker);Thread.currentThread().interrupt();throw new IOException("Worker startup interrupted",e);}
-            if(!Files.exists(ready)) { stop(worker);throw new IOException("Bounded worker could not acquire execution ownership; inspect "+log); }
+            } catch(InterruptedException e) {stop(worker,workerIdentity);Thread.currentThread().interrupt();throw new IOException("Worker startup interrupted",e);}
+            if(!Files.exists(ready)) { stop(worker,workerIdentity);throw new IOException("Bounded worker could not acquire execution ownership; inspect "+log); }
             Map<String,Object> readiness=JSON.readValue(Files.readAllBytes(ready),new TypeReference<Map<String,Object>>(){});
             if(!(readiness.get("owner_pid") instanceof Number ownerPid) || ownerPid.longValue()!=worker.pid()) {
-                stop(worker);throw new IOException("Worker ownership readback mismatch");
+                stop(worker,workerIdentity);throw new IOException("Worker ownership readback mismatch");
             }
             var result=new LinkedHashMap<String,Object>();result.put("plan_id",id);result.put("admission","COMMITTED");
             result.put("authoritative_admission",session);result.put("worker_pid",readiness.get("worker_pid"));result.put("worker_owner_pid",worker.pid());result.put("worker_log",log.toString());
             result.put("process_scope",WorkerObservation.scope());
-            result.put("worker_owner_start_instant",WorkerObservation.start(worker.pid()));
-            result.put("worker_start_instant",readiness.get("worker_pid") instanceof Number pid ? WorkerObservation.start(pid.longValue()) : null);
+            result.put("worker_owner_start_instant",workerIdentity==null?null:workerIdentity.toString());
+            result.put("worker_start_instant",readiness.get("worker_start_instant"));
             result.put("started_at",Instant.now().toString());result.put("state","RUNNING");
             // Do not reopen embedded H2 while the live worker can own a callback connection.
             write(work.resolve("execution.json"),result);
             try {
                 if(!worker.waitFor(seconds+115L,TimeUnit.SECONDS)) {
-                    stop(worker);
+                    stop(worker,workerIdentity);
                     result.put("state","WORKER_TIMED_OUT");result.put("passed",false);
                     write(work.resolve("execution.json"),result);
                     try(var store=new ArchiveStore(archive)) { store.recordAdmission(id,result); }
                     throw new IOException("Worker exceeded bounded execution window; admitted work remains in Frontier");
                 }
-            } catch(InterruptedException e) { stop(worker);Thread.currentThread().interrupt();throw new IOException("Crawl execution interrupted; resume the same plan",e); }
+            } catch(InterruptedException e) { stop(worker,workerIdentity);Thread.currentThread().interrupt();throw new IOException("Crawl execution interrupted; resume the same plan",e); }
             finally { Runtime.getRuntime().removeShutdownHook(stopping); }
             result.put("worker_exit_code",worker.exitValue());result.put("state",worker.exitValue()==0?"WORKER_EXITED":"WORKER_FAILED");
             // Exit0 is not a crawl-completion assertion. Pending work/failures are read from owning systems.
@@ -228,11 +229,26 @@ public final class CrawlExecution {
            !(spec.get("max_depth") instanceof Number depth) || depth.intValue()!=((Number)plan.get("depth")).intValue() ||
            !Boolean.TRUE.equals(spec.get("approved"))) throw new IOException("Authoritative session differs from approved plan");
     }
-    private static void stop(Process worker) {
-        var descendants=worker.descendants().toList();
-        descendants.forEach(ProcessHandle::destroy);worker.destroy();
-        try { if(!worker.waitFor(10,TimeUnit.SECONDS)) { descendants.forEach(ProcessHandle::destroyForcibly);worker.destroyForcibly();worker.waitFor(10,TimeUnit.SECONDS); } }
-        catch(InterruptedException e) { descendants.forEach(ProcessHandle::destroyForcibly);worker.destroyForcibly();Thread.currentThread().interrupt(); }
+    private static boolean matches(ProcessHandle process,Instant start) {
+        return start!=null&&process.isAlive()&&process.info().startInstant().filter(start::equals).isPresent();
+    }
+    private static void signal(ProcessHandle process,Instant start,boolean force) {
+        if(matches(process,start)){if(force)process.destroyForcibly();else process.destroy();}
+    }
+    /** Cleanup only a launch-pinned wrapper and its identified, directly observed descendants. */
+    static void stop(Process worker,Instant identity) {
+        if(!worker.isAlive()||!matches(worker.toHandle(),identity))return;
+        var descendants=worker.descendants().map(p->new AbstractMap.SimpleImmutableEntry<>(p,p.info().startInstant().orElse(null)))
+            .filter(p->p.getValue()!=null).toList();
+        if(!worker.isAlive()||!matches(worker.toHandle(),identity))return;
+        descendants.forEach(p->signal(p.getKey(),p.getValue(),false));
+        signal(worker.toHandle(),identity,false);
+        try {if(!worker.waitFor(10,TimeUnit.SECONDS)) {
+            descendants.forEach(p->signal(p.getKey(),p.getValue(),true));signal(worker.toHandle(),identity,true);worker.waitFor(10,TimeUnit.SECONDS);
+        }}catch(InterruptedException e) {
+            descendants.forEach(p->signal(p.getKey(),p.getValue(),true));signal(worker.toHandle(),identity,true);Thread.currentThread().interrupt();
+        }
+        // This caller never publishes STOPPED: only the owning wrapper can attest cleanup.
     }
     private static void write(Path path,Object value) throws IOException {
         Path tmp=Files.createTempFile(path.getParent(),".runtime-",".tmp");

@@ -117,3 +117,14 @@ Current Linux CI41886030820 (REC-C commit4c2afb9): Maven PASS, including
 WorkerOwnershipTest native Linux destroy path;6 Frontier drivers PASS. Overall
 NOT RUN for missing CLI/product/Storm gates. This qualifies the JVM fixture on
 both platforms, not the generated Storm tree or OS containment.
+
+
+REC-C CLI cleanup follow-up: CrawlExecution captures wrapper startInstant once
+at ProcessBuilder return and keeps that launch identity in shutdown/timeout paths
+and execution observations. Cleanup rejects missing/mismatching identity and an
+already exited wrapper before querying descendants. Each observed descendant is
+signaled only on its same handle with matching startInstant; unidentified processes
+are skipped. Readiness carries the child's already pinned clock instead of a late
+PID lookup after readiness. CLI cleanup never publishes STOPPED or deletes proof;
+Windows interrupted/unsupported cleanup may still leave UNKNOWN/BLOCKED. This
+adds no supervisor/OS containment, external PID adoption or retrospective migration.

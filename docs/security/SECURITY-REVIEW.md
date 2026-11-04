@@ -869,3 +869,12 @@ unobserved descendants, full Storm/Linux process-tree qualification and power-lo
 filesystem guarantees remain OPEN. No host/network/native component change.
 Current executed results are recorded in m5-execution-ledger.md. Full security
 audit and S1-01 remain PARTIALLY VERIFIED / NOT CLOSED.
+
+
+REC-C follow-up also pins CLI-owned wrapper birth at launch: CrawlExecution.stop
+rejects unknown/mismatching identities and never inspects a dead wrapper's PID tree.
+Signals use the same identified ProcessHandle, with birth recheck. Child readiness
+transfers its pinned birth instead of late PID lookup. Tests simulate mismatching
+birth on an owned fixture, not mass OS PID recycling or signaling foreign processes.
+Only the wrapper publishes cleanup proof; CLI failure leaves marker fail-closed.
+No change to RPC/capability policy; full Storm forced-owner gate remains OPEN.

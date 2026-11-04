@@ -36,7 +36,9 @@ public final class CrawlWorker {
                 // Unique marker is published only after both OS lock and actual child exist.
                 Path partial=Files.createTempFile(ready.getParent(),".ready-",".tmp");
                 try {
-                    Files.write(partial,new ObjectMapper().writeValueAsBytes(Map.of("owner_pid",ProcessHandle.current().pid(),"worker_pid",worker.pid())));
+                    Map<String,Object> readiness=new LinkedHashMap<>();readiness.put("owner_pid",ProcessHandle.current().pid());
+                    readiness.put("worker_pid",worker.pid());readiness.put("worker_start_instant",ownership.get("child_start"));
+                    Files.write(partial,new ObjectMapper().writeValueAsBytes(readiness));
                     Files.move(partial,ready,StandardCopyOption.ATOMIC_MOVE);
                 } finally {Files.deleteIfExists(partial);}
                 long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(seconds);
