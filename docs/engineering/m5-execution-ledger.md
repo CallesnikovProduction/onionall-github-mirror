@@ -709,3 +709,27 @@ in the structured report. Allowlist uploads crash-*.json probe observations only
 not token/runtime JSON. Unit verifier6/6 and fixture3/3 PASS; AST/YAML/lint clean.
 Repeat will distinguish actual unknown process state rather than rerun blindly;
 full product/crash acceptance remains FAIL until current evidence proves otherwise.
+
+
+Diagnosticcee2d846716966148ad665ad26a07a275ab53921 pushed/remote SHA matched;
+actual full product repeat41896563641 is running. Independent required archive
+failure POC: installed parser.prepare/execute with real ArchiveParseFilter/H2.
+Success commit precedes default emission+ACK; owned corrupt-blob fault emits
+ERROR+ACK, fail0, document0, snapshot0. Two characterization tests PASS
+(archive-parser-ack-characterization.log), which CONFIRMS the contract mismatch,
+not the desired fail-parent acceptance. Bytecode matches handleException ACK path;
+AbstractQueryingSpout.fail only clears in-process/metric, not durable retry state.
+
+Owner selected parent FAIL with bounded existing Storm/Frontier retry and requested
+separate minimal design review. ADR0004 contains the concrete adapter/status/budget/
+lost-observation/lease/rollback plan and exact gates. No remediation source changed.
+Required archive-write-ack-acceptance remains NOT RUN until design/negative gates
+are implemented; component characterization cannot yield overall formal green.
+
+Archive characterization/history/discovery selection13/13 PASS
+(archive-ack-publish-regression.log). Xlint exit0 with1 expected fixture-only
+legacy metrics deprecation (pinned Storm v1 registerMetric), no suppressed assertion.
+Tested JSoupParserBolt.class SHA256f95500345b75b0fe53b356fc450c8c8bbd6f0036d7bdacee115c420edb2e5bf9
+matches the class in packaged app byte-for-byte; core3.7.0 JAR SHA256
+88a39b5fa007c787edbf11109e2c7d1bbfdc56e58933eeb709112374392c8d85.
+Design only, implementation paused per owner's explicit separate-review request.

@@ -194,6 +194,8 @@ def main(argv=None):
             counts = json.loads(report.read_text(encoding='utf-8')) if report.exists() else None
             verify.record('python-' + directory, {0: 'PASS', 2: 'NOT RUN'}.get(rc, 'FAIL'), counts=counts, log=str(log))
         verify.frontier(os.environ.get('URLFRONTIER_BASE_JAR'), java_home if jdk25 else None)
+        verify.record('archive-write-ack-acceptance', 'NOT RUN',
+                      reason='Confirmed installed parser ERROR+ACK after archive fault; parent-fail bounded-retry design awaits separate approval')
         if args.product_e2e:
             result_file = evidence / 'product-result.json'
             rc, log = verify.run('product-e2e', [sys.executable, '-B', str(ROOT / 'test/admission/local_integration.py'),

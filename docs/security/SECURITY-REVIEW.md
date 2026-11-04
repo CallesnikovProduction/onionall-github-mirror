@@ -878,3 +878,23 @@ transfers its pinned birth instead of late PID lookup. Tests simulate mismatchin
 birth on an owned fixture, not mass OS PID recycling or signaling foreign processes.
 Only the wrapper publishes cleanup proof; CLI failure leaves marker fail-closed.
 No change to RPC/capability policy; full Storm forced-owner gate remains OPEN.
+
+
+## M5 archive-fault ACK arbitration (component CONFIRMED; remediation design pending)
+
+ParserArchiveAckCharacterizationTest: real installed JSoupParserBolt.prepare/execute
+plus ArchiveParseFilter, owned corrupted immutable blob, actual H2. Success commits
+before emission/ACK; failure yields ERROR then ACK, no fail, no FETCHED/document or
+snapshot. This conflicts with03_REC failure scenario4's parent-fail requirement.
+Affected ArchiveParseFilter.filter, dependency JSoupParserBolt.handleException,
+CrawlTopology parser binding, existing CapabilityArchiveStatusUpdaterBolt.store.
+Product severity MEDIUM (terminal treatment/recovery of archive write faults);
+security LOW conditional on storage/processing fault, no unauthorized mutation or
+false snapshot proved. Confidence HIGH for installed component; full Storm
+child-reservation/failure ACK tree still NOT RUN. No S1-01 status upgrade.
+
+Owner chose parent FAIL with bounded retry using existing Storm/Frontier, subject
+to separate minimal design approval. ADR0004 records adapter, shared existing
+error budget/backoff, audit-before-write, lost-write/lease and rollback gates.
+No parser/status/Frontier remediation implemented. verify keeps this required
+acceptance NOT RUN; positive defect characterization must not make audit green.

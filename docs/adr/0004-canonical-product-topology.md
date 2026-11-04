@@ -131,3 +131,57 @@ UUID, live keyset next_cursor/truncated, membership_snapshot=false. New appends
 behind the cursor may appear only in a new traversal; preexisting rows are not
 skipped/duplicated. It is not Frontier membership/admission or a new CLI feature.
 No new persistent schema/index or concurrent-H2 mode; busy catalog still errors.
+
+
+## Archive-fault contract: owner decision, separate design approval pending
+
+Actual ParserArchiveAckCharacterizationTest calls installed JSoupParserBolt.prepare
+and execute with real ArchiveParseFilter/H2 and a corrupted immutable blob fixture.
+Success commits before default emission/ACK. Fault produces exactly ERROR/status
+then ACK, no fail, no FETCHED/default output and zero snapshots/pages. Installed
+handleException implements that path. This confirms the component behavior, not a
+full Storm ACK tree after durable child reservation. Existing positive archive
+callback tests did not establish parent-fail behavior. Characterization PASS is
+NOT the requested acceptance; verify explicitly retains archive-write-ack NOT RUN.
+
+Owner selected parent tuple FAIL plus bounded retry through existing Storm/Frontier,
+and requested a SEPARATE minimal design review before implementation. Proposed:
+
+1. Keep installed JSoup parser logic. Add a narrowly scoped parser adapter and a
+   trusted transient archive-commit-failure marker. Clear it per execute; only the
+   actual archive exception sets it. No generic parser/admission/robots behavior
+   change. Never emit a fetched/default document on archive fault.
+2. For this fault only, transform the parser ERROR/status intent into FETCH_ERROR
+   tagged error.source=archive, then fail the original tuple exactly once instead
+   of ACK. Do not emit the old terminal ERROR alongside it. Capability status
+   updater remains the sole scheduling writer, with observation-before-write.
+3. Reuse current DefaultScheduler, default120min backoff and max.fetch.errors=3
+   (shared existing URL processing failure budget, no new counter/schema/scheduler).
+   Keep failure phase ARCHIVE ahead of generic FETCH classification. Do not claim
+   a separate distinct network-attempt count or a terminal Frontier outcome.
+4. Spout.fail is NOT a durable retry/backoff operation: installed AbstractQueryingSpout
+   only removes beingProcessed and increments a metric. Retry eligibility must come
+   from the existing authenticated status write/Frontier due time, or its held lease
+   if that write cannot commit. Never add immediate local replay/blanket retry.
+5. If archive observation cannot commit (e.g. H2 unavailable), preserve existing
+   prohibition on Frontier status write. Fail tuple, leave current lease/reservation,
+   bound the worker by its existing TTL and require manual storage repair/resume.
+   A global durable retry count cannot be proved while both observation/status
+   persistence are unavailable: report UNKNOWN, no fake exhausted/complete result.
+
+Compatibility: new parser adapter in canonical graph only; token-bearing clients
+and owning Frontier stay paired. Existing protobuf/RPC/schema/quotas/Tor unchanged.
+Transient marker is not new persistent scheduling state. Semantic change is from
+immediate terminal parser ERROR to the shared bounded error policy for archive
+faults only. Rollback after proved worker stop restores the old adapter/class and
+ERROR+ACK behavior, preserves all data and markers; no volume reset/schema downgrade.
+
+Approval gates for implementation: real parser success still ACK1/fail0 after
+commit; archive fault emits one archive FETCH_ERROR, fail1/ACK0/default0; actual
+status callback records history before authenticated write; 1/2 errors keep the
+same120min next due, third reaches existing terminal policy; audit-write failure
+makes no Frontier write; real generated Storm fixture proves child reservation
+survives parent archive fault with zero phantom snapshots, no extra quota, no
+before-due fetch and successful after-due repair/replay. Existing non-archive
+parser, robots, discovery, auth/reconnect, recovery and Tor tests stay unchanged.
+This design is NOT implemented or accepted by the characterization test.
