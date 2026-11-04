@@ -33,7 +33,29 @@ public final class ArchiveStatusUpdaterBolt extends StatusUpdaterBolt {
             "robots.txt".equals(cause) ? "ROBOTS_DENIED" :
             status == Status.ERROR && "maxFetchErrors".equals(cause) ? "TERMINAL_MAX_FETCH_ERRORS" :
             status == Status.ERROR && nextFetch.isEmpty() ? "TERMINAL_ERROR" : status.name();
-        try (var store = new ArchiveStore(root)) { store.recordFailure(job, url, category); }
+        Integer http=null;
+        String code=metadata.getFirstValue("fetch.statusCode");
+        String exception=metadata.getFirstValue("fetch.exception");
+        boolean robots=category.equals("ROBOTS_DENIED");
+        // Installed SimpleFetcherBolt clears fetch.exception, but can retain the
+        // previous HTTP/protocol fields when a new request fails before response.
+        if(exception==null && !robots && code!=null && code.matches("[1-5][0-9]{2}"))http=Integer.valueOf(code);
+        FailureObservation.Transport transport=FailureObservation.Transport.UNKNOWN;
+        String candidate=robots?null:exception!=null?exception:metadata.getFirstValue("protocol.tor.category");
+        if(candidate!=null)try {transport=FailureObservation.Transport.valueOf(candidate);}
+        catch(IllegalArgumentException ignored) { /* Never persist raw exception text. */ }
+        if("Socket timeout fetching".equals(exception))transport=FailureObservation.Transport.REQUEST_TIMEOUT;
+        String source=metadata.getFirstValue("error.source");
+        FailureObservation.Phase phase=category.equals("ROBOTS_DENIED")?FailureObservation.Phase.ROBOTS:
+            status==Status.FETCH_ERROR || category.equals("TERMINAL_MAX_FETCH_ERRORS") || status==Status.REDIRECTION?FailureObservation.Phase.FETCH:
+            "parser".equals(source)||"parsing".equals(source)?FailureObservation.Phase.PARSE:
+            "archive".equals(source)?FailureObservation.Phase.ARCHIVE:FailureObservation.Phase.UNKNOWN;
+        boolean scheduledFailure=status==Status.FETCH_ERROR || status==Status.ERROR;
+        var observation=new FailureObservation(phase,FailureObservation.Source.STORM_STATUS_INTENT,http,
+            scheduledFailure?Boolean.valueOf(nextFetch.isPresent()):null,
+            scheduledFailure?Boolean.valueOf(nextFetch.isEmpty()):null,
+            nextFetch.map(date->date.getTime()/1000).orElse(null),transport);
+        try (var store = new ArchiveStore(root)) { store.recordFailure(job, url, category, observation); }
     }
     @Override public void store(String url, Status status, Metadata metadata, Optional<Date> nextFetch, Tuple tuple) {
         try { recordOutcome(root, job, url, status, metadata, nextFetch); }

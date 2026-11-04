@@ -343,3 +343,56 @@ UNKNOWN exception handling cannot mask an internal branch error. Final changed
 main classes -Xlint:all exit0/no warnings. Markdown links/diff/signature gates PASS.
 No timing/security assertion weakened; S1-01 capability wiring/guards, protobuf,
 Tor isolation and persistent schema remain unchanged in this scope.
+
+## DOM-02 - structured append-only failure observations
+
+DOM-01b commit87b719a30e57d9d9b306de381855d5b8deeff4a3 immediately pushed;
+remote SHA verified. Before implementation compatibility spike at
+.runtime/specs-dev01/dom02-compat-blvgl545 compiled actual Security RC ArchiveStore
+source0a645fdd as previous reader, added a representative extension to an owned
+fixture, and verified previous read/closed backup+restore/unchanged HTML hashes.
+
+Added independently versioned failure_observations_v1 table/index, without changing
+coreV2 tables or schema_version2. Persistent extension is explicit, no legacy
+backfill. Legacy failure identity/aggregates preserved. Atomic legacy+event write
+under existing catalog guard; event insertion failure rolls back aggregate.
+1000 observations/job and existing catalog128MiB bound; no automatic deletion.
+Event fields are bounded phase/source/HTTP/transport and scheduling-intent values.
+Callbacks/replays are observations, not proved network attempts: fetch_attempt_count
+and applied_to_frontier remain null; no H2 scheduler or terminal authority.
+
+Added offline crawl errors paging with fixed sequence watermark and limit<=100,
+readback count/latest observation/status hint. Raw exceptions never stored.
+Installed SimpleFetcherBolt bytecode inspection proved stale HTTP/protocol fields
+can survive pre-response failure; new tests mask those fields, map exact timeout
+tag and retain UNKNOWN for lost cause. Bytecode retained under specs-dev01.
+Existing scheduler3-error test now additionally verifies three observations rather
+than two collapsed categories, without changing its schedule/terminal assertions.
+
+Full final-DDL compatibility proof at dom02-finalcompat-lhlepdhk: previous reader
+reads upgraded core, modern reader sees all three observations after old-reader
+open/close, restored closed backup reads with old binary, blob hashes unchanged.
+No source/user archive reset or destructive migration; fixtures retained.
+Targeted history/pipeline/CLI15/15 PASS; earlier storage/integration selection
+30 run/29 PASS/1 existing Windows SKIP. Logs dom02-history.log, dom02-cli-signal.log.
+Full offline verify succeeded before final view hints; final targeted selection
+checks those fields and H2/start integration. Final results below.
+
+Packaged CLI source review found configured status previously required nonzero
+on unavailable Frontier. Preserved that contract: structured UNKNOWN with exit6,
+no admission; added actual gRPC UNIMPLEMENTED CLI regression. This corrects a
+DOM-01 signal regression before declaring packaged CLI qualification. No assertion
+weakened; the original Python distribution test remains unchanged.
+
+Rollback: previous binaries still read coreV2 and ignore/preserve new table; no
+DROP, old-row rewrite or version downgrade. Current v1 cannot prove distinct actual
+attempt count or final terminal application, intentionally UNKNOWN. Archive failure
+when catalog itself is unwritable may leave only worker evidence; no fake audit.
+
+DOM-02 full offline verify:147 run/146 PASS/1 existing Windows SKIP,0 failure/error,
+BUILD SUCCESS (dom02-full-verify.log). Final targeted19/19 PASS after common-view
+hints and actual second-connection/thread append test (dom02-publish-targeted.log).
+New fixture server explicitly binds127.0.0.1. Changed-main Xlint exit0 with two
+pre-existing ArchiveStatusUpdaterBolt serialization warnings; compiled prior
+87b719a source and reproduced the same two (dom02-baseline-lint-*). New record/
+store/CLI/view classes had no extra warning. Link/diff/limited signatures pass.

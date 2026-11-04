@@ -75,6 +75,10 @@ public final class ArchiveStore implements AutoCloseable {
             statement.execute("ALTER TABLE page_links ADD COLUMN IF NOT EXISTS discovery_time_basis VARCHAR(32)");
             statement.execute("UPDATE page_links l SET discovered_at=(SELECT s.recorded_at FROM snapshots s WHERE s.id=l.snapshot_id), discovery_time_basis='SNAPSHOT_RECORDED' WHERE discovered_at IS NULL");
             statement.execute("CREATE INDEX IF NOT EXISTS links_target_idx ON page_links(target_url)");
+            // Additive, independently versioned observation extension. CoreV2 and
+            // legacy tables stay unchanged so previous binaries can still read them.
+            statement.execute("CREATE TABLE IF NOT EXISTS failure_observations_v1 (observation_seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, job_id VARCHAR(36) NOT NULL REFERENCES crawl_plans(id), failure_id VARCHAR(36) NOT NULL REFERENCES failures(id), canonical_url VARCHAR(2048) NOT NULL, category VARCHAR(64) NOT NULL, observed_at VARCHAR(40) NOT NULL, phase VARCHAR(16) NOT NULL, source VARCHAR(32) NOT NULL, http_status INT CHECK(http_status IS NULL OR http_status BETWEEN 100 AND 599), retryable BOOLEAN, terminal_intent BOOLEAN, next_due_epoch BIGINT CHECK(next_due_epoch IS NULL OR next_due_epoch>=0), transport_category VARCHAR(32) NOT NULL)");
+            statement.execute("CREATE INDEX IF NOT EXISTS failure_observations_job_seq_v1 ON failure_observations_v1(job_id,observation_seq)");
             statement.execute("MERGE INTO schema_version KEY(version) VALUES(2)");
         }
     }
@@ -235,6 +239,12 @@ public final class ArchiveStore implements AutoCloseable {
                 query.setString(1,id);try(ResultSet rs=query.executeQuery()){while(rs.next())failures.add(Map.of("failure_id",rs.getString(1),"url",rs.getString(2),"category",rs.getString(3),"occurred_at",rs.getString(4)));}
             }
             result.put("failure_records",failures);
+            result.put("failure_count_basis","LEGACY_UNIQUE_URL_CATEGORY");
+            result.put("failure_observation_count",count("SELECT COUNT(*) FROM failure_observations_v1 WHERE job_id=?",id));
+            result.put("fetch_attempt_count",null);
+            try(var query=db.prepareStatement("SELECT * FROM failure_observations_v1 WHERE job_id=? ORDER BY observation_seq DESC LIMIT 1")) {
+                query.setString(1,id);try(var row=query.executeQuery()){result.put("latest_failure_observation",row.next()?failureObservationRow(row):null);}
+            }
             result.put("scheduling_owner","URLFrontier"); result.put("archive_owner","local catalog"); return result;
         } catch (SQLException e) { throw failure(e); }
     }
@@ -430,24 +440,87 @@ public final class ArchiveStore implements AutoCloseable {
         return Map.of("job",job(jobId),"pages",pages(jobId,limit).get("pages"),"links",links(jobId,limit).get("links"),"limit",limit);
     }
     public synchronized Map<String,Object> recordFailure(String jobId,String url,String category) throws IOException {
+        return recordFailure(jobId,url,category,FailureObservation.unknown());
+    }
+    public synchronized Map<String,Object> recordFailure(String jobId,String url,String category,FailureObservation observation) throws IOException {
         capacity();
         Map<String,Object> plan=approved(jobId);url=normalize(url,(String)plan.get("origin"));
         if(category==null||!category.matches("[A-Z][A-Z0-9_]{0,63}"))throw new IOException("Require bounded failure category");
+        if(observation==null)throw new IOException("Require structured failure observation");
         try {
             db.setAutoCommit(false);
             try(PreparedStatement lock=db.prepareStatement("SELECT id FROM catalog_guard WHERE id=1 FOR UPDATE")){try(ResultSet rs=lock.executeQuery()){rs.next();}}
+            String id=null;
             try(PreparedStatement query=db.prepareStatement("SELECT id FROM failures WHERE job_id=? AND canonical_url=? AND category=?")){
                 query.setString(1,jobId);query.setString(2,url);query.setString(3,category);
-                try(ResultSet rs=query.executeQuery()){if(rs.next()){
-                    String id=rs.getString(1);db.commit();return Map.of("failure_id",id,"job_id",jobId,"url",url,"category",category);
-                }}
+                try(ResultSet rs=query.executeQuery()){if(rs.next())id=rs.getString(1);}
             }
-            if(count("SELECT COUNT(*) FROM failures WHERE job_id=?",jobId)>=1000)throw new IOException("Job failure record limit1000");
-            String id=UUID.randomUUID().toString();try(PreparedStatement insert=db.prepareStatement("INSERT INTO failures VALUES(?,?,?,?,?)")){insert.setString(1,id);insert.setString(2,jobId);insert.setString(3,url);insert.setString(4,category);insert.setString(5,Instant.now().toString());insert.executeUpdate();}
+            if(id==null) {
+                if(count("SELECT COUNT(*) FROM failures WHERE job_id=?",jobId)>=1000)throw new IOException("Job failure record limit1000");
+                id=UUID.randomUUID().toString();try(PreparedStatement insert=db.prepareStatement("INSERT INTO failures VALUES(?,?,?,?,?)")){insert.setString(1,id);insert.setString(2,jobId);insert.setString(3,url);insert.setString(4,category);insert.setString(5,Instant.now().toString());insert.executeUpdate();}
+            }
+            if(count("SELECT COUNT(*) FROM failure_observations_v1 WHERE job_id=?",jobId)>=1000)
+                throw new IOException("Job failure observation limit1000; no automatic deletion");
+            try(var insert=db.prepareStatement("INSERT INTO failure_observations_v1(job_id,failure_id,canonical_url,category,observed_at,phase,source,http_status,retryable,terminal_intent,next_due_epoch,transport_category) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")) {
+                insert.setString(1,jobId);insert.setString(2,id);insert.setString(3,url);insert.setString(4,category);insert.setString(5,Instant.now().toString());
+                insert.setString(6,observation.phase().name());insert.setString(7,observation.source().name());
+                insert.setObject(8,observation.httpStatus(),Types.INTEGER);insert.setObject(9,observation.retryable(),Types.BOOLEAN);
+                insert.setObject(10,observation.terminal(),Types.BOOLEAN);insert.setObject(11,observation.nextDueEpoch(),Types.BIGINT);
+                insert.setString(12,observation.transport().name());insert.executeUpdate();
+            }
             db.commit();return Map.of("failure_id",id,"job_id",jobId,"url",url,"category",category);
         } catch(SQLException | IOException e) {
             try{db.rollback();}catch(SQLException rollback){e.addSuppressed(rollback);}throw e instanceof IOException io?io:failure((SQLException)e);
         } finally{try{db.setAutoCommit(true);}catch(SQLException e){throw failure(e);}}
+    }
+
+    /** Immutable observation sequence, not a fetch counter or a scheduler queue. */
+    public synchronized Map<String,Object> failureHistory(String jobId,String cursor,int limit) throws IOException {
+        plan(jobId);bound(limit);
+        try {
+            long maximum;
+            try(var query=db.prepareStatement("SELECT COALESCE(MAX(observation_seq),0) FROM failure_observations_v1 WHERE job_id=?")) {
+                query.setString(1,jobId);try(var row=query.executeQuery()){row.next();maximum=row.getLong(1);}
+            }
+            long through=maximum,after=0;
+            if(cursor!=null) {
+                bounded(cursor,256,"failure history cursor");
+                try {
+                    String[] parts=new String(Base64.getUrlDecoder().decode(cursor),java.nio.charset.StandardCharsets.UTF_8).split(":",-1);
+                    if(parts.length!=4||!parts[0].equals("1")||!parts[1].equals(jobId)||!parts[2].matches("[0-9]{1,19}")||!parts[3].matches("[0-9]{1,19}"))throw new IllegalArgumentException();
+                    through=Long.parseLong(parts[2]);after=Long.parseLong(parts[3]);
+                    if(through>maximum||after<1||after>=through)throw new IllegalArgumentException();
+                }catch(IllegalArgumentException e){throw new IOException("Invalid failure history cursor");}
+            }
+            List<Map<String,Object>> rows=new ArrayList<>();long last=after;
+            try(var query=db.prepareStatement("SELECT * FROM failure_observations_v1 WHERE job_id=? AND observation_seq>? AND observation_seq<=? ORDER BY observation_seq LIMIT ?")) {
+                query.setString(1,jobId);query.setLong(2,after);query.setLong(3,through);query.setInt(4,limit);
+                try(var rs=query.executeQuery()){while(rs.next()) {
+                    last=rs.getLong("observation_seq");rows.add(failureObservationRow(rs));
+                }}
+            }
+            long count;
+            try(var query=db.prepareStatement("SELECT COUNT(*) FROM failure_observations_v1 WHERE job_id=? AND observation_seq<=?")) {
+                query.setString(1,jobId);query.setLong(2,through);try(var row=query.executeQuery()){row.next();count=row.getLong(1);}
+            }
+            Map<String,Object> result=new LinkedHashMap<>();result.put("history_version",1);result.put("plan_id",jobId);
+            result.put("rows",rows);result.put("observation_count",count);result.put("fetch_attempt_count",null);
+            result.put("legacy_aggregate_count",count("SELECT COUNT(*) FROM failures WHERE job_id=?",jobId));
+            result.put("legacy_aggregates_are_attempts",false);result.put("through_sequence",through);result.put("limit",limit);
+            result.put("next_cursor",null);result.put("truncated",last<through);
+            if(last<through) {
+                if(rows.isEmpty())throw new IOException("Failure history cursor points to unavailable rows");
+                result.put("next_cursor",Base64.getUrlEncoder().withoutPadding().encodeToString(("1:"+jobId+":"+through+":"+last).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            }
+            return result;
+        }catch(SQLException e){throw failure(e);}
+    }
+    private static Map<String,Object> failureObservationRow(ResultSet rs)throws SQLException {
+        Map<String,Object> row=new LinkedHashMap<>();row.put("observation_id",rs.getLong("observation_seq"));
+        for(String key:List.of("job_id","failure_id","category","observed_at","phase","source","transport_category"))row.put(key,rs.getString(key));
+        row.put("url",rs.getString("canonical_url"));row.put("http_status",rs.getObject("http_status"));
+        row.put("retryable",rs.getObject("retryable"));row.put("terminal",rs.getObject("terminal_intent"));row.put("next_due_epoch",rs.getObject("next_due_epoch"));
+        row.put("applied_to_frontier",null);return row;
     }
 
     @Override public synchronized void close() throws IOException {try{db.close();}catch(SQLException e){throw failure(e);} }

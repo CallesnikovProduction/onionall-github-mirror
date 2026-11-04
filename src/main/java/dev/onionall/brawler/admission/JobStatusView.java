@@ -41,6 +41,8 @@ final class JobStatusView {
         view.put("legacy_state",catalog.get("state"));view.put("state_semantics","LEGACY_EXECUTION_OBSERVATION");
         view.put("failure_records_truncated",catalog.get("failures") instanceof Number n && catalog.get("failure_records") instanceof List<?> rows && n.longValue()>rows.size());
         view.put("status_transition_limit",32);
+        view.put("failure_history_version",1);view.put("failure_observation_count",catalog.get("failure_observation_count"));
+        view.put("fetch_attempt_count",null);view.put("failure_history_hint","crawl errors "+catalog.get("plan_id"));
         return view;
     }
 }

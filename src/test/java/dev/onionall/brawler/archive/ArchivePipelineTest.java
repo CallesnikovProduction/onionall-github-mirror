@@ -81,6 +81,10 @@ public class ArchivePipelineTest {
             var failures=(List<?>)store.job(job).get("failure_records");
             assertEquals(2,failures.size());
             assertTrue(failures.stream().anyMatch(row->"TERMINAL_MAX_FETCH_ERRORS".equals(((Map<?,?>)row).get("category"))));
+            var history=store.failureHistory(job,null,100);
+            assertEquals(3L,history.get("observation_count"));
+            assertEquals(true,((Map<?,?>)((List<?>)history.get("rows")).getLast()).get("terminal"));
+            assertNull(history.get("fetch_attempt_count"));
         }
     }
 

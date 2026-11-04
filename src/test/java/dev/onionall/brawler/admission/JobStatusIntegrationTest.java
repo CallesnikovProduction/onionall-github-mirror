@@ -107,7 +107,7 @@ public class JobStatusIntegrationTest {
             assertEquals(old.get("status_transitions"),left.admissionObservation(id).get("status_transitions"));
         }
         try(var db=DriverManager.getConnection("jdbc:h2:file:"+archive.resolve("catalog")+";AUTO_SERVER=FALSE","sa","");var query=db.createStatement();var rows=query.executeQuery("SELECT MAX(version) FROM schema_version")) {
-            assertTrue(rows.next());assertEquals("No persistent schema migration",2,rows.getInt(1));
+            assertTrue(rows.next());assertEquals("Core catalog remains version2; additive history extension is versioned separately",2,rows.getInt(1));
         }
     }
     public static final class CatalogOwner {

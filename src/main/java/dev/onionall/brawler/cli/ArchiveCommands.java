@@ -45,11 +45,11 @@ public final class ArchiveCommands {
 
     @Command(name="crawl", mixinStandardHelpOptions=true,
             description="Create, approve and execute bounded plans through a configured durable Frontier.",
-            subcommands={Plan.class, ShowPlan.class, Approve.class, Start.class, Status.class})
+            subcommands={Plan.class, ShowPlan.class, Approve.class, Start.class, Status.class, Errors.class})
     public static final class Crawl implements Callable<Integer> {
         @ParentCommand Onionall root;
         public Integer call() throws IOException {
-            root.print(Map.of("commands",List.of("plan","show","approve","start","status"),"admission","BLOCKED","blocker",ADMISSION_BLOCKER));
+            root.print(Map.of("commands",List.of("plan","show","approve","start","status","errors"),"admission","BLOCKED","blocker",ADMISSION_BLOCKER));
             return 0;
         }
     }
@@ -116,7 +116,21 @@ public final class ArchiveCommands {
         @Parameters(index="0") String id;
         @Option(names="--runtime") Path runtime;
         @Option(names="--admission-token-file") Path token;
-        public Integer call() throws Exception { parent.root.print(CrawlExecution.status(parent.root.archiveDirectory(),id,runtime,token)); return 0; }
+        public Integer call() throws Exception {
+            var result=CrawlExecution.status(parent.root.archiveDirectory(),id,runtime,token);parent.root.print(result);
+            return runtime!=null && !Boolean.TRUE.equals(result.get("authoritative_readback_current"))?6:0;
+        }
+    }
+    @Command(name="errors", mixinStandardHelpOptions=true, description="Read bounded failure observations; not a verified fetch-attempt count.")
+    public static final class Errors implements Callable<Integer> {
+        @ParentCommand Crawl parent;
+        @Parameters(index="0") String id;
+        @Option(names="--limit",defaultValue="20") int limit;
+        @Option(names="--cursor") String cursor;
+        public Integer call() throws Exception {
+            try(var archive=store(parent.root)){parent.root.print(archive.failureHistory(id,cursor,limit));}
+            return 0;
+        }
     }
     @Command(name="pages", mixinStandardHelpOptions=true, description="List locally archived snapshots; never opens or renders HTML.")
     public static final class Pages implements Callable<Integer> {
