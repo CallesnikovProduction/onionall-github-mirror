@@ -97,7 +97,7 @@ public final class AdmissionRpcConformance {
         Fixture(Path database) throws Exception {
             service = AdmissionConformance.service(database);
             token = UUID.randomUUID().toString(); ServerInterceptor guard = AdmissionRpc.guard(token);
-            server = ServerBuilder.forPort(0).addService(ServerInterceptors.intercept(service, guard))
+            server = io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(ServerInterceptors.intercept(service, guard))
                 .addService(ServerInterceptors.intercept(AdmissionRpc.bind(service), guard)).maxInboundMessageSize(131072).build().start();
             raw = ManagedChannelBuilder.forAddress("127.0.0.1", server.getPort()).usePlaintext().build();
             authorized = withToken(raw, token); wrong = withToken(raw, UUID.randomUUID().toString());

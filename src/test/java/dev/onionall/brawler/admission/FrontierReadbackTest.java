@@ -90,7 +90,7 @@ public class FrontierReadbackTest {
                 return next.startCall(call, headers);
             }
         };
-        Server server = ServerBuilder.forPort(0).addService(ServerInterceptors.intercept(service, auth)).build().start();
+        Server server = io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(ServerInterceptors.intercept(service, auth)).build().start();
         try (var client = new AdmissionClient("127.0.0.1", server.getPort(), TOKEN)) {
             assertEquals(5, client.counts("s").reserved());
             assertEquals(2, client.list("s", null, 2).rows().size());

@@ -396,3 +396,14 @@ New fixture server explicitly binds127.0.0.1. Changed-main Xlint exit0 with two
 pre-existing ArchiveStatusUpdaterBolt serialization warnings; compiled prior
 87b719a source and reproduced the same two (dom02-baseline-lint-*). New record/
 store/CLI/view classes had no extra warning. Link/diff/limited signatures pass.
+
+## DEV verification isolation follow-up
+
+DOM-02 commit61674319c670b736f1f0458cf370963ba1b2dabb immediately pushed and
+remote SHA verified. Limited fixture review made RPC listeners explicitly IPv4
+loopback rather than provider-default bind addresses: AdmissionClientTest,
+FrontierReadbackTest, JobStatusIntegrationTest and two actual Frontier drivers.
+Production RPC bind/transport policy and all auth/timeout assertions unchanged.
+App selection19/19 PASS (loopback-rpc-fixtures.log); actual Frontier6/6 PASS at
+.runtime/specs-dev01/loopback-rpc-km5mo26x. No external probe/onion request or host
+network configuration change. Next REC ownership-crash characterization.

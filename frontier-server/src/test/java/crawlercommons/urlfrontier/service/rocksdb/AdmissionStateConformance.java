@@ -69,7 +69,7 @@ public final class AdmissionStateConformance {
         catch (IllegalArgumentException expected) { }
     }
     private static void rpcGuard(RocksDBService s) throws Exception {
-        Server server = ServerBuilder.forPort(0).addService(ServerInterceptors.intercept(AdmissionRpc.bind(s), AdmissionRpc.guard(TOKEN))).build().start();
+        Server server = io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(ServerInterceptors.intercept(AdmissionRpc.bind(s), AdmissionRpc.guard(TOKEN))).build().start();
         ManagedChannel channel = ManagedChannelBuilder.forAddress("127.0.0.1", server.getPort()).usePlaintext().build();
         try {
             for (String offered : List.of("", "wrong", TOKEN)) {

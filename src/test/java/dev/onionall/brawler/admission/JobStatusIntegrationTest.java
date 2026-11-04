@@ -47,7 +47,7 @@ public class JobStatusIntegrationTest {
                     reply.onNext(BytesValue.newBuilder().setValue(ByteString.copyFrom(JSON.writeValueAsBytes(value))).build());reply.onCompleted();
                 }catch(Exception e){reply.onError(e);}
             })).build();
-        Server server=ServerBuilder.forPort(0).addService(definition).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(definition).build().start();
         try {
             Path work=root.resolve("work");Files.createDirectories(work.resolve(id));
             Path execution=work.resolve(id).resolve("execution.json");
@@ -132,7 +132,7 @@ public class JobStatusIntegrationTest {
                 reply.onNext(BytesValue.newBuilder().setValue(ByteString.copyFrom(JSON.writeValueAsBytes(value))).build());reply.onCompleted();
             }catch(Exception e){reply.onError(e);}
         })).build();
-        Server server=ServerBuilder.forPort(0).addService(service).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(service).build().start();
         try {
             Path jar=root.resolve("fixture.jar"),runtime=root.resolve("runtime.json"),token=root.resolve("token");
             var manifest=new java.util.jar.Manifest();manifest.getMainAttributes().putValue("Manifest-Version","1.0");

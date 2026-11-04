@@ -41,7 +41,7 @@ public class AdmissionClientTest {
         var interceptor=new ServerInterceptor(){public <ReqT,RespT> ServerCall.Listener<ReqT> interceptCall(ServerCall<ReqT,RespT> call,Metadata headers,ServerCallHandler<ReqT,RespT> next){
             assertEquals(TOKEN,headers.get(Metadata.Key.of("x-onionall-admission-token",Metadata.ASCII_STRING_MARSHALLER)));return next.startCall(call,headers);
         }};
-        Server server=ServerBuilder.forPort(0).addService(ServerInterceptors.intercept(service,interceptor)).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(ServerInterceptors.intercept(service,interceptor)).build().start();
         try(var client=new AdmissionClient("127.0.0.1",server.getPort(),TOKEN)) {
             assertEquals("SESSION_NOT_FOUND",client.command(Map.of("action","session","session_id","x")).get("outcome"));
             assertEquals(1,calls.get());
@@ -50,7 +50,7 @@ public class AdmissionClientTest {
         } finally {server.shutdownNow();server.awaitTermination();}
     }
     @Test public void unsupportedServerFailsClosedWithoutSeedFallback() throws Exception {
-        Server server=ServerBuilder.forPort(0).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).build().start();
         try(var client=new AdmissionClient("127.0.0.1",server.getPort(),TOKEN)) {
             IOException failure=assertThrows(IOException.class,()->client.command(Map.of("action","open")));
             assertTrue(failure.getMessage().contains("UNIMPLEMENTED"));assertFalse(failure.getMessage().contains(TOKEN));
@@ -78,7 +78,7 @@ public class AdmissionClientTest {
                     calls.incrementAndGet();reply.onNext(BytesValue.newBuilder().setValue(ByteString.copyFrom(JSON.writeValueAsBytes(response))).build());reply.onCompleted();
                 } catch(Exception e){reply.onError(e);}
             })).build();
-        Server server=ServerBuilder.forPort(0).addService(service).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(service).build().start();
         try {
             Path runtime=root.resolve("runtime.json"), token=root.resolve("token");
             Files.writeString(runtime,JSON.writeValueAsString(Map.of("frontier_host","127.0.0.1","frontier_port",server.getPort())));
