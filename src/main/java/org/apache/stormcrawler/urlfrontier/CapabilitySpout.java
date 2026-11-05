@@ -50,13 +50,14 @@ import org.slf4j.LoggerFactory;
 
 /** Source-pinned StormCrawler 3.7.0 Spout adapter.
  * Upstream source SHA256: 031aa003910552f9327785cf378beb327f213f691dc40b688187c3d1864ecd91.
- * Only class identity and mandatory per-RPC capability wiring differ; scheduler/ACK logic is upstream.
+ * Onionall deviations include capability credentials and lifecycle hardening; see package AGENTS.md.
  */
 public class CapabilitySpout extends AbstractQueryingSpout {
 
     private static final Logger LOG = LoggerFactory.getLogger(CapabilitySpout.class);
 
     private ManagedChannel channel;
+    private boolean closed, opened;
     private transient FrontierCapability capability;
 
     private URLFrontierStub frontier;
@@ -70,81 +71,74 @@ public class CapabilitySpout extends AbstractQueryingSpout {
     /** Globally set crawlID * */
     private String globalCrawlID = null;
 
+    /**
+     * <b>Открывает spout и authenticated GetURLs stub.</b>
+     *
+     * <p>Сериализовано с close; при partial initialization собственный канал закрывается.
+     */
     @Override
-    public void open(
-            Map<String, Object> stormConf,
-            TopologyContext context,
-            SpoutOutputCollector collector) {
-        capability = FrontierCapability.from(stormConf);
-        super.open(stormConf, context, collector);
-
-        maxURLsPerBucket =
-                ConfUtils.getInt(
-                        stormConf,
-                        URLFRONTIER_MAX_URLS_PER_BUCKET_KEY,
-                        URLFRONTIER_MAX_URLS_PER_BUCKET_DEFAULT);
-
-        maxBucketNum = ConfUtils.getInt(stormConf, URLFRONTIER_MAX_BUCKETS_KEY, 10);
-
-        // initialise the delay requestable with the timeout for messages
-        delayRequestable =
-                ConfUtils.getInt(stormConf, Config.TOPOLOGY_MESSAGE_TIMEOUT_SECS, delayRequestable);
-
-        // then override with any user specified config
-        delayRequestable =
-                ConfUtils.getInt(stormConf, URLFRONTIER_DELAY_REQUESTABLE_KEY, delayRequestable);
-
-        // host and port of URL Frontier(s)
-        List<String> addresses = ConfUtils.loadListFromConf(URLFRONTIER_ADDRESS_KEY, stormConf);
-
-        // Selected address
-        String address;
-        switch (addresses.size()) {
-            case 0:
-                LOG.debug("{} has no addresses.", URLFRONTIER_ADDRESS_KEY);
-                address = null;
-                break;
-            case 1:
-                LOG.debug(
-                        "{} with a size of {} is used.", URLFRONTIER_ADDRESS_KEY, addresses.size());
-                address = addresses.get(0);
-                break;
-            default:
-                int totalTasks = context.getComponentTasks(context.getThisComponentId()).size();
-                if (totalTasks != addresses.size()) {
-                    String message =
-                            "Not one task per frontier node. "
-                                    + totalTasks
-                                    + " vs "
-                                    + addresses.size();
-                    LOG.error(message);
-                    throw new RuntimeException(message);
-                }
-                int nodeIndex = context.getThisTaskIndex();
-                Collections.sort(addresses);
-                address = addresses.get(nodeIndex);
+    public synchronized void open(Map<String, Object> stormConf, TopologyContext context,
+        SpoutOutputCollector collector) {
+        if (closed) {
+            throw new IllegalStateException("Frontier spout closed");
         }
-
-        if (address == null) {
-            channel =
-                    ManagedChannelUtil.createChannel(
-                            ConfUtils.getString(
-                                    stormConf, URLFRONTIER_HOST_KEY, URLFRONTIER_DEFAULT_HOST),
-                            ConfUtils.getInt(
-                                    stormConf, URLFRONTIER_PORT_KEY, URLFRONTIER_DEFAULT_PORT));
-        } else {
-            channel = ManagedChannelUtil.createChannel(address);
-        }
-
-        frontier = URLFrontierGrpc.newStub(channel).withCallCredentials(capability).withWaitForReady();
-        LOG.debug("State of Channel: {}", channel.getState(false));
-
-        globalCrawlID = ConfUtils.getString(stormConf, URLFRONTIER_CRAWL_ID_KEY);
-
-        if (globalCrawlID != null) {
-            LOG.info("Initialized URLFrontier CapabilitySpout for crawlId {}", globalCrawlID);
-        } else {
-            LOG.info("Initialized URLFrontier CapabilitySpout without crawlId");
+        try {
+            capability = FrontierCapability.from(stormConf);
+            opened = true;
+            super.open(stormConf, context, collector);
+            maxURLsPerBucket = ConfUtils.getInt(stormConf, URLFRONTIER_MAX_URLS_PER_BUCKET_KEY,
+                URLFRONTIER_MAX_URLS_PER_BUCKET_DEFAULT);
+            maxBucketNum = ConfUtils.getInt(stormConf, URLFRONTIER_MAX_BUCKETS_KEY, 10);
+            // initialise the delay requestable with the timeout for messages
+            delayRequestable = ConfUtils.getInt(stormConf, Config.TOPOLOGY_MESSAGE_TIMEOUT_SECS, delayRequestable);
+            // then override with any user specified config
+            delayRequestable = ConfUtils.getInt(stormConf, URLFRONTIER_DELAY_REQUESTABLE_KEY, delayRequestable);
+            // host and port of URL Frontier(s)
+            List<String> addresses = ConfUtils.loadListFromConf(URLFRONTIER_ADDRESS_KEY, stormConf);
+            // Selected address
+            String address;
+            switch(addresses.size()) {
+                case 0:
+                    LOG.debug("{} has no addresses.", URLFRONTIER_ADDRESS_KEY);
+                    address = null;
+                    break;
+                case 1:
+                    LOG.debug("{} with a size of {} is used.", URLFRONTIER_ADDRESS_KEY, addresses.size());
+                    address = addresses.get(0);
+                    break;
+                default:
+                    int totalTasks = context.getComponentTasks(context.getThisComponentId()).size();
+                    if (totalTasks != addresses.size()) {
+                        String message = "Not one task per frontier node. " + totalTasks + " vs " + addresses.size();
+                        LOG.error(message);
+                        throw new RuntimeException(message);
+                    }
+                    int nodeIndex = context.getThisTaskIndex();
+                    Collections.sort(addresses);
+                    address = addresses.get(nodeIndex);
+            }
+            if (address == null) {
+                channel = ManagedChannelUtil.createChannel(ConfUtils.getString(stormConf, URLFRONTIER_HOST_KEY,
+                    URLFRONTIER_DEFAULT_HOST), ConfUtils.getInt(stormConf, URLFRONTIER_PORT_KEY,
+                    URLFRONTIER_DEFAULT_PORT));
+            } else {
+                channel = ManagedChannelUtil.createChannel(address);
+            }
+            frontier = URLFrontierGrpc.newStub(channel).withCallCredentials(capability).withWaitForReady();
+            LOG.debug("State of Channel: {}", channel.getState(false));
+            globalCrawlID = ConfUtils.getString(stormConf, URLFRONTIER_CRAWL_ID_KEY);
+            if (globalCrawlID != null) {
+                LOG.info("Initialized URLFrontier CapabilitySpout for crawlId {}", globalCrawlID);
+            } else {
+                LOG.info("Initialized URLFrontier CapabilitySpout without crawlId");
+            }
+        } catch (RuntimeException | Error failure) {
+            try {
+                close();
+            } catch (RuntimeException cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
         }
     }
 
@@ -241,16 +235,25 @@ public class CapabilitySpout extends AbstractQueryingSpout {
         super.fail(msgId);
     }
 
+    /**
+     * <b>Идемпотентно завершает spout и принадлежащий канал.</b>
+     *
+     * <p>Закрытие канала выполняется в finally, в том числе после ошибки superclass cleanup.
+     */
     @Override
-    public void close() {
-        super.close();
-
-        if (!channel.isShutdown()) {
-            LOG.info("Shutting down connection to URLFrontier service.");
-            channel.shutdown();
-        } else {
-            LOG.warn(
-                    "Tried to shutdown connection to URLFrontier service that was already shutdown.");
+    public synchronized void close() {
+        if (closed) {
+            return;
+        }
+        closed = true;
+        try {
+            if (opened) {
+                super.close();
+            }
+        } finally {
+            if (channel != null) {
+                channel.shutdownNow();
+            }
         }
     }
 }

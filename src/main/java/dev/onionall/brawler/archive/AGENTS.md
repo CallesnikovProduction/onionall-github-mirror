@@ -91,7 +91,7 @@ abstract Map<String, Object> search(String query, int limit) throws IOException;
   failure_observations_v1 и status audit имеют отдельное additive представление.
   Новая несовместимая schema version запрещает открытие.
 - H2 использует AUTO_SERVER=FALSE, WRITE_DELAY=0, DB_CLOSE_ON_EXIT=FALSE.
-  Методы экземпляра synchronized; SQL catalog_guard FOR UPDATE сериализует транзакции.
+  Публичные операции экземпляра (кроме конструктора) synchronized; SQL catalog_guard FOR UPDATE сериализует транзакции.
   Это не многопроцессный сетевой каталог. Закрывайте экземпляр после операции.
 - Пути проверяются на symlink, содержимое хранится по SHA256. Проверки путей не являются
   общей защитой от всех filesystem races. Blob force и atomic move предшествуют snapshot commit.

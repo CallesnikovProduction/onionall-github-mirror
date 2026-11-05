@@ -34,16 +34,17 @@ public Map<String, Object> status(String id, Path runtime, Path token) throws Ex
 public Map<String, Object> start(String id, Path runtime, Path token) throws Exception;
 ```
 
-[CrawlService.java](CrawlService.java):
+[CrawlService.Execution](CrawlService.java) (методы интерфейса public abstract по правилам Java):
 
 ```java
 abstract Map<String, Object> status(Path archive, String id, Path runtime, Path token) throws Exception;
 abstract Map<String, Object> start(Path archive, String id, Path runtime, Path token) throws Exception;
 ```
 
-Default Execution реализован анонимным классом внутри конструктора; методы
-`status(Path root, String id, Path runtime, Path token)` и соответствующий start
-в этом классе не являются дополнительными методами самого CrawlService.
+Default Execution реализован анонимным классом в конструкторе и вызывает
+CrawlExecution.start/status. Его методы с Path root не являются перегрузками
+самого CrawlService. Политика запуска и ownership остаются в admission;
+JobStatusService использует FrontierReadback.verifySession напрямую.
 
 [RuntimeDescriptor.java](RuntimeDescriptor.java):
 

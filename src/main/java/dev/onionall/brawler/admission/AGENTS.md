@@ -143,6 +143,18 @@ public static Map<String, Object> assemble(Map<String, Object> catalog, Frontier
 ```
 
 
+## Совместимые forwarding API
+
+CrawlExecution.verifySession(Map<String, Object> session, Map<String, Object> plan)
+сохраняет public API и делегирует FrontierReadback.verifySession(session, plan).
+Реализация проверки spec находится только в FrontierReadback;
+JobStatusService использует её напрямую, не через координатор.
+
+Package-private CrawlExecution.stop(Process worker, Instant identity) делегирует
+WorkerLauncher.stop(worker, identity). Проверка start instant, сигналы и ожидание
+реализованы только в WorkerLauncher. Это две точки входа, не две реализации cleanup.
+CrawlExecution.status делегирует JobStatusService.reconcileStatus с сохранением его writes.
+
 ## Admission и credentials
 
 CrawlExecution читает approval до admission; Frontier остаётся authority.
