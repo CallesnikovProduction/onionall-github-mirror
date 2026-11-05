@@ -30,12 +30,12 @@ public class CapabilityClientsTest {
     private static final String TOKEN_B="synthetic-capability-bbbbbbbbbbbbbbbbbbbbbbbb";
     private static final String URL="http://fixture.invalid/seed";
 
-    private static void await(String message,BooleanSupplier condition) throws Exception {
+    static void await(String message,BooleanSupplier condition) throws Exception {
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(8);
         while(!condition.getAsBoolean()&&System.nanoTime()<deadline) Thread.sleep(10);
         assertTrue(message,condition.getAsBoolean());
     }
-    private static class MetricsContext extends TopologyContext {
+    static class MetricsContext extends TopologyContext {
         MetricsContext(Map<String,Object> conf) {
             super(new StormTopology(),conf,Map.of(1,"fixture"),Map.of("fixture",List.of(1)),
                 Map.of(),Map.of(),"fixture","","",1,0,List.of(1),Map.of(),Map.of(),Map.of(),
@@ -54,9 +54,11 @@ public class CapabilityClientsTest {
             errors.add(io.grpc.Status.fromThrowable(error).getCode());super.onError(error);
         }
     }
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final AtomicReference<String> expected=new AtomicReference<>(TOKEN_A);
         final AtomicInteger attempts=new AtomicInteger(),denied=new AtomicInteger(),leases=new AtomicInteger(),streams=new AtomicInteger();
+        final List<StreamObserver<AckMessage>> responses=new CopyOnWriteArrayList<>();
+        volatile boolean hold;
         final List<URLItem> writes=new CopyOnWriteArrayList<>();
         Server server;int port;
         void start() throws Exception {
@@ -72,8 +74,8 @@ public class CapabilityClientsTest {
                     leases.incrementAndGet();out.onNext(URLInfo.newBuilder().setCrawlID("fixture").setKey("fixture.invalid").setUrl(URL).build());out.onCompleted();
                 }
                 @Override public StreamObserver<URLItem> putURLs(StreamObserver<AckMessage> out) {
-                    streams.incrementAndGet();return new StreamObserver<>(){
-                        public void onNext(URLItem item){writes.add(item);out.onNext(AckMessage.newBuilder().setID(item.getID()).setStatus(AckMessage.Status.OK).build());}
+                    streams.incrementAndGet();responses.add(out);return new StreamObserver<>(){
+                        public void onNext(URLItem item){writes.add(item);if(!hold)out.onNext(AckMessage.newBuilder().setID(item.getID()).setStatus(AckMessage.Status.OK).build());}
                         public void onError(Throwable error){}
                         public void onCompleted(){out.onCompleted();}
                     };
@@ -83,7 +85,7 @@ public class CapabilityClientsTest {
         void stop() throws Exception {server.shutdownNow();assertTrue(server.awaitTermination(5,TimeUnit.SECONDS));}
         @Override public void close() throws Exception {stop();}
     }
-    private static Map<String,Object> conf(Fixture fixture,Path token) {
+    static Map<String,Object> conf(Fixture fixture,Path token) {
         Map<String,Object> options=new HashMap<>();options.put("admission.token.file",token.toString());
         options.put("urlfrontier.host","127.0.0.1");options.put("urlfrontier.port",fixture.port);options.put("urlfrontier.crawlid","fixture");
         options.put("urlfrontier.max.messages.in.flight",10);options.put("urlfrontier.throttling.time.ms",1);
@@ -91,7 +93,7 @@ public class CapabilityClientsTest {
         options.put("scheduler.class","org.apache.stormcrawler.persistence.DefaultScheduler");options.put("status.updater.use.cache",false);
         return options;
     }
-    private static Tuple tuple() {
+    static Tuple tuple() {
         return (Tuple)Proxy.newProxyInstance(CapabilityClientsTest.class.getClassLoader(),new Class<?>[]{Tuple.class},(proxy,method,args)->switch(method.getName()){
             case "hashCode" -> System.identityHashCode(proxy);
             case "equals" -> proxy==args[0];
@@ -99,7 +101,7 @@ public class CapabilityClientsTest {
             default -> throw new AssertionError(method.getName());
         });
     }
-    private static OutputCollector collector(AtomicInteger ack,AtomicInteger failed) {
+    static OutputCollector collector(AtomicInteger ack,AtomicInteger failed) {
         return new OutputCollector((IOutputCollector)Proxy.newProxyInstance(CapabilityClientsTest.class.getClassLoader(),new Class<?>[]{IOutputCollector.class},(proxy,method,args)->{
             switch(method.getName()) {
                 case "emit":return List.of();
@@ -116,7 +118,7 @@ public class CapabilityClientsTest {
         var field=CapabilityStatusUpdaterBolt.class.getDeclaredField("channel");field.setAccessible(true);
         return (ManagedChannel)field.get(updater);
     }
-    private static void awaitReconnectFailure(CapabilityStatusUpdaterBolt updater) throws Exception {
+    static void awaitReconnectFailure(CapabilityStatusUpdaterBolt updater) throws Exception {
         ManagedChannel channel=updaterChannel(updater);
         await("transport observes refusal while fixture port is closed",()->channel.getState(false)==ConnectivityState.TRANSIENT_FAILURE);
     }
