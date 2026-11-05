@@ -14,7 +14,7 @@ command -v javac >/dev/null || { echo 'JDK 25 is required to build the CLI.' >&2
 maven=("$root/mvnw" -B)
 if [[ ${ONIONALL_OFFLINE:-0} == 1 ]]; then maven+=(-o); fi
 if [[ -d .runtime/maven-linux-repository ]]; then maven+=(-Dmaven.repo.local=.runtime/maven-linux-repository); fi
-"${maven[@]}" verify dependency:build-classpath -Dmdep.outputFile=target/cli-classpath.txt
+"${maven[@]}" -pl :onionall-brawler verify dependency:build-classpath "-Dmdep.outputFile=$root/target/cli-classpath.txt"
 stage=$(mktemp -d "$root/target/onionall-stage.XXXXXX")
 cleanup() {
     local status=$?

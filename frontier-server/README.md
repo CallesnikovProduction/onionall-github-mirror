@@ -8,6 +8,60 @@ original source hashes. Runtime dependency is the exact stock2.4 service fat JAR
 SHA256 ff1b774bf81343234e6f34878f8b7c9a826371b3e305e96bf0e204895e3562df.
 No dependency download or protobuf code generation occurs.
 
+## Maven and IntelliJ IDEA
+
+The root Maven reactor contains `crawler` and `frontier-server`. The server is
+independent of the crawler dependency graph. Its standard `src/main/java` and
+`src/test/java` roots are imported by IDEA; select JDK25 for Maven and the IDE.
+The build and tests use JDK25. The server's source/API/bytecode compatibility
+remains release11, matching the pre-existing `build.sh`; IDEA therefore shows
+language level11 for this module. This does not select a Java11 runtime or
+change the crawler's Java25 target.
+
+One explicit preparation step is required before the first Maven import/build.
+From the checkout root, with JDK25 on PATH:
+
+```sh
+java frontier-server/build-support/FrontierBuild.java prepare /absolute/path/to/pinned-service.jar frontier-server
+mvn -B -U -pl frontier-server verify
+mvn -B verify
+```
+
+Use a quoted Windows path in PowerShell. Preparation checks the exact SHA256
+above before writing anything. It copies that input and creates an ignored local
+file repository at `.runtime/frontier-maven-repository`. The synthetic Maven
+artifact `dev.onionall.pinned:urlfrontier-runtime-dependencies:2.4-ff1b774b-deps1`
+contains the original dependency/API/resource entries, byte for byte, excluding
+only `crawlercommons/urlfrontier/service/**/*.class`, which the vendored sources
+replace. Every excluded class must have a vendored owning Java source.
+No dependency version is substituted and no system-scoped dependency is used.
+The dependency is optional for downstream consumers because the packaged server
+already embeds it; it remains available for this module's IDE/compile/test runs.
+The first Maven resolution reads this file repository (`-U` also clears a prior
+failed-import cache); later builds can use `-o`
+with a complete Maven cache. Keep the prepared repository for validation and
+packaging even after Maven caches its dependency.
+
+`validate` verifies the pinned input, every retained dependency entry and the
+actual resolved Maven JAR. `test` compiles the five existing test sources and
+runs the four existing conformance main classes in separate JVMs; failures and
+180s subprocess timeouts fail Maven. These are executable conformance suites,
+not JUnit tests. Each run retains fresh DBs/logs under
+`target/maven-conformance-*`. The migration test alone starts a stock-baseline
+subprocess to verify stock creation and rollback refusal.
+
+`package` overlays the compiled service classes onto a fresh copy of the pinned
+fat JAR using the same JDK `jar --update` and fixed timestamp as `build.sh`.
+Output remains `frontier-server/target/urlfrontier-admission.jar`; launch this
+single JAR, never add the original fat JAR alongside it. The thin intermediate
+JAR is replaced before Maven install/deploy. `build.sh` remains an independent
+build path and does not require the prepared Maven repository.
+
+After preparation, open/reload the root `pom.xml` in IDEA. Missing input or
+checksum mismatch is a build failure; there is no fallback to another service
+artifact. Compilation/import contracts can be checked with Maven; actual IDEA
+indexing must also be observed in the IDE.
+
 Build with JDK25 (server source is compiled with release11):
 
 ```sh

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>dev.onionall.brawler</groupId>
+    <artifactId>frontier-server</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>11</maven.compiler.release>
+        <skipTests>false</skipTests>
+        <frontier.dependencies.version>2.4-ff1b774b-deps1</frontier.dependencies.version>
+        <frontier.build.tool>${project.basedir}/build-support/FrontierBuild.java</frontier.build.tool>
+    </properties>
+    <!-- Explicitly prepared from the original SHA-pinned service JAR. No remote replacement. -->
+    <repositories>
+        <repository>
+            <id>pinned-frontier</id>
+            <url>file://${project.basedir}/../.runtime/frontier-maven-repository</url>
+            <releases><checksumPolicy>fail</checksumPolicy></releases>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
+    <dependencies>
+        <dependency>
+            <groupId>dev.onionall.pinned</groupId>
+            <artifactId>urlfrontier-runtime-dependencies</artifactId>
+            <version>${frontier.dependencies.version}</version>
+            <!-- The published server JAR already contains these entries. -->
+            <optional>true</optional>
+        </dependency>
+    </dependencies>
+    <build>
+        <finalName>urlfrontier-admission</finalName>
+        <plugins>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-clean-plugin</artifactId><version>3.2.0</version></plugin>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-resources-plugin</artifactId><version>3.3.1</version></plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.11.0</version>
+                <!-- Match plain javac's source/line debug attributes in build.sh. -->
+                <configuration><debug>true</debug><debuglevel>lines,source</debuglevel></configuration>
+            </plugin>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.6.0</version></plugin>
+            <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.5.1</version></plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.1.0</version>
+                <configuration><executable>${java.home}/bin/java</executable></configuration>
+                <executions>
+                    <execution>
+                        <id>verify-pinned-input</id><phase>validate</phase><goals><goal>exec</goal></goals>
+                        <configuration><arguments>
+                            <argument>${frontier.build.tool}</argument><argument>verify</argument><argument>${project.basedir}</argument>
+                            <argument>${settings.localRepository}/dev/onionall/pinned/urlfrontier-runtime-dependencies/${frontier.dependencies.version}/urlfrontier-runtime-dependencies-${frontier.dependencies.version}.jar</argument>
+                        </arguments></configuration>
+                    </execution>
+                    <execution>
+                        <id>admission-conformance</id><phase>test</phase><goals><goal>exec</goal></goals>
+                        <configuration><skip>${skipTests}</skip><arguments>
+                            <argument>${frontier.build.tool}</argument><argument>test</argument><argument>${project.basedir}</argument>
+                        </arguments></configuration>
+                    </execution>
+                    <!-- Replace the default thin JAR with exactly the existing overlay packaging. -->
+                    <execution>
+                        <id>assemble-pinned-overlay</id><phase>package</phase><goals><goal>exec</goal></goals>
+                        <configuration><arguments>
+                            <argument>${frontier.build.tool}</argument><argument>package</argument><argument>${project.basedir}</argument>
+                        </arguments></configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
