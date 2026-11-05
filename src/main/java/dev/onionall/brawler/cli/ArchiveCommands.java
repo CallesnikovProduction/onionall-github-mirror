@@ -3,7 +3,7 @@ package dev.onionall.brawler.cli;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.onionall.brawler.archive.ArchiveStore;
 import dev.onionall.brawler.archive.SearchProvider;
-import dev.onionall.brawler.admission.CrawlService;
+import dev.onionall.brawler.crawl.CrawlService;
 import dev.onionall.brawler.tor.TorPolicy;
 import java.net.URI;
 import java.io.*;

@@ -10,8 +10,8 @@ import java.time.Instant;
 import java.util.*;
 
 /** Local process observation only; never authorizes work or changes a process. */
-final class WorkerObservation {
-    record Observation(JobStatus.Worker worker, Map<String,Object> details) { }
+public final class WorkerObservation {
+    public record Observation(JobStatus.Worker worker, Map<String,Object> details) { }
     static String scope() {
         try {
             String identity;
@@ -50,7 +50,7 @@ final class WorkerObservation {
         } catch (OverlappingFileLockException e) { return true; }
         catch (Exception e) { return null; }
     }
-    static Observation unavailable(String basis) { return observation(null, null, null, null, null, basis); }
+    public static Observation unavailable(String basis) { return observation(null, null, null, null, null, basis); }
     private static Observation observation(Boolean alive, Boolean owner, Boolean child, Boolean held, Integer exit, String basis) {
         Map<String,Object> details = new LinkedHashMap<>();
         details.put("alive", alive); details.put("owner_alive", owner); details.put("child_alive", child);
@@ -58,7 +58,7 @@ final class WorkerObservation {
         details.put("observed_at", Instant.now().toString());
         return new Observation(new JobStatus.Worker(alive, exit, basis), Collections.unmodifiableMap(details));
     }
-    static Observation read(Path execution, Path archive, String plan) {
+    public static Observation read(Path execution, Path archive, String plan) {
         try {
             Path lockPath=archive.resolve("crawl-worker.lock");
             if(Files.exists(WorkerOwnership.marker(lockPath),LinkOption.NOFOLLOW_LINKS)) {

@@ -12,6 +12,9 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import static dev.onionall.brawler.crawl.RuntimeDescriptor.number;
+import static dev.onionall.brawler.crawl.RuntimeDescriptor.text;
+
 /** Versioned bounded unary RPC. No count/put fallback to a stock Frontier. */
 public final class AdmissionClient implements AutoCloseable {
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -32,6 +35,30 @@ public final class AdmissionClient implements AutoCloseable {
         metadata.put(Metadata.Key.of("x-onionall-admission-token", Metadata.ASCII_STRING_MARSHALLER), token);
         authenticated = ClientInterceptors.intercept(channel, MetadataUtils.newAttachHeadersInterceptor(metadata));
     }
+
+    /**
+     * <b>Создание клиента для взаимодействия с Frontier.</b>
+     *
+     * <p>Извлекает адрес и порт Frontier из runtime-конфигурации
+     * и создаёт {@link AdmissionClient} с переданным
+     * admission capability-токеном.
+     *
+     * @param runtime карта параметров среды выполнения
+     * @param token токен авторизации admission-операций
+     * @return настроенный клиент Frontier
+     * @throws IOException если параметры подключения некорректны
+     */
+    public static AdmissionClient fromRuntime(
+            Map<String, Object> runtime,
+            String token
+    ) throws IOException {
+        return new AdmissionClient(
+                text(runtime,"frontier_host"),
+                number(runtime,"frontier_port",7071,65535),
+                token
+        );
+    }
+
     public Map<String,Object> command(Map<String,Object> request) throws IOException {
         byte[] body = JSON.writeValueAsBytes(request);
         if (body.length > 32768) throw new IOException("Admission request exceeds32KiB");

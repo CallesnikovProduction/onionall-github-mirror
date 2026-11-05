@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import dev.onionall.brawler.crawl.CrawlService;
 import org.junit.*;
 import org.junit.rules.TemporaryFolder;
 import static org.junit.Assert.*;

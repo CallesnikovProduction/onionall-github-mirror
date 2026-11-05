@@ -3,6 +3,8 @@ package dev.onionall.brawler.admission;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.onionall.brawler.archive.ArchiveStore;
+import dev.onionall.brawler.crawl.JobStatusService;
+
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -11,91 +13,44 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static dev.onionall.brawler.admission.AdmissionClient.fromRuntime;
+import static dev.onionall.brawler.admission.FrontierCapability.token;
+import static dev.onionall.brawler.crawl.RuntimeDescriptor.*;
+
 /** Local application orchestration. Frontier owns scheduling; the catalog is readback only.
  * Runtime descriptors are operator supplied deployment inputs, never fetched metadata.
  */
 public final class CrawlExecution {
-    private static final ObjectMapper JSON = new ObjectMapper();
-    private CrawlExecution() { }
-    private static Map<String,Object> descriptor(Path file) throws IOException {
-        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file)>32768)
-            throw new IOException("Require regular runtime JSON descriptor <=32KiB");
-        return JSON.readValue(Files.readAllBytes(file),new TypeReference<Map<String,Object>>(){});
+
+    /**
+     * Общий объект Jackson для сериализации и десереализации JSON
+     */
+    private static final ObjectMapper EXECUTION_JSON = new ObjectMapper();
+
+    /**
+     * <b>Получение и сохранение актуального состояния crawl-задания.</b>
+     *
+     * <p>Объединяет архивные данные, наблюдение локального worker
+     * и проверенные сведения Frontier. Формирует итоговый статус,
+     * сохраняет его в архиве и возвращает расширенную карту задания.
+     *
+     * @param archive путь к архиву заданий
+     * @param id идентификатор crawl-задания
+     * @param runtimeFile путь к runtime-конфигурации или {@code null}
+     * @param tokenFile путь к admission capability-токену
+     * @return карта задания с итоговым статусом и наблюдениями
+     * @throws IOException при ошибках чтения, записи или конфигурации
+     */
+
+    public static Map<String,Object> status(
+            Path archive,
+            String id,
+            Path runtimeFile,
+            Path tokenFile
+    ) throws IOException {
+        return JobStatusService.reconcileStatus(archive, id, runtimeFile, tokenFile);
     }
-    private static String text(Map<String,Object> value,String key) throws IOException {
-        Object field=value.get(key); if (!(field instanceof String s) || s.isBlank() || s.length()>4096)
-            throw new IOException("Missing runtime " + key); return s;
-    }
-    private static int number(Map<String,Object> value,String key,int fallback,int max) throws IOException {
-        Object n=value.get(key); int result=n==null?fallback:n instanceof Number?((Number)n).intValue():-1;
-        if(result<1 || result>max || n instanceof Number && ((Number)n).doubleValue()!=result)
-            throw new IOException("Invalid runtime " + key); return result;
-    }
-    public static String token(Path file) throws IOException {
-        if(file==null || !Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS) || Files.size(file)>257)
-            throw new IOException("Require regular admission capability file <=257 bytes");
-        String token=Files.readString(file).strip();
-        if(token.length()<32 || token.length()>256 || !token.matches("[A-Za-z0-9_-]+")) throw new IOException("Invalid admission capability");
-        return token;
-    }
-    private static AdmissionClient client(Map<String,Object> runtime,String token) throws IOException {
-        return new AdmissionClient(text(runtime,"frontier_host"),number(runtime,"frontier_port",7071,65535),token);
-    }
-    public static Map<String,Object> status(Path archive,String id,Path runtimeFile,Path tokenFile) throws IOException {
-        Map<String,Object> result;
-        try(var store=new ArchiveStore(archive)) { result=new LinkedHashMap<>(store.job(id)); }
-        String catalogAt=Instant.now().toString();
-        WorkerObservation.Observation worker=WorkerObservation.unavailable("NO_RUNTIME_OBSERVATION");
-        FrontierReadback.Counts counts=null;Boolean reachable=null;
-        if(runtimeFile!=null) {
-            Map<String,Object> runtime=descriptor(runtimeFile);
-            if(runtime.get("work_directory") instanceof String directory && !directory.isBlank() && directory.length()<=4096)
-                worker=WorkerObservation.read(Path.of(directory).toAbsolutePath().normalize().resolve(id).resolve("execution.json"),archive,id);
-            Map<String,Object> session=null;
-            try(var rpc=client(runtime,token(tokenFile))) {
-                session=rpc.command(Map.of("action","session","session_id",id));reachable=true;
-                if(!"SESSION_OPEN".equals(session.get("outcome"))) throw new IOException("Authoritative session unavailable: "+session.get("outcome"));
-                if(!Boolean.TRUE.equals(result.get("approved"))) throw new IOException("Stored plan is not approved");
-                verifySession(session,result);
-                if(!(session.get("reserved_count") instanceof Integer || session.get("reserved_count") instanceof Long))
-                    throw new IOException("Invalid authoritative reservation count");
-                long sessionReserved=((Number)session.get("reserved_count")).longValue();
-                if(sessionReserved<0 || sessionReserved>((Number)result.get("max_pages")).intValue())
-                    throw new IOException("Invalid authoritative reservation count");
-                counts=rpc.counts(id);
-                if(counts.reserved()>((Number)result.get("max_pages")).intValue()
-                    || counts.reserved()<sessionReserved) throw new IOException("Inconsistent Frontier readback");
-            } catch(IOException e) {
-                counts=null;
-                if(e.getCause() instanceof io.grpc.StatusRuntimeException rpcFailure) {
-                    var code=rpcFailure.getStatus().getCode();
-                    if(code==io.grpc.Status.Code.UNAVAILABLE) reachable=Boolean.FALSE;
-                    else if(code==io.grpc.Status.Code.DEADLINE_EXCEEDED) reachable=null;
-                    else reachable=Boolean.TRUE;
-                }
-            }
-            if(counts!=null) {
-                result.put("authoritative_admission",session);result.put("admission","SERVER_READBACK");
-                try(var store=new ArchiveStore(archive)) {
-                    var observation=new LinkedHashMap<String,Object>(store.admissionObservation(id));
-                    observation.putIfAbsent("state","ADMITTED");observation.put("admission","COMMITTED");
-                    observation.put("authoritative_admission",session);observation.put("session_id",id);observation.put("observed_at",Instant.now().toString());
-                    store.recordAdmission(id,observation);
-                    result.put("state",observation.get("state"));
-                }
-            }
-        }
-        Map<String,Object> view=JobStatusView.assemble(result,counts,worker,reachable,runtimeFile!=null,catalogAt);
-        try(var store=new ArchiveStore(archive)) {
-            store.recordJobStatus(id,view);
-            Map<String,Object> recorded=store.admissionObservation(id);
-            result.put("status_transitions",recorded.get("status_transitions"));
-            result.put("status_transitions_dropped",recorded.get("status_transitions_dropped"));
-        }
-        result.put("job_status",view);
-        result.putAll(view);
-        return result;
-    }
+
     public static Map<String,Object> start(Path archive,String id,Path runtimeFile,Path tokenFile) throws Exception {
         Map<String,Object> plan;
         try(var store=new ArchiveStore(archive)) { plan=store.plan(id); }
@@ -134,7 +89,7 @@ public final class CrawlExecution {
                 "onionall-job/parsefilters.json",Files.readAllBytes(work.resolve("parsefilters.json")),
                 "onionall-job/urlfilters.json",Files.readAllBytes(work.resolve("urlfilters.json"))));
             Map<String,Object> session;
-            try(var rpc=client(runtime,capability)) {
+            try(var rpc= fromRuntime(runtime,capability)) {
                 var open=new LinkedHashMap<String,Object>();
                 open.put("action","open");open.put("session_id",id);open.put("origin",plan.get("origin"));
                 open.put("seeds",plan.get("seeds"));open.put("max_pages",plan.get("max_pages"));
@@ -173,7 +128,7 @@ public final class CrawlExecution {
                 while(!Files.exists(ready) && worker.isAlive() && System.nanoTime()<readyDeadline) Thread.sleep(25);
             } catch(InterruptedException e) {stop(worker,workerIdentity);Thread.currentThread().interrupt();throw new IOException("Worker startup interrupted",e);}
             if(!Files.exists(ready)) { stop(worker,workerIdentity);throw new IOException("Bounded worker could not acquire execution ownership; inspect "+log); }
-            Map<String,Object> readiness=JSON.readValue(Files.readAllBytes(ready),new TypeReference<Map<String,Object>>(){});
+            Map<String,Object> readiness= EXECUTION_JSON.readValue(Files.readAllBytes(ready),new TypeReference<Map<String,Object>>(){});
             if(!(readiness.get("owner_pid") instanceof Number ownerPid) || ownerPid.longValue()!=worker.pid()) {
                 stop(worker,workerIdentity);throw new IOException("Worker ownership readback mismatch");
             }
@@ -198,7 +153,7 @@ public final class CrawlExecution {
             result.put("worker_exit_code",worker.exitValue());result.put("state",worker.exitValue()==0?"WORKER_EXITED":"WORKER_FAILED");
             // Exit0 is not a crawl-completion assertion. Pending work/failures are read from owning systems.
             result.put("passed",worker.exitValue()==0);result.put("crawl_completed_verified",false);
-            try(var rpc=client(runtime,capability)) { result.put("authoritative_admission",rpc.command(Map.of("action","session","session_id",id))); }
+            try(var rpc= fromRuntime(runtime,capability)) { result.put("authoritative_admission",rpc.command(Map.of("action","session","session_id",id))); }
             catch(IOException e) { result.put("admission_readback_error","AUTHORITATIVE_READBACK_UNAVAILABLE"); }
             write(work.resolve("execution.json"),result);
             try(var store=new ArchiveStore(archive)) { store.recordAdmission(id,result); }
@@ -214,12 +169,21 @@ public final class CrawlExecution {
             }
         }
     }
+
     private static String absoluteClasspath() {
-        return Arrays.stream(System.getProperty("java.class.path").split(java.util.regex.Pattern.quote(java.io.File.pathSeparator)))
-            .map(entry->Path.of(entry.isEmpty()?".":entry).toAbsolutePath().normalize().toString())
-            .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
+        return Arrays
+                .stream(System.getProperty("java.class.path")
+                        .split(java.util.regex.Pattern.quote(java.io.File.pathSeparator)))
+                .map(entry ->
+                        Path.of(entry.isEmpty() ? "." : entry)
+                                .toAbsolutePath()
+                                .normalize()
+                                .toString()
+                )
+                .collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
     }
-    private static void verifySession(Map<String,Object> session,Map<String,Object> plan) throws IOException {
+
+    public static void verifySession(Map<String,Object> session,Map<String,Object> plan) throws IOException {
         if(!(session.get("spec") instanceof Map<?,?> spec) ||
            !Objects.equals(spec.get("session_id"),plan.get("plan_id")) ||
            !Objects.equals(spec.get("origin"),plan.get("origin")) ||
@@ -229,12 +193,33 @@ public final class CrawlExecution {
            !(spec.get("max_depth") instanceof Number depth) || depth.intValue()!=((Number)plan.get("depth")).intValue() ||
            !Boolean.TRUE.equals(spec.get("approved"))) throw new IOException("Authoritative session differs from approved plan");
     }
-    private static boolean matches(ProcessHandle process,Instant start) {
-        return start!=null&&process.isAlive()&&process.info().startInstant().filter(start::equals).isPresent();
+
+    private static boolean matches(
+            ProcessHandle process,
+            Instant start
+    ) {
+        return start != null &&
+                process.isAlive() &&
+                process
+                        .info()
+                        .startInstant()
+                        .filter(start::equals)
+                        .isPresent();
     }
-    private static void signal(ProcessHandle process,Instant start,boolean force) {
-        if(matches(process,start)){if(force)process.destroyForcibly();else process.destroy();}
+
+    private static void signal(
+            ProcessHandle process,
+            Instant start,
+            boolean force
+    ) {
+        if (matches(process, start)) {
+            if (force)
+                process.destroyForcibly();
+            else
+                process.destroy();
+        }
     }
+
     /** Cleanup only a launch-pinned wrapper and its identified, directly observed descendants. */
     static void stop(Process worker,Instant identity) {
         if(!worker.isAlive()||!matches(worker.toHandle(),identity))return;
@@ -250,36 +235,177 @@ public final class CrawlExecution {
         }
         // This caller never publishes STOPPED: only the owning wrapper can attest cleanup.
     }
-    private static void write(Path path,Object value) throws IOException {
-        Path tmp=Files.createTempFile(path.getParent(),".runtime-",".tmp");
-        try {Files.write(tmp,JSON.writeValueAsBytes(value));Files.move(tmp,path,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}
-        finally {Files.deleteIfExists(tmp);}
-    }
-    private static Map<String,Object> configuration(Map<String,Object> plan,Map<String,Object> runtime,Path archive,Path tokenFile,Path work,int timeout,int retry) throws IOException {
-        Map<String,Object> c=new LinkedHashMap<>();
-        c.put("topology.workers",1);c.put("topology.message.timeout.secs",300);c.put("topology.max.spout.pending",10);
-        c.put("topology.kryo.register",List.of("org.apache.stormcrawler.Metadata","org.apache.stormcrawler.persistence.Status"));
-        c.put("storm.log.dir",work.resolve("logs").toString());c.put("storm.local.dir",work.resolve("storm-local").toString());
-        c.put("dev.zookeeper.path",work.resolve("zookeeper").toString());
-        c.put("urlfrontier.host",text(runtime,"frontier_host"));c.put("urlfrontier.port",number(runtime,"frontier_port",7071,65535));
-        c.put("urlfrontier.crawlid",plan.get("plan_id"));c.put("urlfrontier.max.buckets",1);c.put("urlfrontier.max.urls.per.bucket",2);
-        c.put("urlfrontier.max.messages.in.flight",10);c.put("urlfrontier.delay.requestable",300);
-        c.put("fetcher.threads.number",1);c.put("fetcher.threads.per.queue",1);c.put("fetcher.server.delay",2.0);
-        c.put("fetcher.server.delay.force",true);c.put("fetcher.max.throttle.sleep",-1);
-        c.put("http.protocol.implementation","dev.onionall.brawler.tor.TorProtocol");c.put("https.protocol.implementation","dev.onionall.brawler.tor.TorProtocol");
-        c.put("http.timeout",timeout);c.put("http.content.limit",131072);c.put("http.agent.name","OnionallBrawler");
-        c.put("http.robots.file.skip",false);c.put("http.allow.redirects",false);c.put("http.trust.everything",false);
-        c.put("tor.mode","ONLY");c.put("tor.socks.host",text(runtime,"socks_host"));c.put("tor.socks.port",number(runtime,"socks_port",9050,65535));
-        c.put("tor.allowed.hosts",List.of(java.net.URI.create((String)plan.get("origin")).getHost()));c.put("tor.discovery.html.only",true);
-        c.put("protocol.md.prefix","protocol.");c.put("metadata.persist",List.of("discovery.*","fetch.exception","fetch.statusCode","protocol.tor.category","error.cause","error.source"));
-        c.put("metadata.transfer",List.of());c.put("parser.emitOutlinks.max.per.page",100);c.put("sitemap.discovery",false);
-        c.put("fetchInterval.default",1440);c.put("fetchInterval.fetch.error",retry);c.put("fetchInterval.error",-1);c.put("max.fetch.errors",3);
-        c.put("parsefilters.config.file","onionall-job/parsefilters.json");c.put("urlfilters.config.file","onionall-job/urlfilters.json");
-        c.put("archive.root",archive.toString());c.put("archive.job.id",plan.get("plan_id"));
-        c.put("discovery.budget.mode","durable-v1");
-        c.put("admission.host",text(runtime,"frontier_host"));c.put("admission.port",number(runtime,"frontier_port",7071,65535));
-        c.put("admission.token.file",tokenFile.toString());c.put("admission.session.id",plan.get("plan_id"));return c;
-    }
-    private static Map<String,Object> topology(Path config) { return CrawlTopology.build(config); }
+    private static void write(
+            Path path,
+            Object value
+    ) throws IOException {
+        Path tmp = Files.createTempFile(
+                path.getParent(),
+                ".runtime-",
+                ".tmp"
+        );
 
+        try {
+            Files.write(
+                    tmp,
+                    EXECUTION_JSON.writeValueAsBytes(value)
+            );
+            Files.move(
+                    tmp,
+                    path,StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+            );
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+    private static Map<String, Object> configuration(
+            Map<String, Object> plan,
+            Map<String, Object> runtime,
+            Path archive,
+            Path tokenFile,
+            Path work,
+            int timeout,
+            int retry
+    ) throws IOException {
+        Map<String, Object> c = new LinkedHashMap<>();
+        c.put("topology.workers", 1);
+        c.put("topology.message.timeout.secs", 300);
+        c.put("topology.max.spout.pending", 10);
+
+        c.put(
+                "topology.kryo.register",
+                List.of("org.apache.stormcrawler.Metadata", "org.apache.stormcrawler.persistence.Status")
+        );
+        c.put(
+                "storm.log.dir",
+                work.resolve("logs").toString()
+        );
+        c.put(
+                "storm.local.dir",
+                work.resolve("storm-local").toString()
+        );
+        c.put(
+                "dev.zookeeper.path",
+                work.resolve("zookeeper").toString()
+        );
+        c.put(
+                "urlfrontier.host",
+                text(runtime,"frontier_host")
+        );
+        c.put(
+                "urlfrontier.port",
+                number(runtime,"frontier_port",7071,65535)
+        );
+        c.put(
+                "urlfrontier.crawlid",
+                plan.get("plan_id")
+        );
+        c.put("urlfrontier.max.buckets", 1);
+        c.put("urlfrontier.max.urls.per.bucket", 2);
+        c.put("urlfrontier.max.messages.in.flight", 10);
+        c.put("urlfrontier.delay.requestable", 300);
+        c.put("fetcher.threads.number", 1);
+        c.put("fetcher.threads.per.queue", 1);
+        c.put("fetcher.server.delay", 2.0);
+        c.put("fetcher.server.delay.force", true);
+        c.put("fetcher.max.throttle.sleep", -1);
+        c.put(
+                "http.protocol.implementation",
+                "dev.onionall.brawler.tor.TorProtocol"
+        );
+        c.put(
+                "https.protocol.implementation",
+                "dev.onionall.brawler.tor.TorProtocol"
+        );
+        c.put("http.timeout", timeout);
+        c.put("http.content.limit", 131072);
+        c.put(
+                "http.agent.name",
+                "OnionallBrawler"
+        );
+        c.put("http.robots.file.skip", false);
+        c.put("http.allow.redirects", false);
+        c.put("http.trust.everything", false);
+        c.put("tor.mode","ONLY");
+        c.put(
+                "tor.socks.host",
+                text(runtime,"socks_host")
+        );
+        c.put(
+                "tor.socks.port",
+                number(runtime,"socks_port",9050,65535)
+        );
+        c.put(
+                "tor.allowed.hosts",
+                List.of(java.net.URI.create((String) plan.get("origin")).getHost())
+        );
+        c.put("tor.discovery.html.only", true);
+        c.put("protocol.md.prefix","protocol.");
+        c.put(
+                "metadata.persist",
+                List.of(
+                        "discovery.*",
+                        "fetch.exception",
+                        "fetch.statusCode",
+                        "protocol.tor.category",
+                        "error.cause",
+                        "error.source"
+                )
+        );
+        c.put(
+                "metadata.transfer",
+                List.of()
+        );
+        c.put("parser.emitOutlinks.max.per.page", 100);
+        c.put("sitemap.discovery", false);
+        c.put("fetchInterval.default", 1440);
+        c.put("fetchInterval.fetch.error", retry);
+        c.put("fetchInterval.error", -1);
+        c.put("max.fetch.errors", 3);
+        c.put(
+                "parsefilters.config.file",
+                "onionall-job/parsefilters.json"
+        );
+        c.put(
+                "urlfilters.config.file",
+                "onionall-job/urlfilters.json"
+        );
+        c.put(
+                "archive.root",
+                archive.toString());
+        c.put(
+                "archive.job.id",
+                plan.get("plan_id")
+        );
+        c.put(
+                "discovery.budget.mode",
+                "durable-v1"
+        );
+        c.put(
+                "admission.host",
+                text(runtime,"frontier_host")
+        );
+        c.put(
+                "admission.port",
+                number(runtime,"frontier_port",7071,65535)
+        );
+        c.put(
+                "admission.token.file",
+                tokenFile.toString()
+        );
+        c.put(
+                "admission.session.id",
+                plan.get("plan_id")
+        );
+
+        return c;
+    }
+
+    private static Map<String, Object> topology(Path config) {
+        return CrawlTopology.build(config);
+    }
+
+    private CrawlExecution() { // No instances
+    }
 }

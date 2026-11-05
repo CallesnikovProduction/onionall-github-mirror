@@ -4,11 +4,11 @@ import java.time.Instant;
 import java.util.*;
 
 /** Versioned additive view for CLI/future UI; cached values never drive lifecycle truth. */
-final class JobStatusView {
+public final class JobStatusView {
     private JobStatusView() { }
-    static Map<String,Object> assemble(Map<String,Object> catalog, FrontierReadback.Counts c,
-                                       WorkerObservation.Observation worker, Boolean reachable,
-                                       boolean requested, String catalogAt) {
+    public static Map<String,Object> assemble(Map<String, Object> catalog, FrontierReadback.Counts c,
+                                              WorkerObservation.Observation worker, Boolean reachable,
+                                              boolean requested, String catalogAt) {
         boolean admitted = catalog.get("authoritative_admission") instanceof Map<?,?>
             || "COMMITTED".equals(catalog.get("admission")) || "SERVER_READBACK".equals(catalog.get("admission"));
         var assessment = JobStatus.assess(Boolean.TRUE.equals(catalog.get("approved")), admitted, requested, c, worker.worker());
