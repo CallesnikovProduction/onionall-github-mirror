@@ -121,7 +121,16 @@ fallback. The wordmark is unchanged. Renderer contracts and actual PTY captures:
 
 See the [script map, platform support, inputs and resource ownership](scripts/README.md) for direct entrypoints organized by responsibility.
 
-Prerequisites: JDK 25 and Maven. Lifecycle plugin versions are pinned in `pom.xml` so Maven distribution defaults do not select different build plugins. There is no Maven wrapper. A clean machine needs access to Maven Central.
+Prerequisites: JDK 25 and Maven. The root `pom.xml` aggregates `crawler/pom.xml`
+and `frontier-server/pom.xml`; each module pins its build plugins. There is no
+Maven wrapper. A clean machine needs access to Maven Central. Before building
+the full reactor or importing it into IDEA, prepare the exact pinned Frontier
+dependency as described in [frontier-server/README.md](frontier-server/README.md#maven-and-intellij-idea).
+The crawler-only build does not require that service JAR:
+
+```sh
+mvn -B -pl :onionall-brawler verify
+```
 
 Linux / a shell with Java and Maven on PATH:
 
@@ -137,7 +146,8 @@ PowerShell:
 ./scripts/cli/build-project.ps1 -JdkHome "$env:ProgramFiles/Java/jdk-25"
 ```
 
-The helper finds `mvn` on PATH or Maven bundled with IntelliJ under `$env:ProgramFiles/JetBrains`. For other installations, pass `-Maven` with the path to `mvn.cmd`. `-Repository <path>` selects a writable dependency cache; `-Offline` requires a complete cache. Environment changes are restored afterwards. Log: `.runtime/build.log`.
+The helper builds only the crawler, preserving its previous dependency boundary.
+It finds `mvn` on PATH or Maven bundled with IntelliJ under `$env:ProgramFiles/JetBrains`. For other installations, pass `-Maven` with the path to `mvn.cmd`. `-Repository <path>` selects a writable dependency cache; `-Offline` requires a complete cache. Environment changes are restored afterwards. Log: `.runtime/build.log`.
 
 Output: `target/onionall-brawler-0.1.0-SNAPSHOT.jar`. Storm supplies the provided runtime classes; `java -jar` alone is not the launch command.
 

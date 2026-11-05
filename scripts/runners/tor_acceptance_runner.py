@@ -117,7 +117,7 @@ class Runner:
             if previous is None: os.environ.pop('M2_BRIDGES_FILE', None)
             else: os.environ['M2_BRIDGES_FILE'] = previous
         if not ready['ready']: raise RuntimeError('Tor bridge preflight failed; full M2 was not started')
-        maven = [self.tool('mvn'), '-B', '-Dmaven.compiler.release=25']
+        maven = [self.tool('mvn'), '-B', '-pl', ':onionall-brawler', '-Dmaven.compiler.release=25']
         if self.environment.get('M2_MAVEN_REPOSITORY'):
             maven += ['-Dmaven.repo.local=' + self.environment['M2_MAVEN_REPOSITORY']]
         self.command(maven + ['verify'], 'build.log')

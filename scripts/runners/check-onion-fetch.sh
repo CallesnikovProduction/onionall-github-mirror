@@ -14,8 +14,8 @@ maven=(mvn -o -B)
 if [[ -d .runtime/maven-linux-repository ]]; then
     maven+=(-Dmaven.repo.local=.runtime/maven-linux-repository)
 fi
-"${maven[@]}" test-compile dependency:build-classpath \
-    -Dmdep.outputFile=.runtime/downloads/smoke-classpath.txt \
+"${maven[@]}" -pl :onionall-brawler test-compile dependency:build-classpath \
+    "-Dmdep.outputFile=$root/.runtime/downloads/smoke-classpath.txt" \
     > .runtime/downloads/ahmia-build.log 2>&1 || {
     echo 'Smoke compilation failed; see .runtime/downloads/ahmia-build.log' >&2; exit 1;
 }

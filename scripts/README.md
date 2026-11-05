@@ -62,6 +62,11 @@ These are usage examples, not an instruction to run all acceptance suites.
 
 ## Inputs, dependencies and effects
 
+CLI build and transport-probe Maven calls select `:onionall-brawler` in the
+reactor. Crawler classes and JARs still use the checkout's root `target/`.
+These entrypoints do not build or resolve `frontier-server`; full-reactor builds
+require its separate [pinned-JAR preparation](../frontier-server/README.md#maven-and-intellij-idea).
+
 - Builds require JDK 25+ and Maven. `JAVA_HOME` selects Java. CLI build accepts
   `ONIONALL_OFFLINE=1` and reuses `.runtime/maven-linux-repository` when present.
   Install/uninstall use absolute `XDG_DATA_HOME` / `XDG_BIN_HOME` (defaults
