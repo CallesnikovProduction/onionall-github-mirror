@@ -1,43 +1,124 @@
-# Archive catalog and HTML objects
+# archive: каталог, HTML и наблюдения
 
-Inherited repository and ancestor AGENTS.md constraints remain in force.
+Наследует [общие Java-соглашения](../AGENTS.md).
+Хранит планы/approval, immutable HTML, snapshots, provenance, связи и failure observations.
+Admission, quota, leases и retry scheduling принадлежат Frontier.
 
-## MODULE PURPOSE
+## Классы
 
-Local archive persistence, catalog reads and observed crawl outcomes.
+| Класс | Роль |
+| --- | --- |
+| [ArchiveStore](ArchiveStore.java) | AutoCloseable владелец embedded H2 connection и objects/; планы, каталог, поиск, граф, наблюдения |
+| [ArchiveParseFilter](ArchiveParseFilter.java) | Проверка pipeline config/approval и commit HTML до parser emission |
+| [ArchiveStatusUpdaterBolt](ArchiveStatusUpdaterBolt.java) | Stock-Frontier fixture updater; общая recordOutcome перед store superclass |
+| [CapabilityArchiveStatusUpdaterBolt](CapabilityArchiveStatusUpdaterBolt.java) | Product updater поверх capability-aware адаптера с тем же архивным наблюдением |
+| [FailureObservation](FailureObservation.java) | Record phase/source/httpStatus/retryable/terminal/nextDueEpoch/transport; null сохраняет неизвестность |
+| [SearchProvider](SearchProvider.java) | search-контракт; LocalArchive читает каталог, AssistedAhmia возвращает ручную official_url |
 
-## RESPONSIBILITIES
+## API и возвращаемые данные
 
-Store plans/approval, snapshots, links and bounded failure observations; expose local search and import/export. Do not decide admission, quota, leases or retry scheduling.
+[ArchiveStore.java](ArchiveStore.java):
 
-## IMPLEMENTED ARCHITECTURE
+```java
+public ArchiveStore(Path location) throws IOException;
+public synchronized Map<String, Object> createPlan(List<String> seeds, int depth, int maxPages, String provider) throws IOException;
+public synchronized Map<String, Object> plans(String after, int limit) throws IOException;
+public synchronized Map<String, Object> plan(String id) throws IOException;
+public synchronized Map<String, Object> approvePlan(String id) throws IOException;
+public synchronized void recordAdmission(String id, Map<String, Object> observation) throws IOException;
+public synchronized void recordJobStatus(String id, Map<String, Object> status) throws IOException;
+public synchronized boolean hasExecutionHistory() throws IOException;
+public synchronized Map<String, Object> admissionObservation(String id) throws IOException;
+public synchronized Map<String, Object> job(String id) throws IOException;
+public synchronized Map<String, Object> archive(String jobId, String url, int depth, String source, int status, String contentType, byte[] html, List<Map<String, Object>> links) throws IOException;
+public synchronized Map<String, Object> importHtml(String jobId, String url, byte[] html, List<Map<String, Object>> links) throws IOException;
+public synchronized Map<String, Object> pages(String jobId, int limit) throws IOException;
+public synchronized Map<String, Object> page(String pageId) throws IOException;
+public synchronized Map<String, Object> links(String jobId, int limit) throws IOException;
+public synchronized Map<String, Object> search(String query, String jobId, int limit) throws IOException;
+public synchronized Map<String, Object> exportSummary(String jobId, int limit) throws IOException;
+public synchronized Map<String, Object> recordFailure(String jobId, String url, String category) throws IOException;
+public synchronized Map<String, Object> recordFailure(String jobId, String url, String category, FailureObservation observation) throws IOException;
+public synchronized Map<String, Object> failureHistory(String jobId, String cursor, int limit) throws IOException;
+public synchronized void close() throws IOException;
+```
 
-ArchiveStore uses embedded single-process H2 and SHA256-addressed immutable HTML objects. Blob publication precedes snapshot transaction. ArchiveParseFilter commits before parser document emission; archive status observation precedes Frontier status write.
+Map-результаты сохраняют существующие JSON keys. plan возвращает карту сохранённой specification; approvePlan обновляет approval в БД. job добавляет наблюдения/счётчики.
+recordFailure возвращает failure_id/job_id/url/category; failureHistory возвращает rows,
+through_sequence, next_cursor и nullable fetch_attempt_count.
 
-## KEY COMPONENTS
+jobId у pages/search может быть null для общего просмотра. id/pageId обозначают UUID,
+cursor принадлежит конкретной истории, limit проверяется в диапазоне 1..100.
+archive принимает crawler status/contentType и discovery provenance; importHtml явно
+использует source_kind=MANUAL_IMPORT, http_status=0 и fetched_at=null.
 
-`ArchiveStore`, `ArchiveParseFilter`, `ArchiveStatusUpdaterBolt`, `CapabilityArchiveStatusUpdaterBolt`, `SearchProvider` and failure-observation types.
+[ArchiveParseFilter.java](ArchiveParseFilter.java):
 
-## DATA FLOW
+```java
+public void configure(Map<String, Object> conf, JsonNode params, String name);
+static Path requiredRoot(Map<String, Object> conf);
+static String requiredJob(Map<String, Object> conf);
+public void filter(String url, byte[] content, DocumentFragment fragment, ParseResult parse);
+```
 
-Fetched HTML -> bounded immutable object -> catalog transaction -> parser document. Status outcome -> catalog observation -> authenticated Frontier updater. Assisted search-provider input imports user-provided HTML; local search queries catalog text.
+[ArchiveStatusUpdaterBolt.java](ArchiveStatusUpdaterBolt.java):
 
-## DEPENDENCIES
+```java
+public void prepare(Map<String, Object> conf, TopologyContext context, OutputCollector collector);
+static void recordOutcome(Path root, String job, String url, Status status, Metadata metadata, Optional<Date> nextFetch) throws IOException;
+public void store(String url, Status status, Metadata metadata, Optional<Date> nextFetch, Tuple tuple);
+```
 
-H2, JSoup, StormCrawler parser/status interfaces; admission client/orchestration; Kotlin Tor transport validation.
+[CapabilityArchiveStatusUpdaterBolt.java](CapabilityArchiveStatusUpdaterBolt.java):
 
-## INVARIANTS
+```java
+public void prepare(Map<String, Object> conf, TopologyContext context, OutputCollector collector);
+public void store(String url, Status status, Metadata metadata, Optional<Date> nextFetch, Tuple tuple);
+```
 
-H2 is a catalog, not authoritative scheduling. Preserve no-overwrite object integrity, bounded content, schema/version guards and single-process access. Failure intent/next due is an observation, not proof Frontier accepted it or a count of distinct HTTP attempts.
+[SearchProvider.java](SearchProvider.java):
 
-## CHANGE GUIDELINES
+```java
+abstract Map<String, Object> search(String query, int limit) throws IOException;
+```
 
-Test object/transaction failure ordering and catalog reopen. Do not silently enable AUTO_SERVER or read-only second-process fallback. Inspect installed parser exception/ACK behavior before changing fault handling; schema changes require explicit compatibility/rollback review.
+Реализации search имеют ту же сигнатуру. AssistedAhmia проверяет query ≤256 и limit 1..100,
+возвращает USER_ACTION_REQUIRED/network_requested=false, без HTTP.
 
-## RELATED MODULES
+## Persistence и ограничения
 
-[Orchestration](../admission/AGENTS.md); [Archive contract](../../../../../../../docs/archive-mvp.md); [Archive fixture](../../../../../../../test/archive/AGENTS.md).
+- ArchiveStore создаёт каталоги и применяет additive DDL при открытии. Core schema version=2;
+  failure_observations_v1 и status audit имеют отдельное additive представление.
+  Новая несовместимая schema version запрещает открытие.
+- H2 использует AUTO_SERVER=FALSE, WRITE_DELAY=0, DB_CLOSE_ON_EXIT=FALSE.
+  Методы экземпляра synchronized; SQL catalog_guard FOR UPDATE сериализует транзакции.
+  Это не многопроцессный сетевой каталог. Закрывайте экземпляр после операции.
+- Пути проверяются на symlink, содержимое хранится по SHA256. Проверки путей не являются
+  общей защитой от всех filesystem races. Blob force и atomic move предшествуют snapshot commit.
+  При SQL-ошибке rollback не удаляет уже опубликованный blob.
+- HTML ограничен 1..131072 bytes, объекты суммарно 64 MiB, H2 write guard 128 MiB.
+  Планы ограничены 1..100 seeds/pages, depth 0..5 и одним origin; links ограничены 100.
+  Превышение лимита не запускает удаление данных.
+- Replay одинакового content_hash/source_kind переиспользует snapshot и обновляет latest/last_seen.
+  История содержит provenance; manual import не подтверждает transport или robots.
+- recordAdmission не меняет specification/approval; recordJobStatus проверяет версию представления,
+  хранит до 32 transitions и сохраняет admission clock при статусной записи.
+- Legacy failures агрегируются по URL/category; failure_observations_v1 добавляет отдельные записи
+  с bounded sequence cursor. Оба набора ограничены; они не являются счётчиком network attempts.
+- recordOutcome читает final scheduler intent superclass и пишет каталог до Frontier store.
+  Nullable applied_to_frontier в истории не превращается в доказательство сетевого ACK.
+- ArchiveParseFilter требует approved job, TorProtocol для HTTP/HTTPS и protocol.md.prefix.
+  Parser exception попадает в установленный ERROR-путь. Его нельзя считать гарантированным
+  tuple fail: существующий parser может выдать ERROR и ACK.
+- Поиск использует локальный LIKE по title/extracted_text; он не является full-text index.
 
-## KNOWN LIMITATIONS
+## Изменения и зависимости
 
-Failed catalog writes can leave an unreferenced blob, never a committed snapshot without its object. Installed JSoupParserBolt converts an ArchiveParseFilter exception to ERROR and ACK; throwing alone does not fail the parent tuple. Local search uses catalog matching, not full-text ranking.
+Пакет зависит от H2/JDBC, JSoup, Kotlin TorPolicy, StormCrawler parser/status API
+и [capability adapters](../../../../org/apache/stormcrawler/urlfrontier/AGENTS.md).
+Сохраняйте порядок blob → commit → parser emission и observation → Frontier store,
+SQL schema/JSON compatibility и distinction между наблюдением и scheduling authority.
+
+Формат и Javadoc: [общие соглашения](../AGENTS.md).
+Полезные внешние контракты: [архив](../../../../../../../docs/archive-mvp.md),
+[fixtures](../../../../../../../test/archive/AGENTS.md).

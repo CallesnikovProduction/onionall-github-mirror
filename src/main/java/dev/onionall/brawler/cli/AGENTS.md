@@ -1,43 +1,147 @@
-# Terminal CLI
+# cli: команды и терминал
 
-Inherited repository and ancestor AGENTS.md constraints remain in force.
+Наследует [общие Java-соглашения](../AGENTS.md).
+Picocli разбирает аргументы; CrawlService выполняет прикладные операции,
+ArchiveStore владеет persistence. Классы presentation не принимают решения admission.
 
-## MODULE PURPOSE
+## Классы
 
-Picocli commands and bounded terminal presentation for local crawler workflows.
+| Класс | Роль |
+| --- | --- |
+| [Onionall](Onionall.java) | main, дерево команд, menu, options, output/error mapping; Transport позволяет подменить fetch в тестах |
+| [ArchiveCommands](ArchiveCommands.java) | Вложенные команды Crawl, Plan, ShowPlan, Approve, Start, Status, Errors, Pages, Page, ShowPage, SearchLocal, ProviderSearch, Archive, ImportHtml, Export |
+| [HtmlFiles](HtmlFiles.java) | JSoup parsing, bounded offline inspect и атомарная публикация файлов |
+| [DiscoveryReport](DiscoveryReport.java) | Offline discover; Link/Report records содержат validation/scope/dedup observations |
+| [Brand](Brand.java) | Wordmark/palette/layout, safe text и Activity spinner |
+| [CliPresentation](CliPresentation.java) | Строки статуса и оформление известных типов строк |
+| [InteractiveSession](InteractiveSession.java) | ANSI viewport, resize poll, progress и idempotent terminal restore; Size/Dimensions изолируют измерение |
+| [Mascot](Mascot.java) | Headless Java2D raster и ANSI half-block/ASCII output |
 
-## RESPONSIBILITIES
+Onionall также содержит команды Fetch/Discover/Inspect/Status.
+Fetch выполняет один transport GET; Inspect/Discover работают с локальными файлами;
+Status делает локальный TCP connect. ArchiveCommands.Start может запустить настоящий worker,
+поэтому весь ArchiveCommands нельзя считать offline-пакетом.
 
-Parse arguments, present service results and manage terminal/input cleanup; keep crawl decisions in CrawlService and persistence in ArchiveStore.
+## Точки входа и внутренние API
 
-## IMPLEMENTED ARCHITECTURE
+[Onionall.java](Onionall.java):
 
-Onionall is the entrypoint. Brand/CliPresentation render trusted presentation after clipping untrusted text. InteractiveSession owns supported-TTY alternate screen/input; Mascot renders headless Java2D with a text fallback.
+```java
+Path downloads();
+Path archiveDirectory();
+Config config();
+void print(Map<String, Object> result) throws IOException;
+int failure(int code, Exception e) throws IOException;
+static int execute(String[] args, PrintWriter out, PrintWriter err, boolean tty, Map<String, String> env, Transport transport);
+private static int execute(String[] args, PrintWriter out, PrintWriter err, boolean tty, Map<String, String> env, Transport transport, boolean interactiveContent);
+public static void main(String[] args);
+```
 
-## KEY COMPONENTS
+У execute существуют package-private перегрузка и private перегрузка с interactiveContent;
+Transport.fetch имеет контракт:
 
-`Onionall`, `ArchiveCommands`, `HtmlFiles`, `Brand`, `CliPresentation`, `InteractiveSession` and `Mascot`.
+[Onionall.java](Onionall.java):
 
-## DATA FLOW
+```java
+abstract ProtocolResponse fetch(Config config, String url) throws IOException;
+```
 
-Arguments -> service/catalog operations -> deterministic plain/JSON or supported-TTY output. inspect/discover read bounded local HTML; fetch uses the configured fixed smoke scope through TorProtocol. status TCP probing is local connectivity only.
+Команды реализуют Callable<Integer>: `public Integer call() throws Exception`,
+а группы ArchiveCommands.Crawl/Page/Archive объявляют `throws IOException`.
+Параметры задаёт Picocli через @Option/@Parameters/@ParentCommand, не ручной parsing argv.
+main использует System.exit; execute возвращает код и служит существующей тестовой точкой входа.
 
-## DEPENDENCIES
+[HtmlFiles.java](HtmlFiles.java):
 
-Picocli, JSoup, Java desktop/headless rendering, admission/archive services and Kotlin URL policy. Thin CLI packaging must retain required runtime classes.
+```java
+static Document parse(byte[] content, String base) throws IOException;
+static Map<String, Object> inspect(Path file) throws IOException;
+static void save(byte[] bytes, Path target, boolean overwrite) throws IOException;
+```
 
-## INVARIANTS
+[DiscoveryReport.java](DiscoveryReport.java):
 
-NO_COLOR/--no-color, JSON and non-TTY output stay plain with no terminal controls. Restore terminal/cursor on quit, EOF, interrupt and handled errors. Offline commands initiate no crawl; explicit exports are atomic and never overwrite unrelated files.
+```java
+static Report discover(Path file, String source, Map<String, Object> config) throws IOException;
+```
 
-## CHANGE GUIDELINES
+Report.summary() возвращает Map<String, Object>; admitted=0/network_requests=0
+являются частью offline-отчёта, не admission ledger.
 
-Preserve flags, JSON fields, exit codes, input/content bounds and control-character escaping. Verify both unit command behavior and packaged CLI/PTY paths for terminal or dependency changes.
+[Brand.java](Brand.java):
 
-## RELATED MODULES
+```java
+static String safe(String text);
+static java.util.List<String> header(int width, int height, java.util.Map<String, String> env, boolean color);
+static boolean blocks(java.util.Map<String, String> env);
+```
 
-[Crawl service](../admission/AGENTS.md); [Catalog](../archive/AGENTS.md); [Packaged CLI tests](../../../../../../../test/cli/AGENTS.md).
+[CliPresentation.java](CliPresentation.java):
 
-## KNOWN LIMITATIONS
+```java
+static List<String> status(Map<String, Object> result, boolean compact);
+static String style(String text, boolean enabled);
+```
 
-TCP success is not Tor bootstrap/onion readiness. Interactive rendering depends on supported terminal capabilities; Java desktop is required for Java2D surfaces.
+[InteractiveSession.java](InteractiveSession.java):
+
+```java
+InteractiveSession(PrintWriter terminal, Map<String, String> env, boolean pinned);
+InteractiveSession(PrintWriter terminal, Map<String, String> env, boolean pinned, Dimensions dimensions, boolean poll);
+synchronized void begin();
+synchronized void progress(String text);
+synchronized void stopProgress();
+synchronized void resize();
+synchronized int availableRows();
+PrintWriter writer();
+public synchronized void close();
+static String clip(String text, int width);
+```
+
+[Mascot.java](Mascot.java):
+
+```java
+static BufferedImage raster(int width, int height);
+static List<String> render(int width, int rows, Map<String, String> env, boolean color);
+```
+
+
+## I/O, состояние и lifecycle
+
+- config закрепляет Tor ONLY, loopback SOCKS и allowlist OnionSmoke.HOST.
+  Порт 1..65535, timeout 1..120000 ms, body limit 1..131072; transport применяет свои ограничения.
+  Fetch требует HTTP 200 и bounded text/html; redirects/retries не добавляются CLI.
+- downloads/archiveDirectory учитывают CLI, окружение и XDG.
+  Offline-команды не создают Frontier/transport клиентов. Assisted Ahmia даёт manual URL.
+- HtmlFiles.inspect/discover ограничены 4 MiB. Discover обрабатывает до 1000 anchors,
+  URL ≤2048 и явный base-url. Документный base/JS/refresh не задаёт разрешённую цель.
+  Metadata-only правило переиспользуется из Kotlin DiscoveryPlanner.
+- HtmlFiles.save без overwrite публикует hard link из same-directory temporary file:
+  racing writer не должен быть заменён. overwrite использует ATOMIC_MOVE/REPLACE_EXISTING.
+  JSONL discover/export metadata публикуются только по явному запросу.
+- MANUAL_IMPORT ограничен 128 KiB, требует approved-план и не доказывает Tor/robots.
+  Локальный поиск обращается к H2; crawl status может писать reconciliation observations.
+- JSON, non-TTY, NO_COLOR и --no-color сохраняют plain output. Brand.safe заменяет Cc/Cf;
+  InteractiveSession.clip дополнительно кодирует wide/combining символы перед cell accounting.
+- writer() возвращает внутренний PrintWriter; close его Writer не закрывает сессию.
+  Восстановление терминала выполняет InteractiveSession.close().
+- Viewport включается только при pinned и поддержанном TERM. Session владеет alternate buffer,
+  margins/cursor restore и resize timer; ввод через System.console().readLine принадлежит Onionall.
+  Таймеры/Activity завершаются при close/finally; interrupt flag сохраняется.
+- terminalSize читает stty size с bounded ожиданием либо COLUMNS/LINES.
+  Это чтение размера, не изменение terminal modes.
+- TCP reachable в status не доказывает SOCKS negotiation, Tor bootstrap или onion connectivity.
+  Branding/строки состояния не должны превращать его в readiness assertion.
+- Mascot задаёт java.awt.headless=true; Graphics2D освобождается в finally.
+  Рисунок и ASCII используют встроенный вектор без внешних asset/font файлов.
+
+## Границы для изменений
+
+Сохраняйте имена команд/опций, JSON fields, exit codes, no-overwrite и восстановление терминала.
+Transport/policy принадлежат Kotlin tor, orchestration находится в
+[crawl](../crawl/AGENTS.md), persistence в [archive](../archive/AGENTS.md).
+Формат/Javadoc и Java-имена: [общие соглашения](../AGENTS.md);
+snake_case компонентов Link/Report сохраняет существующий JSON.
+
+Unit CLI и packaged/PTY проверки имеют разные границы:
+[контракты distribution](../../../../../../../test/cli/AGENTS.md).
