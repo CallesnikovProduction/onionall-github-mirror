@@ -28,6 +28,8 @@ if [[ ${1:-} == --test ]]; then
     java --enable-native-access=ALL-UNNAMED -cp "$classpath" crawlercommons.urlfrontier.service.rocksdb.AdmissionMigrationConformance "$stage/migration" "$baseline" > "$stage/migration.log" 2>&1
     java --enable-native-access=ALL-UNNAMED -cp "$classpath" crawlercommons.urlfrontier.service.rocksdb.AdmissionShutdownConformance "$stage/shutdown-db" > "$stage/shutdown.log" 2>&1
     java --enable-native-access=ALL-UNNAMED -cp "$classpath" crawlercommons.urlfrontier.service.rocksdb.AdmissionRpcConformance "$stage/rpc-db" > "$stage/rpc.log" 2>&1
+    java --enable-native-access=ALL-UNNAMED -cp "$classpath" crawlercommons.urlfrontier.service.rocksdb.RecoveryCountersConformance "$stage/recovery-db" > "$stage/recovery.log" 2>&1
+    java --enable-native-access=ALL-UNNAMED -cp "$classpath" crawlercommons.urlfrontier.service.rocksdb.AdmissionStateConformance "$stage/state-db" > "$stage/state.log" 2>&1
 fi
 cp -- "$stage/urlfrontier-admission.jar" "$module/target/urlfrontier-admission.jar"
 sha256sum "$baseline" "$module/target/urlfrontier-admission.jar" > "$stage/artifacts.sha256"

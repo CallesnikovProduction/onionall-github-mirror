@@ -138,3 +138,15 @@ cases, one503 scheduled retry, archive hashes/provenance, real CLI search/export
 and recreation. Its result explicitly retains durable_admission_verified=false,
 m2_verified=false and m3_verified=false. Exact executions belong in the engineering
 ledger; none of these commands authorize repeated public Tor experiments.
+
+## M5 failure observation history
+
+`onionall crawl errors <plan> --limit 20` reads append-only structured observations
+with keyset continuation. See [ADR0006](adr/0006-failure-observation-history.md).
+Legacy failure aggregates remain readable and are not historical attempts.
+Fetch-attempt count and applied Frontier outcome remain UNKNOWN where unproven.
+The additive failure_observations_v1 table preserves coreV2/previous-reader
+compatibility; history writes commit before normal Frontier write/ACK.
+Configured `crawl status --runtime ...` returns structured UNKNOWN plus nonzero
+exit6 when authoritative readback is unavailable; offline catalog status can exit0
+without asserting admission or completion.

@@ -1180,4 +1180,4 @@ application onion resolver attempts. All M2 helper Java sources compile for25.
 Probes include Storm's lib-common directory. Python M2 67 tests pass.
 M2 runtime/recovery/full gate were not rerun: local SOCKS19050 refused and Tor
 security/recovery blockers persist. m2_verified=false. Detailed migration
-inputs, evidence and limitations: [migration report](jvm25-storm31-migration.md).
+inputs, evidence and limitations: [migration report](SUMMARIZIED-MIGRATION-AND-CLEANLINESS-REPORT.md).

@@ -94,7 +94,8 @@ original provenance even when rediscovered along another eligible path. Known
 updates cannot create unreserved URLs in protected crawls; Discovered replays of
 reserved URLs use stock deduplication. Administrative mutation RPCs are globally
 disabled on this candidate, so queue deletion or crawl controls cannot bypass
-admission. Legacy read/lease/status APIs remain supported. This is a trusted
+admission. Legacy lease/status APIs remain supported with the existing capability;
+read-only list/status APIs retain their existing policy. This is a trusted
 single-local-deployment capability boundary; do not expose arbitrary clients or
 claim multi-tenant per-worker authorization.
 
@@ -103,9 +104,17 @@ claim multi-tenant per-worker authorization.
 Unary full method: onionall.frontier.admission.v1.Admission/Command.
 Request and response protobuf type: google.protobuf.BytesValue. Value is UTF8
 JSON, maximum32768 request bytes. No generators/new protobuf runtime are needed.
-Every admission RPC requires metadata header x-onionall-admission-token matching
-ONIONALL_ADMISSION_TOKEN. This capability authorizes the trusted local operator
-and pipeline; fetched content never supplies session authority or approval.
+Every admission RPC and every legacy PutURLs/GetURLs RPC requires metadata header
+x-onionall-admission-token matching ONIONALL_ADMISSION_TOKEN, for all crawl IDs.
+GetURLs acquires leases and is not read-only. Missing/wrong tokens are rejected
+before handler dispatch; there is no anonymous fallback. This capability authorizes
+the trusted local operator and pipeline; fetched content never supplies authority.
+Tokenless legacy workers are incompatible with this hardened candidate. Deploy
+the matching CapabilitySpout/CapabilityStatusUpdaterBolt clients with the server;
+they read the existing admission.token.file on each new RPC, including reconnect.
+Stock synthetic M0/M1 and local-test archive fixtures remain separate deployments.
+No protobuf or persisted schema changes are required; worker/operator capability
+separation and plaintext transport remain outside this narrow authorization fix.
 
 Requests:
 
@@ -156,9 +165,70 @@ legacy creation denial, source/scope/content rejection, write-failure atomicity,
 server reopen and actual subprocess halt before commit / after sync-WAL-before
 ACK. AdmissionMigrationConformance exercises fresh schema migration/rollback.
 AdmissionRpcConformance runs a real local gRPC server and validates absent token,
-valid capability, admin denial and legacy read compatibility. These primitive
+valid capability, rejected PutURLs/GetURLs without state or lease mutation,
+separate-process restart/replay, authenticated retry/terminal updates, all six admin
+denials and legacy read compatibility. These primitive
 checks do not claim full CLI/Storm/archive integration or real-Tor M2/M3.
 
 Shutdown conformance blocks a real admission transaction before commit and proves
 close drains it before freeing native handles. Late admissions/status writes fail
 closed; committed reservation/count/queue survive reopening.
+
+## Recovery counter qualification (M5 REC-01)
+
+`build.sh --test` also runs RecoveryCountersConformance: actual RocksDB with
+three queues (mixed active/unscheduled, all unscheduled, all active), two clean
+restarts, and a separate-process Runtime.halt without close. It verifies exact
+counts, due dates, reservation identity/quota, due membership and idempotent replay.
+"Completed" is the storage meaning UNSCHEDULED, not successful fetch or terminal
+reason. Process crash is not an OS/power-loss durability qualification.
+No volumes are deleted. Current candidate forces recoveryQscan(true); alleged
+readQueueInfos/deleteRange and recoveryQscan(false) defects are dormant, so no
+recovery production patch is justified by those findings. Native Windows can run
+the same test via scripts/runners/verify.py with the pinned base JAR/JDK25.
+
+## M5 authenticated scheduler observations (state_version1)
+
+Owner approved UNKNOWN/null outcome semantics on2026-11-04. The existing restricted
+Admission/Command accepts additive read-only actions list and counts with the same
+existing capability. No new protobuf, persistent schema/index or authorization
+service. Old clients remain compatible; old servers reject new actions explicitly
+(client IOException), never return a successful empty scheduler fallback.
+
+list requires session_id, optional limit1..200 (default100), optional cursor.
+Result: outcome STATE_LIST, state_version1, session_id, readback_at UTC, rows,
+through_ordinal and nullable next_cursor. Each row retains reservation_id/ordinal,
+URL, depth/source and a scheduler observation (state, next_due_epoch,
+lease_until_epoch; epochs in seconds, null where unavailable). Cursor is a bounded
+base64url v1 session/watermark/after tuple; it is not a capability or security token.
+Membership is fixed through the first page's ordinal; concurrent appends appear in
+a new traversal. Row state is fresh on each page (not a cross-page MVCC snapshot).
+The existing per-session100-reservation cap bounds the prefix scan/sort. Response
+pages are additionally byte-bounded below the existing64KiB client envelope; limit
+is a maximum, not a promised row count. No offset paging or new persistent index.
+
+counts returns outcome STATE_COUNTS and reserved/pending/held/scheduled_wait/
+unscheduled/unknown. done, success, terminal and retry_wait are explicitly null.
+Future scheduled work is not proof of retry, and UNSCHEDULED is not proof of
+success. next_attempt_at is the earliest candidate considering stored due times
+and live lease expiry; it is not a guarantee of fetch execution (worker liveness,
+queue pacing and network availability still apply).
+
+Reads serialize with admission/status writes using admissionLock and take the
+session's queue monitor for a consistent live-lease observation. They read existing
+CF0/CF1/admission rows; no GetURLs/lease acquisition, expiration pruning, queue
+counter change, reservation/quota write or repair. Missing/inconsistent authoritative
+rows fail explicitly rather than synthesize zero/complete. Leases remain ephemeral:
+a server restart releases them and due rows are PENDING again, not failed/done.
+
+AdmissionClient.list/counts return strict FrontierReadback records; unknown outcomes,
+versions, categories, fractional counts, malformed/partial pages and timeouts fail
+explicitly. Unknown terminal provenance stays null. New conformance runs with five
+reservations/two unscheduled rows, leases and a future row; it proves zero RocksDB
+sequence changes and identical raw leases (including expired entries), auth denies,
+read-only mode, concurrent append pagination, long URL byte paging, two clean and
+one process-crash restart. --test now runs six drivers. No power-loss/soak claim.
+
+Rollback: deploy the previous server/client binaries together; all existing DBs
+remain readable. New typed reads against the old server report unsupported/unavailable.
+No recovery/data migration is needed and no scheduling state is rewritten.

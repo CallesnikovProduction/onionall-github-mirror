@@ -14,6 +14,7 @@ import dev.onionall.brawler.tools.OnionSmoke;
 import org.junit.Rule;
 import org.junit.rules.TemporaryFolder;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -40,7 +41,7 @@ public class AdmissionClientTest {
         var interceptor=new ServerInterceptor(){public <ReqT,RespT> ServerCall.Listener<ReqT> interceptCall(ServerCall<ReqT,RespT> call,Metadata headers,ServerCallHandler<ReqT,RespT> next){
             assertEquals(TOKEN,headers.get(Metadata.Key.of("x-onionall-admission-token",Metadata.ASCII_STRING_MARSHALLER)));return next.startCall(call,headers);
         }};
-        Server server=ServerBuilder.forPort(0).addService(ServerInterceptors.intercept(service,interceptor)).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(ServerInterceptors.intercept(service,interceptor)).build().start();
         try(var client=new AdmissionClient("127.0.0.1",server.getPort(),TOKEN)) {
             assertEquals("SESSION_NOT_FOUND",client.command(Map.of("action","session","session_id","x")).get("outcome"));
             assertEquals(1,calls.get());
@@ -49,7 +50,7 @@ public class AdmissionClientTest {
         } finally {server.shutdownNow();server.awaitTermination();}
     }
     @Test public void unsupportedServerFailsClosedWithoutSeedFallback() throws Exception {
-        Server server=ServerBuilder.forPort(0).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).build().start();
         try(var client=new AdmissionClient("127.0.0.1",server.getPort(),TOKEN)) {
             IOException failure=assertThrows(IOException.class,()->client.command(Map.of("action","open")));
             assertTrue(failure.getMessage().contains("UNIMPLEMENTED"));assertFalse(failure.getMessage().contains(TOKEN));
@@ -70,18 +71,21 @@ public class AdmissionClientTest {
         var service=ServerServiceDefinition.builder("onionall.frontier.admission.v1.Admission")
             .addMethod(COMMAND,ServerCalls.asyncUnaryCall((request,reply)->{
                 try {
-                    assertEquals("session",JSON.readTree(request.getValue().toByteArray()).path("action").asText());
-                    calls.incrementAndGet();reply.onNext(BytesValue.newBuilder().setValue(ByteString.copyFrom(JSON.writeValueAsBytes(committed))).build());reply.onCompleted();
+                    String action=JSON.readTree(request.getValue().toByteArray()).path("action").asText();
+                    assertTrue(Set.of("session","counts").contains(action));
+                    Object response=committed;
+                    if(action.equals("counts")) response=JSON.readValue("{\"outcome\":\"STATE_COUNTS\",\"state_version\":1,\"session_id\":\""+id+"\",\"readback_at\":\"2026-11-04T00:00:00Z\",\"next_attempt_at\":\"2026-11-04T00:00:00Z\",\"counts\":{\"reserved\":1,\"pending\":1,\"held\":0,\"scheduled_wait\":0,\"unscheduled\":0,\"unknown\":0,\"done\":null,\"success\":null,\"terminal\":null,\"retry_wait\":null}}",Map.class);
+                    calls.incrementAndGet();reply.onNext(BytesValue.newBuilder().setValue(ByteString.copyFrom(JSON.writeValueAsBytes(response))).build());reply.onCompleted();
                 } catch(Exception e){reply.onError(e);}
             })).build();
-        Server server=ServerBuilder.forPort(0).addService(service).build().start();
+        Server server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).addService(service).build().start();
         try {
             Path runtime=root.resolve("runtime.json"), token=root.resolve("token");
             Files.writeString(runtime,JSON.writeValueAsString(Map.of("frontier_host","127.0.0.1","frontier_port",server.getPort())));
             Files.writeString(token,TOKEN);
             assertEquals("ADMITTED",CrawlExecution.status(archive,id,runtime,token).get("state"));
             assertEquals("ADMITTED",CrawlExecution.status(archive,id,runtime,token).get("state"));
-            assertEquals(2,calls.get()); // No open/reserve/legacy put has been issued by reconciliation.
+            assertEquals(4,calls.get()); // Session/counts reads only; no open/reserve/legacy put has been issued by reconciliation.
             try(var store=new ArchiveStore(archive)) {
                 Map<String,Object> observed=store.admissionObservation(id);
                 assertEquals("COMMITTED",observed.get("admission"));

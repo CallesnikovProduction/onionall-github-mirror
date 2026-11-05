@@ -6,6 +6,7 @@ from prepare import ROOT, prepare
 
 class PrepareTest(unittest.TestCase):
     def test_config_preserves_provenance_without_claiming_durable_acceptance(self):
+        (ROOT/'.runtime/m3').mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=ROOT/'.runtime/m3') as directory:
             target=Path(directory)/'session'
             prepare(target,[c*56+'.onion' for c in ('a','b','c')])

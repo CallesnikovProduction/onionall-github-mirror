@@ -135,4 +135,4 @@ Tor prerequisite127.0.0.1:19050 refused; no live integration started.
 Durable admission remains rejected outside local-test; see ADR0002.
 The historical Java17 results above remain valid for their original commits.
 Current commands assume one selected JDK25 on JAVA_HOME/PATH. Full compatibility,
-input checksums and remaining blockers: [migration report](jvm25-storm31-migration.md).
+input checksums and remaining blockers: [migration report](SUMMARIZIED-MIGRATION-AND-CLEANLINESS-REPORT.md).

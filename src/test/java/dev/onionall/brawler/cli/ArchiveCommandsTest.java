@@ -25,7 +25,7 @@ public class ArchiveCommandsTest {
     }
     private String plan(Path archive)throws Exception {
         Result result=run(archive,"crawl","plan","--seed",URL,"--depth","2","--max-pages","5");
-        assertEquals(result.output,0,result.code);assertEquals("BLOCKED_ADR_0002",result.json.path("admission").asText());
+        assertEquals(result.output,0,result.code);assertEquals("UNOBSERVED",result.json.path("admission").asText());
         return result.json.path("plan_id").asText();
     }
     @Test public void approvedPlanAndOfflineArchiveSurviveCliRecreation()throws Exception {
@@ -54,7 +54,7 @@ public class ArchiveCommandsTest {
         Path seeds=directory.resolve("urls.txt");Files.writeString(seeds,"# manually selected\n"+URL+"\n"+URL+"\n");
         Result result=run(archive,"crawl","plan","--import",seeds.toString(),"--provider","manual-selection","--depth","1","--max-pages","3");
         assertEquals(result.output,0,result.code);
-        assertEquals("BLOCKED_ADR_0002",result.json.path("admission").asText());
+        assertEquals("UNOBSERVED",result.json.path("admission").asText());
         assertNotEquals(0,run(archive,"crawl","plan","--seed",URL,"--scope","all-hosts").code);
         assertNotEquals(0,run(archive,"crawl","plan","--seed",URL,"--depth","-1").code);
         assertNotEquals(0,run(archive,"crawl","plan","--seed","https://example.com/").code);
@@ -66,6 +66,39 @@ public class ArchiveCommandsTest {
         Result result=run(archive,"crawl","start","--plan",id,"--runtime",runtime.toString());
         assertNotEquals(0,result.code);assertTrue(result.output.contains("approval"));
         assertEquals("DRAFT",run(archive,"crawl","status",id).json.path("state").asText());
+    }
+    @Test public void failureHistoryIsBoundedOfflineAndDoesNotClaimDistinctFetchAttempts()throws Exception {
+        Path archive=temporary.newFolder().toPath().resolve("catalog");String id=plan(archive);
+        run(archive,"crawl","approve",id);
+        try(var store=new dev.onionall.brawler.archive.ArchiveStore(archive)) {
+            for(int i=0;i<3;i++)store.recordFailure(id,URL,"FETCH_ERROR");
+        }
+        Result first=run(archive,"crawl","errors",id,"--limit","1");
+        assertEquals(first.output,0,first.code);assertEquals(1,first.json.path("history_version").asInt());
+        assertEquals(1,first.json.path("rows").size());assertEquals(3,first.json.path("observation_count").asInt());
+        assertTrue(first.json.path("fetch_attempt_count").isNull());assertFalse(first.json.path("legacy_aggregates_are_attempts").asBoolean());
+        assertEquals(1,first.json.path("legacy_aggregate_count").asInt());assertTrue(first.json.path("truncated").asBoolean());
+        Result next=run(archive,"crawl","errors",id,"--limit","1","--cursor",first.json.path("next_cursor").asText());
+        assertEquals(0,next.code);assertEquals(1,next.json.path("rows").size());
+        assertNotEquals(first.json.path("rows").get(0).path("observation_id"),next.json.path("rows").get(0).path("observation_id"));
+        Result status=run(archive,"crawl","status",id);
+        assertEquals(0,status.code);assertEquals(3,status.json.path("failure_observation_count").asInt());
+        assertTrue(status.json.path("fetch_attempt_count").isNull());assertTrue(status.json.path("failure_history_hint").asText().contains(id));
+    }
+    @Test public void unavailableConfiguredReadbackReturnsUnknownWithNonzeroExitAndNoAdmission()throws Exception {
+        Path root=temporary.newFolder().toPath(),archive=root.resolve("catalog");String id=plan(archive);
+        run(archive,"crawl","approve",id);
+        var server=io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder.forAddress(new java.net.InetSocketAddress("127.0.0.1",0)).build().start();
+        try {
+            Path runtime=root.resolve("runtime.json"),token=root.resolve("token");
+            Files.writeString(runtime,new ObjectMapper().writeValueAsString(Map.of("frontier_host","127.0.0.1","frontier_port",server.getPort())));
+            Files.writeString(token,"synthetic-unavailable-status-token-00000");
+            Result result=run(archive,"crawl","status",id,"--runtime",runtime.toString(),"--admission-token-file",token.toString());
+            assertNotEquals(0,result.code);assertEquals("UNKNOWN",result.json.path("job_state").asText());
+            assertFalse(result.json.path("authoritative_readback_current").asBoolean());
+            assertTrue(result.json.path("counts").path("pending").isNull());
+            assertFalse(result.json.has("authoritative_admission"));
+        }finally{server.shutdownNow();server.awaitTermination();}
     }
     @Test public void invalidRuntimeCannotAdmitAnApprovedPlan()throws Exception {
         Path directory=temporary.newFolder().toPath();Path archive=directory.resolve("catalog");String id=plan(archive);

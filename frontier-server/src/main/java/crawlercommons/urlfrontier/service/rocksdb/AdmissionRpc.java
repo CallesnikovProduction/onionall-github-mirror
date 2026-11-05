@@ -2,6 +2,7 @@
 package crawlercommons.urlfrontier.service.rocksdb;
 import com.google.gson.*;
 import com.google.protobuf.*;
+import crawlercommons.urlfrontier.URLFrontierGrpc;
 import io.grpc.*;
 import io.grpc.protobuf.ProtoUtils;
 import io.grpc.stub.ServerCalls;
@@ -12,6 +13,11 @@ import java.util.Set;
 /** Versioned protobuf envelope; bounded JSON schema is documented alongside source. */
 public final class AdmissionRpc {
     public static final String METHOD="onionall.frontier.admission.v1.Admission/Command";
+    private static final Set<String> CAPABILITY_METHODS = Set.of(METHOD,
+        URLFrontierGrpc.getPutURLsMethod().getFullMethodName(),
+        URLFrontierGrpc.getGetURLsMethod().getFullMethodName());
+    private static final Set<String> READ_METHODS = Set.of("GetURLStatus", "ListURLs",
+        "CountURLs", "ListCrawls", "ListQueues", "GetStats", "GetActive", "ListNodes");
     public static final MethodDescriptor<BytesValue,BytesValue> COMMAND=MethodDescriptor.<BytesValue,BytesValue>newBuilder()
         .setType(MethodDescriptor.MethodType.UNARY).setFullMethodName(METHOD)
         .setRequestMarshaller(ProtoUtils.marshaller(BytesValue.getDefaultInstance()))
@@ -34,14 +40,15 @@ public final class AdmissionRpc {
         return new ServerInterceptor(){
             public <Q,S> ServerCall.Listener<Q> interceptCall(ServerCall<Q,S> call,Metadata headers,ServerCallHandler<Q,S> next){
                 String method=call.getMethodDescriptor().getFullMethodName();
-                if(method.equals(METHOD)){
+                if(CAPABILITY_METHODS.contains(method)){
                     String offered=headers.get(Metadata.Key.of("x-onionall-admission-token",Metadata.ASCII_STRING_MARSHALLER));
-                    if(offered==null||!MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8),offered.getBytes(StandardCharsets.UTF_8))){call.close(Status.PERMISSION_DENIED.withDescription("Admission capability required"),new Metadata());return new ServerCall.Listener<Q>(){};}
+                    if(offered==null||!MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8),offered.getBytes(StandardCharsets.UTF_8))){call.close(Status.PERMISSION_DENIED.withDescription("Frontier capability required"),new Metadata());return new ServerCall.Listener<Q>(){};}
                 }else {
                     String shortName=call.getMethodDescriptor().getBareMethodName();
-                    // Candidate permits only read/lease and per-URL status operations.
-                    // Admin mutation is globally disabled, even with a capability.
-                    if(!Set.of("GetURLs","PutURLs","GetURLStatus","ListURLs","CountURLs","ListCrawls","ListQueues","GetStats","GetActive","ListNodes").contains(shortName)){
+                    // GetURLs acquires leases and PutURLs mutates scheduling: both are
+                    // authenticated above for every crawl ID. Only real legacy reads
+                    // remain public. Admin/unknown methods stay denied even with a token.
+                    if(!method.startsWith(URLFrontierGrpc.SERVICE_NAME+"/")||!READ_METHODS.contains(shortName)){
                         call.close(Status.PERMISSION_DENIED.withDescription("Administrative mutation disabled on admission candidate"),new Metadata());return new ServerCall.Listener<Q>(){};
                     }
                 }

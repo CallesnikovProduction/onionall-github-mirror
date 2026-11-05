@@ -12,11 +12,24 @@ import org.apache.stormcrawler.Metadata;
 import org.apache.stormcrawler.protocol.ProtocolResponse;
 import org.jsoup.Jsoup;
 
-/** One explicit transport diagnostic, not a crawler or robots acceptance test. */
+/**
+ * <b>Один явный транспортный диагностический запрос.</b>
+ *
+ * <p>Фиксирует цель и SOCKS endpoint, сохраняет HTML и JSON. Не является crawler, robots acceptance или доказательством отсутствия всех DNS-утечек.
+ */
 public final class OnionSmoke {
+
     public static final String HOST = "juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion";
+
     public static final String URL = "http://" + HOST + "/";
 
+    /**
+     * <b>Строит фиксированную smoke-конфигурацию.</b>
+     *
+     * <p>Закрепляет allowlist, SOCKS 19050, 30 s и HTML limit 128 KiB.
+     *
+     * @return конфигурация диагностического запроса
+     */
     static Config configuration() {
         Config c = new Config();
         c.put("tor.mode", "ONLY");
@@ -31,20 +44,44 @@ public final class OnionSmoke {
         return c;
     }
 
+    /**
+     * <b>Проверяет ответ и сохраняет HTML.</b>
+     *
+     * <p>Требует непустой bounded HTTP 200 text/html; запись использует существующий Files.write.
+     *
+     * @param response ответ transport
+     * @param output путь HTML-файла
+     * @return title HTML
+     * @throws IOException при ошибке операции или нарушении контракта
+     */
     static String save(ProtocolResponse response, Path output) throws IOException {
-        if (response.getStatusCode() != 200) throw new IOException("EXPECTED_HTTP_200");
+        if (response.getStatusCode() != 200) {
+            throw new IOException("EXPECTED_HTTP_200");
+        }
         String type = response.getMetadata().getFirstValue("content-type");
-        if (type == null || !type.split(";", 2)[0].trim().equalsIgnoreCase("text/html"))
+        if (type == null || !type.split(";", 2)[0].trim().equalsIgnoreCase("text/html")) {
             throw new IOException("EXPECTED_HTML");
-        if (response.getContent().length == 0 || response.getContent().length > 131072)
+        }
+        if (response.getContent().length == 0 || response.getContent().length > 131072) {
             throw new IOException("INVALID_BODY_SIZE");
+        }
         String title = Jsoup.parse(new ByteArrayInputStream(response.getContent()), null, URL).title();
         Files.write(output, response.getContent());
         return title;
     }
 
+    /**
+     * <b>Выполняет один диагностический GET и сохраняет evidence.</b>
+     *
+     * <p>Не принимает target overrides, вызывает cleanup и пишет JSON даже при ошибке.
+     *
+     * @param args аргументы CLI
+     * @throws Exception при ошибке операции или нарушении контракта
+     */
     public static void main(String[] args) throws Exception {
-        if (args.length != 0) throw new IllegalArgumentException("This smoke accepts no target overrides");
+        if (args.length != 0) {
+            throw new IllegalArgumentException("This smoke accepts no target overrides");
+        }
         Path directory = Path.of(".runtime/downloads").toAbsolutePath();
         Files.createDirectories(directory);
         Path output = directory.resolve("ahmia.html");
@@ -69,8 +106,9 @@ public final class OnionSmoke {
         } catch (Exception e) {
             failure = e;
             List<String> causes = new ArrayList<>();
-            for (Throwable t = e; t != null; t = t.getCause())
+            for (Throwable t = e; t != null; t = t.getCause()) {
                 causes.add(t.getClass().getName() + ": " + t.getMessage());
+            }
             result.put("errors", causes);
         } finally {
             result.put("elapsed_seconds", (System.nanoTime() - start) / 1e9);
@@ -79,6 +117,8 @@ public final class OnionSmoke {
             json.writerWithDefaultPrettyPrinter().writeValue(directory.resolve("ahmia-smoke.json").toFile(), result);
             System.out.println(json.writeValueAsString(result));
         }
-        if (failure != null) throw failure;
+        if (failure != null) {
+            throw failure;
+        }
     }
 }

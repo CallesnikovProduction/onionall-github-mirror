@@ -26,6 +26,7 @@ inside operational tooling. `lib/` and `legacy/` are not created without content
 | `cli/install-cli.sh` | Linux/Bash | Build then install CLI; `--no-build` uses existing bundle | Yes for recognized managed installation |
 | `cli/uninstall-cli.sh` | Linux/Bash | Remove managed CLI files; no arguments | Yes; preserves user-added files, archive and downloads |
 | `cli/build-project.ps1` | Windows/PowerShell | Maven package; `-JdkHome`, `-Maven`, `-Repository`, `-Offline` | Yes; Maven clean replaces `target`, `.runtime/build.log` |
+| `runners/verify.py` | Windows/Linux Python3.12+ | JVM/Python/Frontier/local-link verification; see below | Yes; unique evidence directories |
 | `runners/run-startup-check.sh`, `runners/run-startup-check.ps1` | Linux / Windows | Empty-frontier startup (M0); no arguments | Sequential only; fixed project and overwritten `.runtime/m0-*.log` |
 | `runners/run-controlled-crawl.sh`, `runners/run-controlled-crawl.ps1` | Linux / Windows | Controlled fixture + persistence assertions (M1); PS `-JdkHome`, `-Python` | Fresh project/evidence only; reuse refused; volume retained |
 | `runners/run-tor-acceptance.sh`, `runners/run-tor-acceptance.ps1` | Linux / Windows | Full Tor acceptance (M2); `--cached-images`, PS `-CachedImages`, `-Python`, `-Help` and remaining runner arguments | Fresh project per run; real Tor and retained volumes |
@@ -122,7 +123,7 @@ Cleanup is scoped to each runner's containers/networks. Persistent volumes,
 evidence, secrets, Tor identities and host network configuration are retained.
 Primary execution failures survive secondary cleanup failures; cleanup failure
 alone fails the command. Nonzero exit means failure, never accepted recovery.
-See [M1 evidence contract](../docs/m1-controlled.md) and
+See [M1 evidence contract](../docs/SUMMARIZIED-M0-M1-REPORT.md) and
 [M2 bridge setup and limits](../docs/m2-bridges.md).
 
 ## Direct paths
@@ -145,3 +146,88 @@ Remaining debt: operational M2 code still imports `test/m2` harness modules;
 extracting that boundary is a separate refactor. M0/preflight logs use fixed paths
 and need sequential runs. Bash and PowerShell M1 orchestration remain separate;
 shared assertions/evidence contracts must continue to be checked on both hosts.
+
+## Unified local verification (M5 DEV-01)
+
+`python -B scripts/runners/verify.py --offline` runs Maven, independent Python
+suites, six actual Frontier conformance drivers, and tracked Markdown file-link
+checks. Set JAVA_HOME to JDK25 and URLFRONTIER_BASE_JAR to the verified stock2.4
+service JAR (checksum enforced). Maven may be selected with --maven and the cache
+with --maven-repository. Frontier verification compiles to a unique disposable
+fixture directory; production assembly still belongs to frontier-server/build.sh.
+
+Exit0 means every selected gate passed; exit1 means FAIL; exit2 means required
+work was NOT RUN (including skipped tests). JSON and logs are retained under
+.runtime/verification/run-*/. The full default result cannot be green while
+product E2E is unexecuted. --links-only selects only the file-link gate (not
+fragment validation); --product-e2e explicitly opts into the existing isolated
+Linux Docker product fixture. Real Tor is out of scope and never started.
+No dependencies, Docker images or runtime tools are installed by this runner.
+Maven without --offline may resolve normal build dependencies. Existing Windows
+POSIX permissions/Bash failures remain failures, never auto-skipped.
+
+### Maven Wrapper / CI provenance
+
+The source-only Apache Maven Wrapper3.3.4 pins Maven3.10.0 and its ZIP SHA256.
+Use ./mvnw (Linux) or ./mvnw.cmd (Windows); JAVA_HOME must select JDK25. The first
+wrapper use downloads the Maven distribution, even if Maven itself is passed -o;
+subsequent offline use needs its existing cache. MAVEN_USER_HOME can isolate that
+cache under .runtime. No wrapper JAR is committed. Official source/properties:
+https://maven.apache.org/tools/wrapper/ and
+https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper-distribution/3.3.4/ .
+
+GitHub verify.yml uses SHA-pinned official Actions, read-only permissions and JDK25.
+It extracts (never runs) the digest-pinned Frontier base image and verifies the JAR
+checksum. It executes the same runner and retains failed evidence. It deliberately
+fails closed when product E2E is NOT RUN: this workflow is not product acceptance.
+The full Docker product fixture remains a separate opt-in gate until DEV-02 assembles
+the paired app/server/Storm artifacts. No real Tor workflow is added.
+
+Packaged CLI/PTY/installation tests are an explicit python-cli gate. If the Linux
+CLI bundle is absent, its skipped tests produce NOT RUN (exit2), not PASS. Build
+the package using scripts/cli/build-cli.sh before qualifying that gate on Linux.
+A green Maven build alone neither packages nor qualifies the installed CLI.
+
+
+## Paired M5 artifact assembly (Linux)
+
+Select JDK25 and the checksum-verified URLFRONTIER_BASE_JAR, then run:
+
+```sh
+bash scripts/cli/build-cli.sh
+bash frontier-server/build.sh --test
+python -B scripts/runners/verify.py
+```
+
+CLI build uses the checked-in checksum-pinned Maven Wrapper, with no PATH Maven
+fallback. ONIONALL_OFFLINE=1 still requires a complete dependency/wrapper cache.
+Outputs are target/onionall-brawler-0.1.0-SNAPSHOT.jar, target/onionall/ and
+frontier-server/target/urlfrontier-admission.jar. Clients and server must come from
+the same checked source revision; tokenless old workers are incompatible.
+
+M5 CI assembles this pair before running packaged CLI tests and records source
+commit, artifact hashes and pinned Frontier-base hash in ignored paired-build.json.
+Logs/provenance are retained even when a later gate fails. Assembly is not
+Storm readiness or deployment acceptance. The patched Storm cleanup2 image and
+internal SOCKS/generated-topology E2E remain separate requirements; real Tor is
+out of scope. Linux build script is not a native Windows packaging claim.
+
+
+For the separately selected internal product fixture, dispatch verify.yml on the
+M5 branch with product_e2e=true. Only that explicit dispatch pulls pinned Linux
+amd64 Storm/Python images and applies the existing source/hash-verified cleanup2
+build. The fixture itself selects Frontier/init/probe/crawler/local SOCKS only,
+requires an internal Docker network with no published ports, and never starts
+Tor or an onion service. Images are pinned to Docker Hub manifests verified on
+2026-11-04: [Storm](https://hub.docker.com/v2/repositories/library/storm/tags/3.1.0-jre25)
+and [Python](https://hub.docker.com/v2/repositories/library/python/tags/3.12-slim).
+The existing Frontier base remains checksum/digest pinned. No host tool installation.
+
+This executes the unchanged test/admission/local_integration.py acceptance using
+paired app/server/client artifacts, with traffic/archive/quota/restart assertions.
+The fixture explicitly uses retry_minutes=1; production120min is unchanged and
+its two-hour wall-clock gate is not inferred. A successful normal product fixture
+does not close the separate forced-owner Storm tree gate. Fixture tokens and raw
+runtime directories are not uploaded; only summary results, build logs, image
+provenance and the existing verification evidence are retained. Owned fixture
+Frontier volumes are retained during the run; no user volume deletion is added.

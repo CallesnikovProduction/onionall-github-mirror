@@ -85,6 +85,8 @@ final class AdmissionLedger {
             if(action.equals("open"))return open(id,state,command);
             if(state==null)return outcome("SESSION_NOT_FOUND");
             if(action.equals("session"))return state.deepCopy();
+            if(action.equals("list") || action.equals("counts"))
+                return new AdmissionState(owner, db, cf).read(command, state);
             if(action.equals("reservation")){JsonObject r=get("reservation",id,canonical(text(command,"url",2048)));return r==null?outcome("RESERVATION_NOT_FOUND"):r;}
             if(action.equals("seal")){state.addProperty("sealed",true);try(WriteBatch b=new WriteBatch();WriteOptions w=new WriteOptions().setSync(true)){put(b,state,"session",id);db.write(w,b);}return state;}
             if(!action.equals("reserve"))throw new IllegalArgumentException("Unknown action");

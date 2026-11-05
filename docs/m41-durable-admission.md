@@ -32,7 +32,11 @@ The controlled acceptance substitutes an internal SOCKS fixture for connectivity
 it retains real TorProtocol, StormCrawler and authoritative RocksDB admission.
 Production onion traffic still requires official Tor. Runtime descriptors are
 trusted deployment inputs, never supplied by remote content. The admission RPC
-is internal plaintext capability traffic and must not cross an untrusted network.
+and legacy PutURLs/GetURLs are internal capability traffic and must not cross an
+untrusted network. GetURLs issues leases. The hardened candidate rejects tokenless
+workers; deploy matching CapabilitySpout and CapabilityArchiveStatusUpdaterBolt
+with admission.token.file. Credentials are reread for new calls/recreated streams,
+without anonymous fallback. Stock synthetic fixtures are separate from this mode.
 
 ```sh
 onionall --json crawl plan --seed APPROVED_ONION_URL --depth 2 --max-pages 20
@@ -68,7 +72,8 @@ catalog observation is repaired by querying the identical authoritative session;
 status readback does not reserve or enqueue. Child reservations can commit before
 the parent archive write; an archive failure does not undo those reservations.
 Replayed processing remains idempotent. Terminal failures are recorded by
-ArchiveStatusUpdaterBolt before the normal Frontier status write; stock terminal
+CapabilityArchiveStatusUpdaterBolt before the authenticated Frontier status write;
+the separate local-test stock fixture still uses ArchiveStatusUpdaterBolt. Stock terminal
 Frontier metadata loss still exists, so preserve the associated catalog.
 
 Graph schema2 retains first observed link time with an explicit clock basis,
@@ -91,3 +96,13 @@ Exact executed results and failures: engineering/m41-execution-ledger.md.
 Verified packaged acceptance: a7c09e2448f4,4 durable reservations,3 archived pages,
 8 directed edges; restart/retry/replay and cleanup all pass. See the ledger for
 exact artifact hashes and raw evidence paths. This does not qualify real Tor.
+
+## M5 job observation contract
+
+Configured crawl status and start now expose a versioned job view distinct from
+legacy worker execution state. See [ADR0005](adr/0005-job-state-and-completion.md).
+Exit0 does not prove COMPLETE; stopped work with pending/future scheduling is
+PAUSED, and current Frontier v1 UNSCHEDULED rows have UNKNOWN success/terminal
+provenance. Current/stale readback, worker identity evidence and truncation are
+explicit. H2 contention remains an explicit error, never an empty catalog.
+No Tor policy, admission/quota authority or persistent schema changes.

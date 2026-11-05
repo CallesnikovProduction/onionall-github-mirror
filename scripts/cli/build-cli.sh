@@ -11,7 +11,7 @@ cd -- "$root"
 if [[ -n ${JAVA_HOME:-} ]]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
 command -v javac >/dev/null || { echo 'JDK 25 is required to build the CLI.' >&2; exit 69; }
 [[ $(javac -version 2>&1) =~ javac\ ([0-9]+) ]] && (( BASH_REMATCH[1] >= 25 )) || { echo 'JDK 25 or newer is required.' >&2; exit 69; }
-maven=(mvn -B)
+maven=("$root/mvnw" -B)
 if [[ ${ONIONALL_OFFLINE:-0} == 1 ]]; then maven+=(-o); fi
 if [[ -d .runtime/maven-linux-repository ]]; then maven+=(-Dmaven.repo.local=.runtime/maven-linux-repository); fi
 "${maven[@]}" -pl :onionall-brawler verify dependency:build-classpath "-Dmdep.outputFile=$root/target/cli-classpath.txt"

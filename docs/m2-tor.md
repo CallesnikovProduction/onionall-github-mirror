@@ -13,7 +13,7 @@ A true build or bootstrap check alone does not constitute M2 acceptance.
 Prerequisites on the migration branch: JDK25+, Maven, Python3.12+, Bash, Docker Engine and Compose.
 Storm3.1 uses JRE25; helpers compile with release25. The repository remains a single Maven module.
 Historical Java17 observations below are not current runtime requirements.
-See [the migration report](jvm25-storm31-migration.md) for scoped tests and blockers. Network access to Maven Central, Debian packages,
+See [the migration report](SUMMARIZIED-MIGRATION-AND-CLEANLINESS-REPORT.md) for scoped tests and blockers. Network access to Maven Central, Debian packages,
 Docker registry and the public Tor network is necessary for a fresh run.
 
 ```sh

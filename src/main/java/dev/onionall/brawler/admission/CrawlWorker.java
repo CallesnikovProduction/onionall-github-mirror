@@ -5,61 +5,259 @@ import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.*;
-import java.util.Arrays;
-import java.util.Map;
+import java.util.*;
+import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
-/** Child-owned execution lease and deadline survive termination of the initiating CLI.
- * This local process guard is not Frontier scheduling or a distributed job lock.
+/**
+ * <b>Дочерний владелец локального execution lease и deadline.</b>
+ *
+ * <p>Удерживает archive-lock после завершения CLI. Это локальная защита процессов, а не распределённая блокировка или scheduler.
  */
 public final class CrawlWorker {
-    private CrawlWorker() { }
+
+    private CrawlWorker() {
+    }
+
+    /**
+     * <b>Запускает ограниченный worker под execution lease.</b>
+     *
+     * <p>Проверяет handoff, публикует readiness после lock и запуска child; сохраняет cleanup-наблюдение при завершении.
+     *
+     * @param args аргументы запуска wrapper
+     * @throws Exception при ошибке операции или нарушении её контракта
+     */
     public static void main(String[] args) throws Exception {
-        if(args.length<4) throw new IllegalArgumentException("worker lock, readiness path, deadline and command required");
-        Path lockPath=Path.of(args[0]),ready=Path.of(args[1]);int seconds=Integer.parseInt(args[2]);
-        if(seconds<1 || seconds>690 || Files.exists(ready,LinkOption.NOFOLLOW_LINKS))
+        if (args.length < 4) {
+            throw new IllegalArgumentException("worker lock, readiness path, deadline and command required");
+        }
+        Path lockPath = Path.of(args[0]), ready = Path.of(args[1]);
+        int seconds = Integer.parseInt(args[2]);
+        if (seconds < 1 || seconds > 690 || Files.exists(ready, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Invalid worker deadline/readiness marker");
-        try(FileChannel owner=FileChannel.open(lockPath,StandardOpenOption.CREATE,StandardOpenOption.WRITE);
-            FileLock lock=owner.tryLock()) {
-            if(lock==null) throw new IOException("A bounded worker still owns this archive");
-            Process worker=new ProcessBuilder(Arrays.copyOfRange(args,3,args.length)).inheritIO().start();
-            Thread shutdown=new Thread(()->stop(worker),"onionall-worker-stop");
+        }
+        boolean fresh;
+        FileChannel opened;
+        try {
+            opened = FileChannel.open(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE,
+                LinkOption.NOFOLLOW_LINKS);
+            fresh = true;
+        } catch (FileAlreadyExistsException e) {
+            opened = FileChannel.open(lockPath, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+            fresh = false;
+        }
+        try (FileChannel owner = opened;
+            FileLock lock = owner.tryLock()) {
+            if (lock == null) {
+                throw new IOException("A bounded worker still owns this archive");
+            }
+            Map<String, Object> ownership = WorkerOwnership.claim(lockPath, fresh,
+                System.getenv(WorkerOwnership.HANDOFF));
+            ProcessBuilder launcher = new ProcessBuilder(Arrays.copyOfRange(args, 3, args.length)).inheritIO();
+            launcher.environment().remove(WorkerOwnership.HANDOFF);
+            Process worker = launcher.start();
+            OwnedChild child = new OwnedChild(worker, lockPath, ownership);
+            Thread shutdown = new Thread(child::finish, "onionall-worker-stop");
             Runtime.getRuntime().addShutdownHook(shutdown);
             int exit;
             try {
                 // Unique marker is published only after both OS lock and actual child exist.
-                Path partial=Files.createTempFile(ready.getParent(),".ready-",".tmp");
+                Path partial = Files.createTempFile(ready.getParent(), ".ready-", ".tmp");
                 try {
-                    Files.write(partial,new ObjectMapper().writeValueAsBytes(Map.of("owner_pid",ProcessHandle.current().pid(),"worker_pid",worker.pid())));
-                    Files.move(partial,ready,StandardCopyOption.ATOMIC_MOVE);
-                } finally {Files.deleteIfExists(partial);}
-                if(!worker.waitFor(seconds,TimeUnit.SECONDS)) { stop(worker);exit=124; }
-                else exit=worker.exitValue();
+                    Map<String, Object> readiness = new LinkedHashMap<>();
+                    readiness.put("owner_pid", ProcessHandle.current().pid());
+                    readiness.put("worker_pid", worker.pid());
+                    readiness.put("worker_start_instant", ownership.get("child_start"));
+                    Files.write(partial, new ObjectMapper().writeValueAsBytes(readiness));
+                    Files.move(partial, ready, StandardCopyOption.ATOMIC_MOVE);
+                } finally {
+                    Files.deleteIfExists(partial);
+                }
+                long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
+                while (worker.isAlive() && System.nanoTime() < until) {
+                    child.observe();
+                    worker.waitFor(25, TimeUnit.MILLISECONDS);
+                }
+                if (worker.isAlive()) {
+                    child.finish();
+                    exit = 124;
+                } else {
+                    exit = worker.exitValue();
+                }
             } finally {
-                stop(worker);
-                Runtime.getRuntime().removeShutdownHook(shutdown);
+                child.finish();
+                try {
+                    Runtime.getRuntime().removeShutdownHook(shutdown);
+                } catch (IllegalStateException shuttingDown) {
+                    /* hook owns cleanup */
+                }
             }
-            if(exit!=0) System.exit(exit);
+            if (exit != 0) {
+                System.exit(exit);
+            }
         }
     }
-    /** A later start probes this lock before any admission or worker launch. */
+
+    /**
+     * Probe never creates legacy files and never equates a released lock with cleanup.
+     */
     static void requireAvailable(Path path) throws IOException {
-        try(FileChannel channel=FileChannel.open(path,StandardOpenOption.CREATE,StandardOpenOption.WRITE);
-            FileLock lock=channel.tryLock()) {
-            if(lock==null) throw new IOException("A bounded worker is still active; wait for its deadline before restarting");
-        } catch(java.nio.channels.OverlappingFileLockException e) { throw new IOException("A bounded worker is still active",e); }
+        WorkerOwnership.requireAvailable(path);
     }
-    private static synchronized void stop(Process worker) {
-        var descendants=worker.descendants().toList();
-        descendants.forEach(ProcessHandle::destroy);worker.destroy();
-        try {
-            if(!worker.waitFor(5,TimeUnit.SECONDS)) worker.destroyForcibly();
-            descendants.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
-            worker.waitFor(5,TimeUnit.SECONDS);
-            long until=System.nanoTime()+TimeUnit.SECONDS.toNanos(5);
-            while(descendants.stream().anyMatch(ProcessHandle::isAlive) && System.nanoTime()<until) Thread.sleep(25);
-        } catch(InterruptedException e) {
-            descendants.forEach(ProcessHandle::destroyForcibly);worker.destroyForcibly();Thread.currentThread().interrupt();
+
+    /**
+     * <b>Владелец дочернего процесса и наблюдённых descendants.</b>
+     *
+     * <p>Публикует cleanup только по подтверждённым идентичностям; UNKNOWN блокирует повторный запуск.
+     */
+    private static final class OwnedChild {
+
+        private final Process process;
+
+        private final Path lock;
+
+        private final Map<String, Object> value;
+
+        private final Map<Long, Instant> descendants = new HashMap<>();
+
+        private final Set<Long> unidentified = new HashSet<>();
+
+        private boolean identities = true, finished;
+
+        OwnedChild(Process process, Path lock, Map<String, Object> value) throws IOException {
+            this.process = process;
+            this.lock = lock;
+            this.value = value;
+            value.put("phase", "RUNNING");
+            value.put("child_created", true);
+            value.put("child_pid", process.pid());
+            value.put("child_start", WorkerObservation.start(process.pid()));
+            if (value.get("child_start") == null) {
+                identities = false;
+            }
+            observe();
+            WorkerOwnership.publish(lock, value);
+        }
+
+        /**
+         * <b>Запоминает идентичности наблюдённых descendants.</b>
+         *
+         * <p>Отсутствующий start instant сохраняется отдельно и не разрешает сигнал.
+         */
+        synchronized void observe() {
+            if (!process.isAlive()) {
+                return;
+            }
+            process.descendants().forEach(p -> {
+                var start = p.info().startInstant();
+                if (start.isEmpty()) {
+                    unidentified.add(p.pid());
+                } else {
+                    descendants.putIfAbsent(p.pid(), start.get());
+                }
+            });
+        }
+
+        /**
+         * <b>Проверяет отсутствие подтверждённой остановки процесса.</b>
+         *
+         * <p>Неопределённая идентичность консервативно считается возможным живым процессом.
+         *
+         * @param pid идентификатор процесса
+         * @param start ожидаемое время запуска
+         * @return нужно ли продолжать ожидание
+         */
+        private boolean alive(long pid, Instant start) {
+            return !Boolean.FALSE.equals(WorkerObservation.alive(pid, start.toString()));
+        }
+
+        /**
+         * <b>Завершает child и подтверждённые descendants.</b>
+         *
+         * <p>Проверяет start instant на том же handle; неизвестным PID сигнал не посылается.
+         *
+         * @param force требуется ли принудительный сигнал
+         */
+        private void terminate(boolean force) {
+            descendants.forEach((pid, start) -> {
+                ProcessHandle.of(pid).ifPresent(p -> {
+                    // Check and act on the SAME Java handle, never look up a PID again after validation.
+                    if (p.info().startInstant().filter(start::equals).isPresent() && p.isAlive()) {
+                        if (force) {
+                            p.destroyForcibly();
+                        } else {
+                            p.destroy();
+                        }
+                    }
+                });
+            });
+            // Process is the object returned by our own ProcessBuilder, never a lookup from metadata.
+            if (process.isAlive()) {
+                if (force) {
+                    process.destroyForcibly();
+                } else {
+                    process.destroy();
+                }
+            }
+        }
+
+        /**
+         * <b>Проверяет оставшиеся неизвестные PID.</b>
+         *
+         * <p>Только отсутствие PID снимает неопределённость наблюдения.
+         *
+         * @return есть ли ещё неизвестный живой процесс
+         */
+        private boolean unverifiedProcessPresent() {
+            // Missing identity NEVER permits a signal. Only complete PID absence can
+            // discharge this observation; a live reused PID conservatively blocks.
+            return unidentified.stream().anyMatch(pid -> ProcessHandle.of(pid).map(ProcessHandle::isAlive)
+                .orElse(false));
+        }
+
+        /**
+         * <b>Завершает child и публикует cleanup-наблюдение.</b>
+         *
+         * <p>Операция синхронизирована и идемпотентна после публикации. При неопределённости сохраняет UNKNOWN; interrupt flag восстанавливается.
+         */
+        synchronized void finish() {
+            if (finished) {
+                return;
+            }
+            observe();
+            terminate(false);
+            boolean stopped = false;
+            try {
+                if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                    terminate(true);
+                }
+                terminate(true);
+                process.waitFor(5, TimeUnit.SECONDS);
+                long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+                while ((unverifiedProcessPresent() || descendants.entrySet().stream()
+                    .anyMatch(e -> alive(e.getKey(), e.getValue()))) && System.nanoTime() < until) {
+                    Thread.sleep(25);
+                }
+                stopped = identities && !unverifiedProcessPresent() && !process.isAlive() && descendants.entrySet()
+                    .stream().noneMatch(e -> alive(e.getKey(), e.getValue()));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            value.put("phase", stopped ? "STOPPED" : "UNKNOWN");
+            value.put("cleanup_confirmed", stopped);
+            value.put("identities_verified", identities);
+            value.put("observed_descendant_count", descendants.size());
+            value.put("unidentified_descendant_count", unidentified.size());
+            if (!process.isAlive()) {
+                value.put("exit_code", process.exitValue());
+            }
+            value.put("observed_at", Instant.now().toString());
+            try {
+                WorkerOwnership.publish(lock, value);
+                finished = true;
+            } catch (IOException e) {
+                System.err.println("Worker cleanup proof unavailable; restart remains BLOCKED");
+            }
         }
     }
 }

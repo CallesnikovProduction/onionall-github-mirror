@@ -5,10 +5,263 @@
     <groupId>dev.onionall.brawler</groupId>
     <artifactId>onionall-reactor</artifactId>
     <version>0.1.0-SNAPSHOT</version>
-    <packaging>pom</packaging>
-    <!-- Aggregation only: server dependencies never enter the crawler classpath. -->
-    <modules>
-        <module>crawler</module>
-        <module>frontier-server</module>
-    </modules>
+    <packaging>jar</packaging>
+
+    <!--
+        Централизованные переменные Maven (для управления версиями)
+    -->
+    <properties>
+        <!-- Кодировка исходных файлов и ресурсов при использовании Maven-плагинами -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Целевая версия Java для компиляторов -->
+        <java.version>25</java.version>
+        <!-- Версия библиотек StormCrawler -->
+        <stormcrawler.version>3.7.0</stormcrawler.version>
+        <!-- Версия Apache Storm -->
+        <storm.version>3.1.0</storm.version>
+        <!-- Версия URLFrontier Client -->
+        <urlfrontier.version>2.4</urlfrontier.version>
+        <!-- Версия Kotlin Maven Plugin и stdlib -->
+        <kotlin.version>2.3.21</kotlin.version>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.10.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.jetbrains.kotlin</groupId>
+                <artifactId>kotlin-maven-plugin</artifactId>
+                <version>${kotlin.version}</version>
+                <executions>
+                    <execution>
+                        <id>kotlin-compile</id>
+                        <phase>process-sources</phase>
+                        <goals><goal>compile</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <jvmTarget>${java.version}</jvmTarget>
+                    <sourceDirs><sourceDir>${project.basedir}/src/main/kotlin</sourceDir>
+                    </sourceDirs>
+                </configuration>
+            </plugin>
+
+            <!-- Pin lifecycle plugins: Maven distributions use different defaults. -->
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId> <!-- Удаляет результаты прошлой сборки -->
+                <version>3.2.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId> <!-- Копирует ресурсы в output-directory -->
+                <version>3.3.1</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId> <!-- Unit-тесты -->
+                <version>3.6.0</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId> <!-- Упаковка классов и ресурсов в обычный jar -->
+                <version>3.5.1</version>
+            </plugin>
+
+            <!--
+                Запуск внешней Java с проектными компилируемыми classpath,
+                Используется внешние Maven-вызовы или поддерживает собирательные workflows
+             -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId> <!-- Компиляция java-исходников -->
+                <version>3.11.0</version>
+                <configuration>
+                    <release>${java.version}</release>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <executable>java</executable>
+                    <includeProjectDependencies>true</includeProjectDependencies>
+                    <includePluginDependencies>false</includePluginDependencies>
+                    <classpathScope>compile</classpathScope>
+                </configuration>
+            </plugin>
+
+            <!--
+                Собирает артефакт приложения Storm Flux.
+
+                С помощью механизма «shade» классы проекта
+                и соответствующие зависимости объединяются в один JAR-файл.
+
+                Дескрипторы служб (service descriptors) объединяются для обеспечения совместимости с Java SPI.
+                В манифесте указывается Apache Storm Flux, а не Onionall CLI.
+
+                Подписи зависимостей, ставшие недействительными в процессе сборки, исключаются.
+                Фильтр flux-core предотвращает известные конфликты
+                между включенными в состав артефакта классами.
+
+                Зависимости, необходимые для работы среды выполнения Storm, могут предоставляться извне;
+                данный артефакт не обязательно является полностью автономным исполняемым файлом.
+             -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <transformers>
+                                <transformer
+                                    implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+                                <transformer
+                                    implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>org.apache.storm.flux.Flux</mainClass>
+                                    <manifestEntries>
+                                        <Change></Change>
+                                        <Build-Date></Build-Date>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                            <!-- The filters below are necessary if you want to include the Tika
+                                module -->
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <!-- https://issues.apache.org/jira/browse/STORM-2428 -->
+                                    <artifact>org.apache.storm:flux-core</artifact>
+                                    <excludes>
+                                        <exclude>org/apache/commons/**</exclude>
+                                        <exclude>org/apache/http/**</exclude>
+                                        <exclude>org/yaml/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <dependencies>
+        <!--
+            Реляционка для JVM - H2, использующаяся как Archive Catalog.
+            Для исследовательской работы, архивированных страниц, снапшотов, наблюдателей ссылок и т.д.
+        -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>2.4.240</version>
+        </dependency>
+
+        <!--
+            Command-Line Interface-фреймворк с обработкой опций, ошибок ввода, справки и вложенных команд
+        -->
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>4.7.7</version>
+        </dependency>
+
+        <dependency><groupId>org.jetbrains.kotlin</groupId><artifactId>kotlin-stdlib</artifactId><version>${kotlin.version}</version></dependency>
+        <dependency><groupId>junit</groupId><artifactId>junit</artifactId><version>4.13.2</version><scope>test</scope></dependency>
+
+        <!--
+            Библиотека с основными механизмами веб-краулинга StormCrawler
+        -->
+        <dependency>
+            <groupId>org.apache.stormcrawler</groupId>
+            <artifactId>stormcrawler-core</artifactId>
+            <version>${stormcrawler.version}</version>
+        </dependency>
+
+        <!--
+            Движок потоковой обработки:
+            - spout: источник данных для топологии
+            - bolt: компонент входящих кортежей
+        -->
+        <dependency>
+            <groupId>org.apache.storm</groupId>
+            <artifactId>storm-client</artifactId>
+            <version>${storm.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
+            Инструмент для декларативного описания топологии (crawler.flux)
+        -->
+        <dependency>
+            <groupId>org.apache.storm</groupId>
+            <artifactId>flux-core</artifactId>
+            <version>${storm.version}</version>
+        </dependency>
+
+        <!--
+            Tika - для извлечения и определения содержимого из различных форматов документов
+        -->
+        <dependency>
+            <groupId>org.apache.stormcrawler</groupId>
+            <artifactId>stormcrawler-tika</artifactId>
+            <version>${stormcrawler.version}</version>
+        </dependency>
+
+        <!--
+            Интеграционный модуль StormCrawler с URLFrontier,
+            связывающий crawling-пайплайн с механизмом хранения и выдачи URL для обработки
+        -->
+        <dependency>
+            <groupId>org.apache.stormcrawler</groupId>
+            <artifactId>stormcrawler-urlfrontier</artifactId>
+            <version>${stormcrawler.version}</version>
+        </dependency>
+
+        <!--
+            Клиентская библиотека для взаимодействия с URLFrontier,
+            предоставляющая КЛИЕНТСКИЙ API для общения с Frontier
+        -->
+        <dependency>
+            <groupId>com.github.crawler-commons</groupId>
+            <artifactId>urlfrontier-client</artifactId>
+            <version>${urlfrontier.version}</version>
+        </dependency>
+    </dependencies>
+    <profiles>
+        <profile>
+            <id>java25</id>
+            <properties><java.version>25</java.version></properties>
+        </profile>
+        <profile>
+            <id>storm31</id>
+            <properties><storm.version>3.1.0</storm.version><java.version>25</java.version></properties>
+        </profile>
+    </profiles>
 </project>
