@@ -2,7 +2,6 @@ package dev.onionall.brawler.crawl;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -36,21 +35,18 @@ public final class RuntimeDescriptor {
      * @throws IOException при ошибке доступа, превышении размера
      *                     или некорректном формате JSON
      */
-
     public static Map<String, Object> descriptor(Path file) throws IOException {
-        if (
-                !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || // Не обычный файл
-                        Files.size(file) > 32768                                 // Ограничение на размер
-        ) throw new IOException("Require regular runtime JSON descriptor <= 32KiB");
-
-        return DESCRIPTOR_JSON_MAPPER.readValue(
-                // ВАЖНО: открывает файл обычным способом.
-                // LinkOption.NOFOLLOW_LINKS учитывается только для if, здесь уже его нет!
-                Files.readAllBytes(file),
-                new TypeReference<>() {}
-        );
+        if (// Не обычный файл
+        // Ограничение на размер
+        !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > 32768) {
+            throw new IOException("Require regular runtime JSON descriptor <= 32KiB");
+        }
+        return // ВАЖНО: открывает файл обычным способом.
+        DESCRIPTOR_JSON_MAPPER.// ВАЖНО: открывает файл обычным способом.
+        readValue(// LinkOption.NOFOLLOW_LINKS учитывается только для if, здесь уже его нет!
+        Files.readAllBytes(file), new TypeReference<>() {
+        });
     }
-
 
     /**
      * <b>Извлечение и проверка строкового параметра конфигурации.</b>
@@ -63,19 +59,12 @@ public final class RuntimeDescriptor {
      * @return проверенное строковое значение
      * @throws IOException если параметр отсутствует или некорректен
      */
-
-    public static String text(
-            Map<String, Object> value,
-            String key
-    ) throws IOException {
+    public static String text(Map<String, Object> value, String key) throws IOException {
         // Ищется в карте значение + тип Object, потому что JSON многотипизированный :)
         Object field = value.get(key);
-        if (
-                !(field instanceof String s) ||
-                        s.isBlank() ||
-                        s.length() > 4096
-        ) throw new IOException("Invalid or missing runtime field: " + key);
-
+        if (!(field instanceof String s) || s.isBlank() || s.length() > 4096) {
+            throw new IOException("Invalid or missing runtime field: " + key);
+        }
         return s;
     }
 
@@ -93,23 +82,13 @@ public final class RuntimeDescriptor {
      * @return проверенное целочисленное значение
      * @throws IOException если значение некорректно или вне диапазона
      */
-    public static int number(
-            Map<String, Object> value,
-            String key,
-            int fallback,
-            int max
-    ) throws IOException {
+    public static int number(Map<String, Object> value, String key, int fallback, int max) throws IOException {
         // Ищется в карте значение + тип Object, потому что JSON многотипизированный :)
         Object n = value.get(key);
-        int result = n == null ? fallback :
-                n instanceof Number ? ((Number) n).intValue() : -1;
-
-        if (
-                result < 1 ||
-                        result > max ||
-                        n instanceof Number number && number.doubleValue() != result
-        ) throw new IOException("Invalid runtime " + key);
-
+        int result = n == null ? fallback : n instanceof Number ? ((Number) n).intValue() : -1;
+        if (result < 1 || result > max || n instanceof Number number && number.doubleValue() != result) {
+            throw new IOException("Invalid runtime " + key);
+        }
         return result;
     }
 }

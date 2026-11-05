@@ -10,31 +10,71 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.Executor;
 
-/** Existing admission capability, applied to every legacy RPC without an anonymous retry. */
+/**
+ * <b>Capability для каждого legacy RPC Frontier.</b>
+ *
+ * <p>Ошибка загрузки секрета запрещает запрос; анонимного повтора нет.
+ */
 public final class FrontierCapability extends CallCredentials {
-    private static final Metadata.Key<String> HEADER = Metadata.Key.of(
-        "x-onionall-admission-token", Metadata.ASCII_STRING_MARSHALLER);
+
+    private static final Metadata.Key<String> HEADER = Metadata.Key.of("x-onionall-admission-token",
+        Metadata.ASCII_STRING_MARSHALLER);
+
     private final Path file;
 
-    private FrontierCapability(Path file) { this.file = file; }
+    private FrontierCapability(Path file) {
+        this.file = file;
+    }
 
-    public static FrontierCapability from(Map<String,Object> conf) {
+    /**
+     * <b>Создаёт credentials из файла capability.</b>
+     *
+     * <p>Проверяет доступность секрета до создания клиента; не включает содержимое файла в сообщение ошибки.
+     *
+     * @param conf конфигурация компонента
+     * @return credentials для Frontier RPC
+     */
+    public static FrontierCapability from(Map<String, Object> conf) {
         Object configured = conf.get("admission.token.file");
-        if (configured == null || configured.toString().isBlank())
+        if (configured == null || configured.toString().isBlank()) {
             throw new IllegalArgumentException("Require admission.token.file for Frontier RPC");
+        }
         FrontierCapability capability = new FrontierCapability(Path.of(configured.toString()));
-        try { capability.read(); }
-        catch (IOException e) { throw new IllegalArgumentException("Frontier capability unavailable"); }
+        try {
+            capability.read();
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Frontier capability unavailable");
+        }
         return capability;
     }
 
+    /**
+     * <b>Читает capability с проверкой алфавита.</b>
+     *
+     * <p>Не сохраняет секрет в журнале.
+     *
+     * @return проверенный токен
+     * @throws IOException при ошибке операции или нарушении её контракта
+     */
     private String read() throws IOException {
         String token = token(file);
-        if (!token.matches("[A-Za-z0-9_-]+")) throw new IOException("Invalid capability encoding");
+        if (!token.matches("[A-Za-z0-9_-]+")) {
+            throw new IOException("Invalid capability encoding");
+        }
         return token;
     }
 
-    @Override public void applyRequestMetadata(RequestInfo request, Executor executor, MetadataApplier applier) {
+    /**
+     * <b>Добавляет capability к конкретному RPC.</b>
+     *
+     * <p>Читает секрет через executor; ошибки приводят к PERMISSION_DENIED без раскрытия файла.
+     *
+     * @param request команда или контекст RPC
+     * @param executor executor обработки credentials
+     * @param applier получатель metadata либо отказа
+     */
+    @Override
+    public void applyRequestMetadata(RequestInfo request, Executor executor, MetadataApplier applier) {
         try {
             executor.execute(() -> {
                 try {
@@ -63,26 +103,21 @@ public final class FrontierCapability extends CallCredentials {
      * @throws IOException если файл недоступен или токен некорректен
      */
     public static String token(Path file) throws IOException {
-        if (
-            // Путь не передали в целом
-                file == null ||
-                        // НЕ директория, НЕ символическая ссылка, НЕ обычный файл
-                        !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) ||
-                        // Размерность больше 257 байт (256 ASCII + 1 байт на \n)
-                        Files.size(file) > 257
-        ) throw new IOException("Require regular admission capability file <= 257 bytes");
-
+        if (// Путь не передали в целом
+        // НЕ директория, НЕ символическая ссылка, НЕ обычный файл
+        file == null || // Размерность больше 257 байт (256 ASCII + 1 байт на \n)
+        !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > 257) {
+            throw new IOException("Require regular admission capability file <= 257 bytes");
+        }
         // Чтение и очистка токена от пробельных символов в начале и в конце строки
         String token = Files.readString(file).strip();
-
-        if (
-                token.length() < 32 ||
-                        token.length() > 256 ||
-                        !token.matches("[A-Za-z0-9_-]+")
-        ) throw new IOException("Invalid admission capability");
-
+        if (token.length() < 32 || token.length() > 256 || !token.matches("[A-Za-z0-9_-]+")) {
+            throw new IOException("Invalid admission capability");
+        }
         return token;
     }
 
-    @Override public void thisUsesUnstableApi() { }
+    @Override
+    public void thisUsesUnstableApi() {
+    }
 }

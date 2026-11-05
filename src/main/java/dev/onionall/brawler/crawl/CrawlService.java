@@ -36,10 +36,9 @@ import java.util.*;
  * @author GPT-6.1 Sol
  */
 public final class CrawlService {
-    public static final String ADMISSION_BLOCKER =
-            "Configure a compatible durable Frontier server " +
-                    "and pass --runtime with --admission-token-file; " +
-                    "stock Frontier has no safe admission fallback";
+
+    public static final String ADMISSION_BLOCKER = "Configure a compatible durable Frontier server " +
+        "and pass --runtime with --admission-token-file; " + "stock Frontier has no safe admission fallback";
 
     /**
      * <b>
@@ -61,12 +60,7 @@ public final class CrawlService {
          * @return структурированное представление состояния
          * @throws Exception при ошибке получения состояния
          */
-        Map<String, Object> status(
-                Path archive,
-                String id,
-                Path runtime,
-                Path token
-        ) throws Exception;
+        Map<String, Object> status(Path archive, String id, Path runtime, Path token) throws Exception;
 
         /**
          * Запускает выполнение задания.
@@ -78,15 +72,11 @@ public final class CrawlService {
          * @return структурированный результат попытки запуска
          * @throws Exception при ошибке запуска
          */
-        Map<String, Object> start(
-                Path archive,
-                String id,
-                Path runtime,
-                Path token
-        ) throws Exception;
+        Map<String, Object> start(Path archive, String id, Path runtime, Path token) throws Exception;
     }
 
     private final Path archive;
+
     private final Execution execution;
 
     /**
@@ -96,20 +86,12 @@ public final class CrawlService {
      */
     public CrawlService(Path archive) {
         this(archive, new Execution() {
-            public Map<String, Object> status(
-                    Path root,
-                    String id,
-                    Path runtime,
-                    Path token
-            ) throws Exception {
+
+            public Map<String, Object> status(Path root, String id, Path runtime, Path token) throws Exception {
                 return CrawlExecution.status(root, id, runtime, token);
             }
-            public Map<String, Object> start(
-                    Path root,
-                    String id,
-                    Path runtime,
-                    Path token
-            ) throws Exception {
+
+            public Map<String, Object> start(Path root, String id, Path runtime, Path token) throws Exception {
                 return CrawlExecution.start(root, id, runtime, token);
             }
         });
@@ -122,10 +104,7 @@ public final class CrawlService {
      * @param execution реализация запуска и получения состояния
      * @throws NullPointerException если аргумент равен null
      */
-    public CrawlService(
-            Path archive,
-            Execution execution
-    ) {
+    public CrawlService(Path archive, Execution execution) {
         this.archive = Objects.requireNonNull(archive);
         this.execution = Objects.requireNonNull(execution);
     }
@@ -143,10 +122,10 @@ public final class CrawlService {
      * @throws IOException при ошибке работы с архивом
      */
     public Map<String, Object> createPlan(
-            List<String> seeds,
-            int depth,
-            int maxPages,
-            String provider
+        List<String> seeds,
+        int depth,
+        int maxPages,
+        String provider
     ) throws IOException {
         try (var catalog = new ArchiveStore(archive)) {
             return catalog.createPlan(seeds, depth, maxPages, provider);
@@ -163,11 +142,8 @@ public final class CrawlService {
      * @return список планов и данные пагинации
      * @throws IOException при ошибке работы с архивом
      */
-    public Map<String, Object> plans(
-            String cursor,
-            int limit
-    ) throws IOException {
-        try (var catalog = new ArchiveStore(archive)){
+    public Map<String, Object> plans(String cursor, int limit) throws IOException {
+        try (var catalog = new ArchiveStore(archive)) {
             return catalog.plans(cursor, limit);
         }
     }
@@ -182,7 +158,7 @@ public final class CrawlService {
      * @throws IOException при ошибке работы с архивом
      */
     public Map<String, Object> plan(String id) throws IOException {
-        try(var catalog = new ArchiveStore(archive)){
+        try (var catalog = new ArchiveStore(archive)) {
             return catalog.plan(id);
         }
     }
@@ -196,7 +172,7 @@ public final class CrawlService {
      * @throws IOException при ошибке работы с архивом
      */
     public Map<String, Object> approve(String id) throws IOException {
-        try (var catalog = new ArchiveStore(archive)){
+        try (var catalog = new ArchiveStore(archive)) {
             return catalog.approvePlan(id);
         }
     }
@@ -212,12 +188,8 @@ public final class CrawlService {
      * @return записи об ошибках и данные пагинации
      * @throws IOException при ошибке работы с архивом
      */
-    public Map<String, Object> errors(
-            String id,
-            String cursor,
-            int limit
-    ) throws IOException {
-        try (var catalog = new ArchiveStore(archive)){
+    public Map<String, Object> errors(String id, String cursor, int limit) throws IOException {
+        try (var catalog = new ArchiveStore(archive)) {
             return catalog.failureHistory(id, cursor, limit);
         }
     }
@@ -233,11 +205,7 @@ public final class CrawlService {
      * @return сведения о состоянии задания
      * @throws Exception при ошибке получения состояния
      */
-    public Map<String, Object> status(
-            String id,
-            Path runtime,
-            Path token
-    ) throws Exception {
+    public Map<String, Object> status(String id, Path runtime, Path token) throws Exception {
         return execution.status(archive, id, runtime, token);
     }
 
@@ -255,25 +223,15 @@ public final class CrawlService {
      * @return результат запуска либо отказа
      * @throws Exception при ошибке проверки задания или запуска
      */
-    public Map<String, Object> start(
-            String id,
-            Path runtime,
-            Path token
-    ) throws Exception {
-        if (runtime != null) return execution.start(archive, id, runtime, token);
-
+    public Map<String, Object> start(String id, Path runtime, Path token) throws Exception {
+        if (runtime != null) {
+            return execution.start(archive, id, runtime, token);
+        }
         // Preserve the existing offline CLI contract: check the plan but never admit anonymously.
         try (var catalog = new ArchiveStore(archive)) {
             catalog.job(id);
         }
-
-        return Map.of(
-                "passed",false,
-                "exit_code",7,
-                "plan_id", id,
-                "admission","BLOCKED",
-                "blocker", ADMISSION_BLOCKER,
-                "network_requests",0
-        );
+        return Map.of("passed", false, "exit_code", 7, "plan_id", id, "admission", "BLOCKED", "blocker",
+            ADMISSION_BLOCKER, "network_requests", 0);
     }
 }
