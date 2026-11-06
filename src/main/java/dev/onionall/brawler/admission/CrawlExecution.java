@@ -2,12 +2,14 @@ package dev.onionall.brawler.admission;
 
 import dev.onionall.brawler.archive.ArchiveStore;
 import dev.onionall.brawler.crawl.JobStatusService;
+
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.file.*;
 import java.time.Instant;
 import java.util.*;
+
 import static dev.onionall.brawler.admission.AdmissionClient.fromRuntime;
 import static dev.onionall.brawler.admission.FrontierCapability.token;
 import static dev.onionall.brawler.admission.CrawlRuntimePreparer.write;
@@ -16,7 +18,12 @@ import static dev.onionall.brawler.crawl.RuntimeDescriptor.*;
 /**
  * <b>Координатор локального запуска и наблюдения обхода.</b>
  *
- * <p>Удерживает startup-lock, проверяет approval и делегирует worker; Frontier остаётся владельцем расписания. Runtime задаёт оператор, не удалённые метаданные.
+ * <p>Удерживает startup-lock, проверяет approval и делегирует worker;
+ * Frontier остаётся владельцем расписания.
+ * Runtime задаёт оператор, не удалённые метаданные.
+ *
+ * @author Stephan Kolesnikov
+ * @author GPT-6.1 Sol
  */
 public final class CrawlExecution {
 
@@ -65,28 +72,45 @@ public final class CrawlExecution {
         try (var store = new ArchiveStore(archive)) {
             plan = store.plan(id);
         }
+
         if (!Boolean.TRUE.equals(plan.get("approved"))) {
             throw new IOException("Explicit plan approval is required before admission");
         }
+
         Map<String, Object> runtime = descriptor(runtimeFile);
+
         Path storm = Path.of(text(runtime, "storm_executable")).toAbsolutePath();
-        Path jar = Path.of(text(runtime, "crawler_jar")).toAbsolutePath();
-        Path work = Path.of(text(runtime, "work_directory")).toAbsolutePath().normalize().resolve(id);
-        int seconds = number(runtime, "seconds", 120, 600);
-        int httpTimeout = number(runtime, "http_timeout_ms", 20000, 30000);
+        Path jar   = Path.of(text(runtime, "crawler_jar")).toAbsolutePath();
+
+        Path work  = Path.of(text(runtime, "work_directory")).toAbsolutePath().normalize().resolve(id);
+
+        int seconds      = number(runtime, "seconds", 120, 600);
+        int httpTimeout  = number(runtime, "http_timeout_ms", 20000, 30000);
         int retryMinutes = number(runtime, "retry_minutes", 120, 120);
-        if (!Files.isRegularFile(storm) || !Files.isExecutable(storm) || !Files.isRegularFile(jar,
-            LinkOption.NOFOLLOW_LINKS)) {
+        if (
+                !Files.isRegularFile(storm) ||
+                !Files.isExecutable(storm) ||
+                !Files.isRegularFile(jar, LinkOption.NOFOLLOW_LINKS)
+        ) {
             throw new IOException("Runtime requires installed Storm executable and full crawler JAR");
         }
+
         String capability = token(tokenFile);
-        try (FileChannel owner = FileChannel.open(archive.toAbsolutePath().normalize().resolve("crawl-start.lock"),
-            StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-            FileLock lock = owner.tryLock()) {
+
+        try (FileChannel owner = FileChannel.open(
+                archive.toAbsolutePath().normalize().resolve("crawl-start.lock"),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE);
+             FileLock lock = owner.tryLock()
+        ) {
             if (lock == null) {
                 throw new IOException("This archive already has an active local crawl start");
             }
-            Path runtimeWorkerLock = archive.toAbsolutePath().normalize().resolve("crawl-worker.lock");
+
+            Path runtimeWorkerLock = archive
+                                        .toAbsolutePath()
+                                        .normalize()
+                                        .resolve("crawl-worker.lock");
             if (!Files.exists(WorkerOwnership.marker(runtimeWorkerLock), LinkOption.NOFOLLOW_LINKS)) {
                 try (var store = new ArchiveStore(archive)) {
                     if (store.hasExecutionHistory()) {
@@ -94,21 +118,63 @@ public final class CrawlExecution {
                     }
                 }
             }
+
             try (var preparation = new WorkerOwnership.Preparation(runtimeWorkerLock, id)) {
-                Path jobJar = CrawlRuntimePreparer.prepare(plan, runtime, archive, tokenFile, work, jar,
-                    httpTimeout, retryMinutes);
+                Path jobJar = CrawlRuntimePreparer.prepare(
+                        plan,
+                        runtime,
+                        archive,
+                        tokenFile,
+                        work,
+                        jar,
+                        httpTimeout,
+                        retryMinutes
+                );
+
+                // TODO(EXEC-002): Определить безопасное восстановление в WorkerOwnership.Preparation.
+                // После hard crash между admission и запуском остаётся PREPARING/LAUNCHING
+                // без cleanup proof; повтор блокируется до RPC. Нужен внешний recovery-контракт,
+                // доказывающий отсутствие child; удалять ownership или обходить guard нельзя.
                 Map<String, Object> session = CrawlAdmissionService.admit(id, plan, runtime, capability);
-                // This checkpoint can be reconstructed by the identical session readback after any crash.
+
+                // Frontier readback восстанавливает наблюдение; разрешение локального
+                // повторного запуска отдельно требует подтверждённого cleanup ownership.
                 write(work.resolve("admission-observation.json"), session);
                 try (var store = new ArchiveStore(archive)) {
-                    store.recordAdmission(id, Map.of("admission", "COMMITTED", "state", "ADMITTED", "session_id",
-                        id, "authoritative_admission", session, "runtime", runtimeFile.toAbsolutePath().toString(),
-                        "observed_at", Instant.now().toString()));
+                    store.recordAdmission(id, Map.of(
+                            "admission", "COMMITTED",
+                            "state", "ADMITTED",
+                            "session_id", id,
+                            "authoritative_admission", session,
+                            "runtime", runtimeFile.toAbsolutePath().toString(),
+                            "observed_at", Instant.now().toString()
+                    ));
                 }
-                Map<String, Object> result = WorkerLauncher.run(archive, id, work, storm, jobJar,
-                    runtimeWorkerLock, seconds, preparation, session);
+
+                Map<String, Object> result = WorkerLauncher.run(
+                        archive,
+                        id,
+                        work,
+                        storm,
+                        jobJar,
+                        runtimeWorkerLock,
+                        seconds,
+                        preparation,
+                        session
+                );
+
                 try (var rpc = fromRuntime(runtime, capability)) {
-                    result.put("authoritative_admission", rpc.command(Map.of("action", "session", "session_id", id)));
+                    Map<String, Object> finalSession = rpc.command(
+                            Map.of(
+                                    "action", "session",
+                                    "session_id", id
+                            )
+                    );
+                    if (finalSession == null || !"SESSION_OPEN".equals(finalSession.get("outcome"))) {
+                        throw new IOException("Authoritative session unavailable");
+                    }
+                    FrontierReadback.verifySession(finalSession, plan);
+                    result.put("authoritative_admission", finalSession);
                 } catch (IOException e) {
                     result.put("admission_readback_error", "AUTHORITATIVE_READBACK_UNAVAILABLE");
                 }
@@ -116,12 +182,17 @@ public final class CrawlExecution {
                 try (var store = new ArchiveStore(archive)) {
                     store.recordAdmission(id, result);
                 }
-                // Expose the same versioned job view as status; legacy passed/state
-                // continue to describe execution only, never crawl completion.
+
+                // Базовое наблюдение уже сохранено; ошибка reconciliation распространяется.
+                // Следующий status заново проверяет Frontier и обновляет каталог.
+                // Legacy passed/state описывают worker, а не завершение обхода.
                 Map<String, Object> observed = status(archive, id, runtimeFile, tokenFile);
                 if (observed.get("job_status") instanceof Map<?, ?> view) {
                     for (var entry : view.entrySet()) {
-                        result.put((String) entry.getKey(), entry.getValue());
+                        result.put(
+                                (String) entry.getKey(),
+                                entry.getValue()
+                        );
                     }
                     result.put("job_status", view);
                 }
@@ -140,14 +211,20 @@ public final class CrawlExecution {
      * @param plan утверждённый план
      * @throws IOException при ошибке операции или нарушении её контракта
      */
-    public static void verifySession(Map<String, Object> session, Map<String, Object> plan) throws IOException {
+    public static void verifySession(
+            Map<String, Object> session,
+            Map<String, Object> plan
+    ) throws IOException {
         FrontierReadback.verifySession(session, plan);
     }
 
     /**
      * Cleanup only a launch-pinned wrapper and its identified, directly observed descendants.
      */
-    static void stop(Process worker, Instant identity) {
+    static void stop(
+            Process worker,
+            Instant identity
+    ) {
         WorkerLauncher.stop(worker, identity);
     }
 

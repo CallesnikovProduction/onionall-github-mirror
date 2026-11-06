@@ -14,11 +14,15 @@ import java.util.concurrent.Executor;
  * <b>Capability для каждого legacy RPC Frontier.</b>
  *
  * <p>Ошибка загрузки секрета запрещает запрос; анонимного повтора нет.
+ * @author Stephan Kolesnikov
+ * @author GPT-6.1 Sol
  */
 public final class FrontierCapability extends CallCredentials {
 
-    private static final Metadata.Key<String> HEADER = Metadata.Key.of("x-onionall-admission-token",
-        Metadata.ASCII_STRING_MARSHALLER);
+    private static final Metadata.Key<String> HEADER = Metadata.Key.of(
+            "x-onionall-admission-token",
+            Metadata.ASCII_STRING_MARSHALLER
+    );
 
     private final Path file;
 
@@ -58,9 +62,7 @@ public final class FrontierCapability extends CallCredentials {
      */
     private String read() throws IOException {
         String token = token(file);
-        if (!token.matches("[A-Za-z0-9_-]+")) {
-            throw new IOException("Invalid capability encoding");
-        }
+        if (!token.matches("[A-Za-z0-9_-]+")) throw new IOException("Invalid capability encoding");
         return token;
     }
 
@@ -74,7 +76,11 @@ public final class FrontierCapability extends CallCredentials {
      * @param applier получатель metadata либо отказа
      */
     @Override
-    public void applyRequestMetadata(RequestInfo request, Executor executor, MetadataApplier applier) {
+    public void applyRequestMetadata(
+            RequestInfo request,
+            Executor executor,
+            MetadataApplier applier
+    ) {
         try {
             executor.execute(() -> {
                 try {
@@ -103,10 +109,11 @@ public final class FrontierCapability extends CallCredentials {
      * @throws IOException если файл недоступен или токен некорректен
      */
     public static String token(Path file) throws IOException {
-        if (// Путь не передали в целом
-        // НЕ директория, НЕ символическая ссылка, НЕ обычный файл
-        file == null || // Размерность больше 257 байт (256 ASCII + 1 байт на \n)
-        !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || Files.size(file) > 257) {
+        if (
+                file == null ||        // Путь не передали в целом
+                !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) || // НЕ обычный файл
+                Files.size(file) > 257 // Размерность больше 257 байт (256 ASCII + 1 байт на \n)
+        ) {
             throw new IOException("Require regular admission capability file <= 257 bytes");
         }
         // Чтение и очистка токена от пробельных символов в начале и в конце строки
