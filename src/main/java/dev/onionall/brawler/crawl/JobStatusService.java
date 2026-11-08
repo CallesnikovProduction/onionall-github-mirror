@@ -1,6 +1,5 @@
 package dev.onionall.brawler.crawl;
 
-import dev.onionall.brawler.admission.FrontierCapability;
 import dev.onionall.brawler.admission.FrontierReadback;
 import dev.onionall.brawler.admission.JobStatusView;
 import dev.onionall.brawler.admission.WorkerObservation;
@@ -10,7 +9,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.nio.file.Path;
-import static dev.onionall.brawler.admission.AdmissionClient.fromRuntime;
+import static dev.onionall.brawler.admission.AdmissionClient.fromRuntimeWithCapabilityFile;
 import static dev.onionall.brawler.admission.FrontierReadback.verifySession;
 
 /**
@@ -159,8 +158,7 @@ public class JobStatusService {
         Map<String, Object> job,
         String id
     ) throws IOException {
-        String token = FrontierCapability.token(tokenFile);
-        try (var rpc = fromRuntime(runtime, token)) {
+        try (var rpc = fromRuntimeWithCapabilityFile(runtime, tokenFile)) {
             Map<String, Object> session;
             try {
                 session = rpc.command(Map.of(
@@ -228,7 +226,7 @@ public class JobStatusService {
                     case DEADLINE_EXCEEDED ->
                         null;
                     default ->
-                        Boolean.TRUE;
+                        null; // Credentials/interceptors can fail locally; a status is not reachability proof.
                 };
                 return new FrontierObservation(null, null, reachable);
             }

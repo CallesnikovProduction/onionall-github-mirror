@@ -11,3 +11,8 @@ __pycache__
 
 # Private operational bridge configuration
 .secrets/
+
+**/target/
+.idea/
+.agents/
+.aws/

@@ -1,0 +1,14 @@
+# Use exactly the existing checksum-checked source patch and real Nimbus probes.
+FROM --platform=linux/amd64 storm@sha256:09184a1eef9fb82ee8dfa7705539c1571a1e8006e20bf772b6654189458e89ec AS storm
+FROM onionall-toolchain:jdk25 AS patch
+WORKDIR /work
+COPY --from=storm /apache-storm/lib /opt/storm/lib
+COPY --from=storm /apache-storm/lib-common /opt/storm/lib-common
+COPY scripts/patches/build-storm-lifecycle.sh scripts/patches/build-storm-lifecycle.sh
+COPY docker/storm-lifecycle/ docker/storm-lifecycle/
+COPY test/storm-lifecycle/ test/storm-lifecycle/
+ENV STORM_LIBRARIES=/opt/storm STORM_PATCH_ONLY=1 STORM_LIFECYCLE_REVISION=2
+RUN bash scripts/patches/build-storm-lifecycle.sh
+FROM storm
+COPY --from=patch /work/.runtime/storm-lifecycle-build-cleanup2/context/storm-server-3.1.0.jar /apache-storm/lib/storm-server-3.1.0.jar
+LABEL dev.onionall.storm.lifecycle-fix="cleanup-submit-lock-2"

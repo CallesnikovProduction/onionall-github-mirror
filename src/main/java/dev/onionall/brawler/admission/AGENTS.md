@@ -32,6 +32,8 @@ Admission отвечает на вопрос: можно ли резервиро
 ```java
 public AdmissionClient(String host, int port, String token) throws IOException;
 public static AdmissionClient fromRuntime(Map<String, Object> runtime, String token) throws IOException;
+public static AdmissionClient fromCapabilityFile(String host, int port, Path file) throws IOException;
+public static AdmissionClient fromRuntimeWithCapabilityFile(Map<String, Object> runtime, Path file) throws IOException;
 public Map<String, Object> command(Map<String, Object> request) throws IOException;
 public FrontierReadback.Page list(String session, String cursor, int limit) throws IOException;
 public FrontierReadback.Counts counts(String session) throws IOException;
@@ -42,6 +44,7 @@ public void close();
 
 ```java
 static Map<String, Object> admit(String id, Map<String, Object> plan, Map<String, Object> runtime, String capability) throws IOException;
+static Map<String, Object> admitWithCapabilityFile(String id, Map<String, Object> plan, Map<String, Object> runtime, Path capabilityFile) throws IOException;
 ```
 
 [FrontierCapability.java](FrontierCapability.java):
@@ -162,13 +165,53 @@ Open и итоговый session readback сверяются с plan_id/origin/s
 Каждый seed требует reserve и отдельный reservation readback с тем же reservation_id.
 Архив хранит checkpoint-наблюдение, не разрешение на планирование.
 
-AdmissionClient ограничивает request 32 KiB, response 64 KiB, deadline 10 s;
-канал использует существующий plaintext-контракт с capability header.
-FrontierCapability.token проверяет regular non-symlink файл ≤257 bytes,
-длину 32..256 и алфавит. CallCredentials перечитывает файл для RPC;
-ошибка даёт PERMISSION_DENIED без содержимого секрета и anonymous retry.
-DurableDiscoveryFilter имеет собственный путь чтения конфигурации/токена:
-не приписывайте ему все проверки FrontierCapability.token без чтения реализации.
+AdmissionClient ограничивает actual JSON request 32 KiB, response 64 KiB и deadline 10 s;
+transport retries отключены. JSON требует единственный object с outcome, UTF-8,
+без duplicate keys/trailing tokens. Канал использует plaintext с capability header:
+только loopback или проверенная изолированная deployment-сеть без опубликованного
+Frontier-порта. Hostname validation не доказывает изоляцию; произвольный runtime
+endpoint/TLS остаётся отдельной границей RPC-001.
+
+RpcFailure различает TRANSPORT и PROTOCOL. Любая ошибка mutating Command означает
+возможный commit (mutationOutcomeUnknown), даже PERMISSION_DENIED/INVALID_ARGUMENT;
+авторитетный business rejection — проверенный JSON outcome, не gRPC code.
+Обычная cause chain санитизирована. transportFailure() явно предоставляет исходный
+gRPC status/cause/trailers; не логировать их как доверенный или безопасный текст.
+CrawlAdmissionService после transport failure open/reserve выполняет только
+session/reservation readback. Положительный проверенный readback подтверждает commit;
+отрицательный или недоступный даёт AdmissionFailure.UNKNOWN, без повторной мутации.
+Нарушение протокола/конфликт также запрещают worker. CrawlExecution сохраняет
+admission_outcome в существующих JSON/H2 observations, не вводя новую authority.
+Повторный операторский start использует тот же immutable plan/session; серверная
+идемпотентность не отменяет локальный ownership guard после crash.
+
+Все production file-backed клиенты (start/status/discovery и legacy adapters)
+используют FrontierCapability и перечитывают файл при каждом новом RPC. String
+constructor/fromRuntime остаются явным snapshot API для callers с готовым секретом.
+Сервер держит один shared operator/worker token на lifetime; role/session isolation,
+overlap ротации и отзыв открытых streams отсутствуют. Изменение server token требует
+остановки активных workers/streams и согласованного перезапуска; перечитывание файла
+само по себе не реализует безопасную live rotation.
+
+FrontierCapability открывает файл с NOFOLLOW_LINKS и фактически читает ≤258 bytes
+для проверки лимита 257, длины 32..256 и алфавита. Ошибки не раскрывают path/content;
+metadata получает один terminal callback, включая rejection executor. Требуются
+operator-owned path/parents и private permissions/ACL, доступные только доверенным
+operator/worker identities. POSIX-only permission policy не заменяет Windows ACL.
+CAP-002 остаётся открытым для hostile special-file substitution между path type
+check и open: portable Java API здесь не даёт fstat/nonblocking-open guarantee.
+
+Readback v1: max_pages/reservations ≤100 — реальная серверная квота, а page size
+≤200 — отдельный лимит. >100 требует согласованного server/product изменения,
+не снятия client bounds. Cursor фиксирует through_ordinal membership; scheduler
+fields/readback_at наблюдаются заново на каждой странице. readback_at — server
+wall-clock, не sequence/freshness lease; clock regression не отвергается.
+Terminal provenance не сохранена: done/success/terminal/retry_wait обязаны быть
+null; нулевые scheduler counts не доказывают COMPLETE (READBACK-003).
+
+Фокусные проверки: `mvn -Dtest=AdmissionClientTest,AdmissionClientReliabilityTest,FrontierCapabilityTest,FrontierReadbackTest,FrontierReadbackValidationTest,CrawlAdmissionServiceTest,CrawlAdmissionRecoveryTest,DurableDiscoveryFilterTest test`.
+Durable server/real RocksDB доказательства отдельно: `bash frontier-server/build.sh --test`.
+Loopback fixtures не заменяют product Storm/Tor qualification.
 
 ## Процессы, ресурсы и persistence
 
@@ -192,6 +235,59 @@ DurableDiscoveryFilter имеет собственный путь чтения �
   Exit zero относится к процессу, crawl_completed_verified остаётся false без отдельного доказательства.
 - DurableDiscoveryFilter не вводит локальный quota cache: reservation выполняет Frontier.
   Metadata-only и scope-отказы не превращаются в разрешённые fetch targets.
+
+## Runtime publication и discovery callbacks
+
+Успешный возврат CrawlRuntimePreparer.prepare — единственный сигнал готовности
+runtime для CrawlExecution; наличие отдельных JSON/JAR файлов таким сигналом
+не является. Preflight проверяет approved archive ID, runtime/work binding и
+генерирует config до файловых эффектов. Job-directory symlink отвергается;
+operator-authorized parent aliases сохраняются. Родители принадлежат оператору:
+эти path checks не являются containment против hostile directory writers.
+
+CrawlResources принимает ровно два UTF-8 JSON ресурса onionall-job/parsefilters.json
+и onionall-job/urlfilters.json, каждый ≤32 KiB, вместе ≤64 KiB. Parse chain —
+DurableDiscoveryFilter затем ArchiveParseFilter; URLFilters пуст. Ключи JSON —
+точные современные FQCN StormCrawler. Проверяются readable/CRC-consistent JAR и
+runtime-visible resource bytes, включая Multi-Release lookup. Signed input
+отвергается; подписи не удаляются. Публикация — createLink готового временного
+файла в том же каталоге: коллизия не заменяет destination, hard-link support
+обязателен, move-fallback отсутствует. Это atomic visibility, не полная
+power-loss durability. Успешный commit не откатывается из-за cleanup failure.
+Runtime artifacts/logs сохраняются; automatic orphan cleanup требует отдельного
+WorkerOwnership-контракта и здесь не выполняется.
+
+Canonical graph/name и parallelism=1 сохранены; launcher использует local mode.
+Generated product config отключает stdout URL/text/metadata в StdOutIndexer,
+сохраняя его FETCHED/status и ACK. Legacy/root fixtures не изменяются. Другие
+upstream-компоненты могут логировать URL: worker logs остаются operator-private.
+
+Discovery проверяет immutable reservation record: session, canonical URL, UUID,
+depth 0..5, source и historical enqueued acknowledgement. Новая RESERVED должна
+соответствовать запрошенному parent/depth; ALREADY_RESERVED сохраняет первую
+provenance и вправе отличаться от текущего graph edge. Positive replies сверяются
+с reservation readback; lost reply разрешается только положительным readback,
+без повторного reserve. Negative/unavailable readback оставляет unresolved failure.
+Отклонённые foreign links — graph data без RPC/fetch permission; legacy outlinks
+очищаются только после успешного полного bounded callback.
+
+discovery.admission.timeout.ms = min(30000, worker seconds * 1000) ограничивает
+RPC/processing checks страницы; каждый RPC получает min(10 s, remaining budget).
+Это не hard real-time deadline всего метода: filesystem/CPU work и bounded
+channel close (до 5 s) — отдельные расходы. Time exhaustion не выдаёт success:
+processing.complete=false, error/truncation metadata и exception; partial remote
+commits остаются во Frontier. Локального reservation cache/quota нет.
+
+Установленный JSoupParser 3.7.0 превращает ParseFilter RuntimeException в anchored
+ERROR и ACK, не fail; обычные документы/outlinks после этого не emit-ятся.
+Generated config задаёт selective ERROR interval для ephemeral
+onionall.discovery.retry=true. Scheduler читает hint до MetadataTransfer; hint
+не входит в persisted metadata и не влияет на последующий unrelated ERROR.
+Общий ERROR=-1 сохранён. Discovery ERROR retries не имеют отдельного attempt cap;
+они требуют работающего bounded worker и подчиняются Frontier due dates. Это не
+доказательство полного ACK tree/lease recovery или attempt fencing (TOPO-001/002).
+
+Фокусные проверки: `mvn -Dtest=CrawlResourcesTest,CrawlRuntimePreparerTest,CrawlTopologyTest,CrawlTopologyContractTest,CrawlGeneratedPolicyTest,DurableDiscoveryFilterTest,DurableDiscoveryAdmissionTest,ParserDiscoveryFailureTest test`.
 
 ## Границы для изменений
 

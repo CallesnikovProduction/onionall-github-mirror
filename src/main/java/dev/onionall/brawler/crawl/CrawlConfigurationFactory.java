@@ -80,11 +80,20 @@ public final class CrawlConfigurationFactory {
             "protocol.tor.category", "error.cause", "error.source"));
         c.put("metadata.transfer", List.of());
         c.put("parser.emitOutlinks.max.per.page", 100);
+        c.put("discovery.admission.timeout.ms", Math.min(30000, number(runtime, "seconds", 120, 600) * 1000));
         c.put("sitemap.discovery", false);
         c.put("fetchInterval.default", 1440);
         c.put("fetchInterval.fetch.error", retry);
         c.put("fetchInterval.error", -1);
+        // JSoupParser emits ERROR then ACK for filter exceptions. Only the discovery
+        // failure marker opts into a future retry; ordinary ERROR remains terminal.
+        c.put("fetchInterval.ERROR.onionall.discovery.retry=true", retry);
         c.put("max.fetch.errors", 3);
+        // Keep the canonical indexer/status stage while preventing document payloads
+        // and URLs from being copied into retained worker stdout by crawler defaults.
+        c.put("indexer.url.fieldname", "");
+        c.put("indexer.text.fieldname", "");
+        c.put("indexer.md.mapping", List.of());
         c.put("parsefilters.config.file", "onionall-job/parsefilters.json");
         c.put("urlfilters.config.file", "onionall-job/urlfilters.json");
         c.put("archive.root", archive.toString());

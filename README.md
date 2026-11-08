@@ -4,7 +4,87 @@ A JVM-first foundation for an independent search engine over publicly discoverab
 
 Tor v3 has no global registry. Measure coverage of known, permitted sources rather than claiming complete enumeration.
 
-## Current status
+
+## Development without installing Java
+
+Prerequisites: Git, Docker Engine/Desktop with Compose, and Bash with standard
+Unix utilities (Linux or WSL2). No host Java, Maven, Python or JAVA_HOME is needed.
+The pinned runtime baseline targets **linux/amd64**; ARM hosts need Docker's
+amd64 emulation. Native ARM runtime is not qualified.
+
+```sh
+./onionall build --images   # first build: application, custom Frontier, Storm and Tor
+./onionall build            # incremental JVM build; persistent Maven cache
+./onionall build --clean    # clean generated build outputs only
+./onionall test             # JVM tests, Frontier conformance, script contracts
+export ONIONALL_BRIDGES_FILE=/absolute/path/to/private-bridges.conf
+./onionall up
+./onionall status
+./onionall down             # retains volumes and archive
+```
+
+Build/test run in the Temurin JDK 25 toolchain container using the checksum-pinned
+Maven Wrapper. Both root and crawler POMs are verified sequentially; Frontier's
+independent Maven project uses its exact SHA256-checked upstream dependency.
+The baseline is extracted automatically from the pinned upstream image; only
+the custom Admission server is launched. Storm packaging reuses the existing
+Nimbus patches and lock/drain probes in a multi-stage build. Runtime images do
+not include the build toolchain. No registry login or image publication required.
+
+Maven dependencies persist in `.runtime/maven-linux-repository/`, wrapper files
+in `.runtime/toolchain-home/`; build outputs retain the invoking UID/GID.
+Use `ONIONALL_OFFLINE=1 ./onionall build` only after dependencies and image layers
+are cached (image builds may still require registry access).
+
+Runtime data: `.runtime/local/` holds the private Admission token, H2 archive
+catalog, HTML `archive/objects/`, execution configs/logs. Named volumes
+`onionall-runtime_frontier-data` and `onionall-runtime_tor-state` retain Frontier
+and Tor identity. Fixture mode uses separate `.runtime/local-fixture/` and
+`onionall-runtime-fixture_frontier-data`. Clean/build/down never remove these.
+
+Troubleshooting: check `docker info` if the engine is unavailable; use
+`./onionall build --images` for missing runtime images. `up` requires a private
+[obfs4 bridge file](docker/m2/bridges.example.conf) and waits for Tor bootstrap;
+`status` checks authenticated Frontier, Tor/SOCKS, packaged CLI and Storm.
+The lifecycle controller uses the local Unix Docker socket with the caller's
+UID/groups; remote TCP Docker contexts are unsupported. On Linux, set DOCKER_HOST
+to the local Unix socket if Docker uses a non-default context/rootless engine.
+Keep the checkout on the Docker host so bind mounts resolve to the same path.
+No real Tor connection is needed for build/test or ordinary PR checks.
+See [runtime details](docs/local-runtime.md) for approval and crawl commands.
+
+## Canonical local runtime (M4.2-LITE)
+
+Use `./onionall` for product operation. It builds the existing crawler and custom
+admission-aware Frontier independently. Requires Bash, Docker Engine and Compose. Internal services have no published ports.
+
+```sh
+./onionall build --images
+export ONIONALL_BRIDGES_FILE=/absolute/path/to/private-bridges.conf
+./onionall up
+./onionall status
+
+# Replace with your explicitly approved, permitted onion seed.
+SEED_URL='YOUR_EXPLICITLY_APPROVED_ONION_URL'
+PLAN_ID=$(./onionall cli crawl plan --seed "$SEED_URL" --scope same-host --depth 2 --max-pages 20 | python3 -c 'import json,sys; print(json.load(sys.stdin)["plan_id"])')
+./onionall cli crawl show "$PLAN_ID"
+./onionall cli crawl approve "$PLAN_ID"
+./onionall cli crawl start --plan "$PLAN_ID"
+./onionall cli crawl status "$PLAN_ID"
+./onionall cli pages --job "$PLAN_ID"
+./onionall cli crawl errors "$PLAN_ID"
+./onionall down
+```
+
+Start is foreground and bounded to 180 seconds; restarting the same approved
+plan resumes durable reservations. Worker exit zero is not proof of completion.
+The existing single-host graph fetches sequentially: effective concurrency 1,
+within global ceiling 4 and per-host ceiling 1. H2, HTML objects and execution
+data live in `.runtime/local/`; RocksDB and Tor identity use retained named
+volumes. [Runtime guide, controlled fixture, readiness, storage and current
+verification limits](docs/local-runtime.md). Historical recipes below are separate.
+
+## Historical milestone status
 
 Bootstrap stage, based on Apache StormCrawler 3.7.0. The repository contains a Flux topology and filters, not an implemented onion search engine. Output goes to `StdOutIndexer`; there is no searchable index or application API.
 
@@ -121,23 +201,21 @@ fallback. The wordmark is unchanged. Renderer contracts and actual PTY captures:
 
 See the [script map, platform support, inputs and resource ownership](scripts/README.md) for direct entrypoints organized by responsibility.
 
-Prerequisites: JDK 25 and Maven. The root `pom.xml` aggregates `crawler/pom.xml`
-and `frontier-server/pom.xml`; each module pins its build plugins. There is no
-Maven wrapper. A clean machine needs access to Maven Central. Before building
-the full reactor or importing it into IDEA, prepare the exact pinned Frontier
-dependency as described in [frontier-server/README.md](frontier-server/README.md#maven-and-intellij-idea).
-The crawler-only build does not require that service JAR:
+For the portable build use `./onionall build` above. The following native/IDE
+workflow additionally requires JDK 25. The wrapper pins Maven 3.10.0; the root
+POM has no modules. A clean machine needs Maven Central access. The native
+crawler-only build does not require the Frontier service JAR:
 
 ```sh
-mvn -B -pl :onionall-brawler verify
+./mvnw -B -f crawler/pom.xml verify
 ```
 
 Linux / a shell with Java and Maven on PATH:
 
 ```sh
 java -version
-mvn -version
-mvn -B clean package
+./mvnw -version
+./onionall build
 ```
 
 PowerShell:

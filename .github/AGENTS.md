@@ -16,6 +16,8 @@ workflows/verify.yml sets Java 25/Python, recovers a digest/hash-pinned Frontier
 
 ## KEY COMPONENTS
 
+`workflows/portable.yml` uses the same Docker-only root launcher as developers,
+including custom Frontier tests and internal fixture readiness without Tor.
 `workflows/verify.yml`: immutable action revisions, contents:read, checkout without persisted credentials and sanitized artifact collection.
 
 ## DATA FLOW

@@ -177,12 +177,12 @@ public class CrawlAdmissionServiceTest {
             }
             throw new AssertionError(request);
         })) {
-            assertThrows(IOException.class, () -> CrawlAdmissionService.admit(id, plan, fixture.runtime(), TOKEN));
+            assertEquals(session(plan), CrawlAdmissionService.admit(id, plan, fixture.runtime(), TOKEN));
             var before = new LinkedHashMap<>(stored);
             assertEquals(2, stored.size());
             assertEquals(session(plan), CrawlAdmissionService.admit(id, plan, fixture.runtime(), TOKEN));
             assertEquals(before, stored);
-            assertEquals(List.of("open", "reserve", "reservation", "reserve", "open", "reserve",
+            assertEquals(List.of("open", "reserve", "reservation", "reserve", "reservation", "reservation", "session", "open", "reserve",
                 "reservation", "reserve", "reservation", "session"), actions);
         }
     }

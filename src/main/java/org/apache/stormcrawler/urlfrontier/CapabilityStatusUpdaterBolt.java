@@ -85,7 +85,7 @@ public class CapabilityStatusUpdaterBolt extends AbstractStatusUpdaterBolt
 
     // streamLock serializes asynchronous stream creation, writes and terminal callbacks.
     // Lock order: streamLock -> waitAckLock. Eviction takes only waitAckLock.
-    private final Object streamLock = new Object();
+    private transient Object streamLock = new Object();
     private boolean closed, authorizationFailed;
     private long streamGeneration;
     private final Map<String, Pending> pending = new HashMap<>();
@@ -113,6 +113,12 @@ public class CapabilityStatusUpdaterBolt extends AbstractStatusUpdaterBolt
 
     /** Globally set crawlID * */
     private String globalCrawlID;
+
+    /** Restore the worker-local monitor after Storm serializes the unprepared bolt. */
+    private void readObject(java.io.ObjectInputStream input) throws java.io.IOException, ClassNotFoundException {
+        input.defaultReadObject();
+        streamLock = new Object();
+    }
 
     /**
      * <b>Настраивает authenticated stream и bounded pending state.</b>

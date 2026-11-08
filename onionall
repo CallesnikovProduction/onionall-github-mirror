@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+cd -- "$root"
+image=onionall-toolchain:jdk25
+platform=linux/amd64
+if [[ ${1:-} == --help || $# == 0 ]]; then
+    cat <<'HELP'
+Usage: ./onionall build [--clean] [--images]
+       ./onionall test [--clean]
+       ./onionall [--fixture] up|status|down|cli [CLI arguments...]
+Requires Docker Engine, Compose and Bash; no host Java, Maven or Python.
+Builds retain Maven caches. Shutdown retains all runtime data and volumes.
+HELP
+    exit 0
+fi
+command -v docker >/dev/null || { echo 'Docker is required.' >&2; exit 69; }
+docker info --format '{{.ServerVersion}}' >/dev/null || {
+    echo 'Docker Engine unavailable. Start Docker and check docker info.' >&2; exit 69;
+}
+case ${1:-} in
+    build|test)
+        mode=$1; shift
+        clean=; images=0
+        for arg in "$@"; do
+            case "$arg" in
+                --clean) clean=--clean ;;
+                --images) [[ $mode == build ]] || exit 2; images=1 ;;
+                *) echo "Unknown argument: $arg" >&2; exit 2 ;;
+            esac
+        done
+        docker build --platform "$platform" -f docker/toolchain/Dockerfile -t "$image" .
+        mkdir -p .runtime/toolchain-home .runtime/maven-linux-repository
+        docker run --rm --init --platform "$platform" --user "$(id -u):$(id -g)" \
+            -e HOME="$root/.runtime/toolchain-home" -e MAVEN_USER_HOME="$root/.runtime/toolchain-home/.m2" \
+            -e ONIONALL_OFFLINE="${ONIONALL_OFFLINE:-0}" \
+            --mount "type=bind,src=$root,dst=$root" -w "$root" \
+            "$image" bash docker/toolchain/build.sh "$mode" "$clean"
+        if (( images )); then
+            docker build --platform "$platform" -f docker/storm-lifecycle/Dockerfile.portable \
+                -t onionall-storm:3.1.0-jre25-cleanup2 .
+            docker build --platform "$platform" -f docker/m2/Dockerfile \
+                -t onionall-brawler-tor:0.4.9.11-obfs4-deb12u1 .
+            docker pull --platform "$platform" python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+        fi
+        ;;
+    *)
+        # Python and Compose run in the toolchain; bind the same absolute path so
+        # daemon-side Compose bind mounts resolve to the host checkout correctly.
+        docker image inspect "$image" >/dev/null 2>&1 || {
+            echo 'Toolchain image missing; run ./onionall build first.' >&2; exit 69;
+        }
+        socket=${DOCKER_HOST:-unix:///var/run/docker.sock}
+        [[ $socket == unix://* ]] || { echo 'Runtime requires a local Unix Docker socket.' >&2; exit 69; }
+        socket=${socket#unix://}
+        [[ -S $socket ]] || { echo "Docker socket missing: $socket" >&2; exit 69; }
+        bridge_args=()
+        if [[ -n ${ONIONALL_BRIDGES_FILE:-} ]]; then
+            ONIONALL_BRIDGES_FILE=$(realpath -- "$ONIONALL_BRIDGES_FILE")
+            export ONIONALL_BRIDGES_FILE
+            [[ -f $ONIONALL_BRIDGES_FILE ]] || { echo 'Private bridge file missing.' >&2; exit 69; }
+            bridge_args=(--mount "type=bind,src=$ONIONALL_BRIDGES_FILE,dst=$ONIONALL_BRIDGES_FILE,readonly")
+        fi
+        mkdir -p .runtime/toolchain-home
+        exec docker run --rm --init --platform "$platform" --user "$(id -u):$(id -g)" \
+            --group-add "$(stat -c %g "$socket")" \
+            --mount "type=bind,src=$socket,dst=/var/run/docker.sock" \
+            --mount "type=bind,src=$root,dst=$root" -w "$root" \
+            -e DOCKER_HOST=unix:///var/run/docker.sock \
+            -e HOME="$root/.runtime/toolchain-home" \
+            "${bridge_args[@]}" -e ONIONALL_BRIDGES_FILE -e ONIONALL_STORM_IMAGE \
+            "$image" python3 -B scripts/runners/runtime.py "$@"
+        ;;
+esac

@@ -10,7 +10,7 @@ import java.nio.file.*;
 import java.time.Instant;
 import java.util.*;
 
-import static dev.onionall.brawler.admission.AdmissionClient.fromRuntime;
+import static dev.onionall.brawler.admission.AdmissionClient.fromRuntimeWithCapabilityFile;
 import static dev.onionall.brawler.admission.FrontierCapability.token;
 import static dev.onionall.brawler.admission.CrawlRuntimePreparer.write;
 import static dev.onionall.brawler.crawl.RuntimeDescriptor.*;
@@ -95,7 +95,7 @@ public final class CrawlExecution {
             throw new IOException("Runtime requires installed Storm executable and full crawler JAR");
         }
 
-        String capability = token(tokenFile);
+        token(tokenFile);
 
         try (FileChannel owner = FileChannel.open(
                 archive.toAbsolutePath().normalize().resolve("crawl-start.lock"),
@@ -135,7 +135,28 @@ public final class CrawlExecution {
                 // После hard crash между admission и запуском остаётся PREPARING/LAUNCHING
                 // без cleanup proof; повтор блокируется до RPC. Нужен внешний recovery-контракт,
                 // доказывающий отсутствие child; удалять ownership или обходить guard нельзя.
-                Map<String, Object> session = CrawlAdmissionService.admit(id, plan, runtime, capability);
+                Map<String, Object> session;
+                try {
+                    session = CrawlAdmissionService.admitWithCapabilityFile(id, plan, runtime, tokenFile);
+                } catch (CrawlAdmissionService.AdmissionFailure failure) {
+                    var observation = Map.<String, Object>of(
+                        "admission", failure.outcome() == CrawlAdmissionService.FailureOutcome.UNKNOWN ? "UNKNOWN" : "BLOCKED",
+                        "admission_outcome", failure.outcome().name(),
+                        "state", failure.outcome() == CrawlAdmissionService.FailureOutcome.UNKNOWN
+                            ? "ADMISSION_UNRESOLVED" : "ADMISSION_BLOCKED",
+                        "session_id", id,
+                        "runtime", runtimeFile.toAbsolutePath().toString(),
+                        "observed_at", Instant.now().toString());
+                    try {
+                        write(work.resolve("admission-observation.json"), observation);
+                        try (var store = new ArchiveStore(archive)) {
+                            store.recordAdmission(id, observation);
+                        }
+                    } catch (IOException persistence) {
+                        failure.addSuppressed(persistence);
+                    }
+                    throw failure;
+                }
 
                 // Frontier readback восстанавливает наблюдение; разрешение локального
                 // повторного запуска отдельно требует подтверждённого cleanup ownership.
@@ -163,7 +184,7 @@ public final class CrawlExecution {
                         session
                 );
 
-                try (var rpc = fromRuntime(runtime, capability)) {
+                try (var rpc = fromRuntimeWithCapabilityFile(runtime, tokenFile)) {
                     Map<String, Object> finalSession = rpc.command(
                             Map.of(
                                     "action", "session",

@@ -43,8 +43,10 @@ class CliBuildTest(unittest.TestCase):
             wrapper.chmod(0o755)
             result, capture = self.run_build(root, True)
             self.assertEqual(42, result.returncode, result.stderr)
-            self.assertEqual(['-B', '-o', 'verify', 'dependency:build-classpath',
-                              '-Dmdep.outputFile=target/cli-classpath.txt'], capture.read_text().splitlines())
+            self.assertEqual(['-B', '-o', '-f', str(root / 'crawler/pom.xml'),
+                              'verify', 'dependency:build-classpath',
+                              '-Dmdep.outputFile=' + str(root / 'target/cli-classpath.txt')],
+                             capture.read_text().splitlines())
             self.assertFalse((root / 'target').exists())
 
     def test_missing_wrapper_never_falls_back_to_path_maven(self):

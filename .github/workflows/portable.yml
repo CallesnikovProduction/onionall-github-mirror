@@ -1,0 +1,42 @@
+name: Portable JVM toolchain
+on:
+  push:
+    branches: [feat/m42-portable-toolchain]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build paired components and runtime images without host JVM
+        shell: bash
+        run: env -u JAVA_HOME ./onionall build --images
+      - name: JVM tests, Frontier conformance and tooling contracts
+        shell: bash
+        run: env -u JAVA_HOME ./onionall test
+      - name: Validate canonical and historical Compose configurations
+        shell: bash
+        run: |
+          export ONIONALL_RUNTIME_DIR="$PWD/.runtime/config-check"
+          export ONIONALL_RUNTIME_USER="$(id -u):$(id -g)"
+          docker compose -f compose.runtime.yaml --profile tor config --quiet
+          docker compose -f compose.runtime.yaml --profile fixture config --quiet
+          export M1_RUN_DIR="$PWD/.runtime/config-m1" M1_RUN_REL=.runtime/config-m1
+          export M2_RUN_DIR="$PWD/.runtime/config-m2" M2_RUN_REL=.runtime/config-m2
+          for file in compose.m0.yaml compose.m1.yaml compose.m2.yaml; do
+            docker compose -f "$file" config --quiet
+          done
+      # Network-free fixture startup verifies image identity/auth/readiness and safe stop.
+      - name: Start controlled runtime (no Tor)
+        run: ./onionall --fixture up
+      - name: Check controlled runtime
+        run: ./onionall --fixture status
+      - name: Retain runtime data on shutdown
+        if: always()
+        run: ./onionall --fixture down
