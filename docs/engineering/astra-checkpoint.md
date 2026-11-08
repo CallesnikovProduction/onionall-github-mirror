@@ -64,8 +64,8 @@ token reuse and the strict permission check. This is a local correction to exist
 Python deployment tooling, not a new application service or authorization system.
 The historical CI build results are not credited as validation of the Astra SHA.
 
-Published source checkpoints: `8f17d2f` (complete conformance selection) and
-`2e1df11` (capability creation). The fresh
+Published source checkpoints: `8f17d2f` (complete conformance selection),
+`2e1df11` (capability creation) and `584d7d0` (single tmpfs mount). The fresh
 [Astra CI run 42522560099](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42522560099)
 on `2e1df11` built all images, passed container JVM/Frontier/tooling tests and
 Compose syntax checks. Startup then exposed an independent existing YAML defect:
@@ -74,7 +74,22 @@ rejected `exec` as nonabsolute. Quoting the single mount preserves rw/exec/nosui
 nodev/mode=1777. A Compose CLI regression checks normalized mounts for all three
 worker-derived services; it needs no Docker Engine. Local YAML parsing reproduced
 the five-element input and confirms one corrected element. Windows without Docker
-skips this Compose regression explicitly; the next Linux run must execute it.
+skips this Compose regression explicitly; the successful Linux run executed it.
+
+The fresh [Astra CI run 42523305221](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42523305221)
+on full source SHA `584d7d0b8ebb0a03e791e2e2b2bb17f4488341ef` completed successfully.
+Both Maven application entrypoints ran the same 253 tests with no failures,
+errors or skips; these are not 506 distinct tests. All seven real Frontier
+conformance suites passed, and all 36 tooling tests passed, including private
+token mode/exclusive creation and the actual Compose CLI mount regression.
+The tooling negative-control test deliberately prints an ambiguous-RPC `FAIL`;
+its assertion checks failure propagation, separately from the passing real suite.
+Image build, Compose validation, fixture up/status and down all succeeded.
+Authenticated Frontier returned READY, the SOCKS handshake returned READY,
+and packaged CLI/Storm probes completed. This proves startup/readiness/shutdown,
+not a crawl: no worker research job or real Tor request was launched. Shutdown
+did not request volume deletion; persisted-data survival after container recreation
+was not asserted. The previous failed run remains part of the evidence.
 
 ## Fresh verification
 
@@ -90,11 +105,12 @@ Kotlin 2.3.21 actually compiled at JVM target 25; no versions were changed.
 | Frontier Maven `verify` after resolution | PASS: compile, all **7 real conformance suites**, overlay package; `frontier-maven-resolve.log`, `frontier-server/target/maven-conformance-7573300950520228686/` |
 | Python Frontier entrypoint with permitted loopback | PASS: **7 real conformance suites**, fresh disposable DBs; `.runtime/astra-pass1/frontier-m03wtex5/result.json` |
 | Verification-runner regressions | PASS: 7 tests including deliberate failure propagation; `.runtime/astra-pass1/verification-tests.log` |
-| Runtime token preparation | Before: 2 errors with the reproduced TypeError; after: 2 tests PASS. Real files, exclusive-open race and token reuse checked; Windows permission rejection retained. `runtime-token-before.log` / `runtime-token-after.log`; Linux mode enforcement still requires the Linux run |
+| Runtime token preparation | Before: 2 errors with the reproduced TypeError; after: 2 tests PASS. Real files, exclusive-open race and token reuse checked; Windows permission rejection retained. `runtime-token-before.log` / `runtime-token-after.log`; Linux CI also passed mode enforcement |
 | Existing Python groups | M3 2/2, archive 2/2, security 4/4 pass; M1 32 selected/1 skipped; CLI 12 skipped. M2: 113 selected, 2 failures/7 errors/2 skipped; scripts: 32 selected, 2 failures/28 errors. See initial result JSON; no platform failures relabelled as success |
 | CLI entrypoint with resolved Maven classpath | PASS: `Onionall --help`, exit 0; `.runtime/astra-pass1/cli-classpath-help.log`. Direct root shaded-JAR probe lacked provided Storm Config; not the packaged CLI contract |
 | Offline CLI persistence smoke | PASS: depth-2 plan -> approve -> show -> pages across separate JVMs and fresh H2; `.runtime/astra-pass1/cli-plan-pwbwvrmz/result.json`. Approval persists; admission remains UNOBSERVED and archived pages are empty, as no fetch was run |
 | Local canonical Docker images/up/status/down | BLOCKED: Docker/WSL prerequisite absent; no real container/runtime acceptance inferred from native JVM tests |
+| Linux portable CI on `584d7d0` | PASS: root/crawler Maven (253 tests each, 0 skips), 7 real Frontier suites, 36 tooling tests, paired images, Compose config, authenticated Frontier/SOCKS and packaged CLI readiness, shutdown. [Run 42523305221](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42523305221); no depth-2 crawl or data-retention readback |
 | Real-network/depth-2 acquisition | NOT RUN: no new approved seed or operational Tor runtime; no provider availability or persisted research-data claim |
 
 Reproducible native diagnostic commands, using an explicitly selected JDK25 and
@@ -115,18 +131,23 @@ container workflow documented in [local runtime](../local-runtime.md).
 
 ## Blockers and next executable action
 
-1. Observe the portable CI run on the published Astra SHA; investigate its first
-   actual failure before expanding architecture. Image build, fixture readiness
-   and retained data must be observed; a pushed workflow is not success evidence.
-2. On an available Linux/WSL2 Docker host, run `./onionall build --images`,
-   `./onionall test`, then controlled `--fixture up/status`, approved fixture crawl
-   and archive/link readback, followed by data-preserving `--fixture down`.
-3. Keep Windows Python portability failures distinct: missing POSIX shell paths,
+1. Build/test and fixture startup/readiness/shutdown are verified in Linux CI.
+   The next operational gate is a controlled canonical depth-2 fixture crawl,
+   archive/link readback and data survival after down/up; those gates are NOT RUN.
+   Use an available Linux/WSL2 Docker host or a separately selected internal CI
+   fixture. The local Windows host still lacks Docker/WSL prerequisites.
+2. Keep Windows Python portability failures distinct: missing POSIX shell paths,
    symlink/mode semantics, `os.getuid`, and sandbox MSYS startup restrictions. Do
    not weaken assertions or install OS components to produce a green summary.
-4. Only after operational local workflow verification, use one explicitly approved
+3. Only after operational local workflow verification, use one explicitly approved
    real seed for bounded depth-2 research. Provider integration, binary acquisition,
    authentication and GUI remain later scope, not requirements for this checkpoint.
+
+Tracked changes were checked with `git diff --check`, local Markdown-link
+verification and scoped secret-signature inspection. All 18 owner untracked files
+still match their preflight SHA256 values and remain outside commits. Publication
+uses only `origin/feature/astra-onionall-reconstruction`; no force push is used.
+The final evidence-only checkpoint commit does not change the tested source tree.
 
 Full Pass 1, S1-01 security closure and real Tor acceptance remain open. No PR,
 merge, main/source branch change or deployment is part of this delivery.
