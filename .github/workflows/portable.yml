@@ -1,7 +1,7 @@
 name: Portable JVM toolchain
 on:
   push:
-    branches: [feat/m42-portable-toolchain]
+    branches: [feat/m42-portable-toolchain, feature/astra-onionall-reconstruction]
   pull_request:
   workflow_dispatch:
 permissions:

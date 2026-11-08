@@ -48,7 +48,7 @@ class Runtime:
         self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
         token = self.state / 'admission-token'
         if not token.exists():
-            with token.open('x', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+            with open(token, 'x', encoding='ascii', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
                 output.write(secrets.token_hex(32))
         if token.is_symlink() or not token.is_file() or token.stat().st_mode & 0o077:
             raise RuntimeError('Admission token must be a private regular file (mode 600).')
