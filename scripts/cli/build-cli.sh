@@ -14,7 +14,7 @@ command -v javac >/dev/null || { echo 'JDK 25 is required to build the CLI.' >&2
 maven=("$root/mvnw" -B)
 if [[ ${ONIONALL_OFFLINE:-0} == 1 ]]; then maven+=(-o); fi
 if [[ -d .runtime/maven-linux-repository ]]; then maven+=(-Dmaven.repo.local=.runtime/maven-linux-repository); fi
-"${maven[@]}" -pl :onionall-brawler verify dependency:build-classpath "-Dmdep.outputFile=$root/target/cli-classpath.txt"
+"${maven[@]}" -f "$root/crawler/pom.xml" verify dependency:build-classpath "-Dmdep.outputFile=$root/target/cli-classpath.txt"
 stage=$(mktemp -d "$root/target/onionall-stage.XXXXXX")
 cleanup() {
     local status=$?
@@ -27,7 +27,7 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$stage/lib" "$stage/bin" "$stage/classes/dev/onionall/brawler"
-for package in cli tor tools discovery archive admission; do
+for package in cli tor tools discovery archive admission crawl; do
     [[ -d target/classes/dev/onionall/brawler/$package ]] || { echo "Missing compiled package: $package" >&2; exit 1; }
     cp -R -- "target/classes/dev/onionall/brawler/$package" "$stage/classes/dev/onionall/brawler/"
 done

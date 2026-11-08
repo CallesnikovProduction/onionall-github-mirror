@@ -16,7 +16,12 @@ build.sh --test compiles/runs main-method conformance drivers against the assemb
 
 ## KEY COMPONENTS
 
-`AdmissionConformance`, `AdmissionStateConformance`, `AdmissionRpcConformance`, `AdmissionShutdownConformance`, `AdmissionMigrationConformance`, `RecoveryCountersConformance`, `LegacyFixture`.
+`AdmissionConformance`, `AdmissionStateConformance`, `AdmissionRpcConformance`, `AdmissionAmbiguousRpcConformance`, `AdmissionShutdownConformance`, `AdmissionMigrationConformance`, `RecoveryCountersConformance`, `LegacyFixture`.
+
+`AdmissionAmbiguousRpcConformance` uses actual RocksDB and authenticated loopback
+RPC with latch-controlled lost acknowledgements and deadline/late-commit windows.
+Negative readback is an observation, not proof that an outstanding mutation cannot
+commit. Verify durable identity/quota/enqueue state after reopen, not only RPC codes.
 
 ## DATA FLOW
 

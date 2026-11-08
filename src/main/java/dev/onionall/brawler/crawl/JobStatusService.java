@@ -1,6 +1,5 @@
 package dev.onionall.brawler.crawl;
 
-import dev.onionall.brawler.admission.FrontierCapability;
 import dev.onionall.brawler.admission.FrontierReadback;
 import dev.onionall.brawler.admission.JobStatusView;
 import dev.onionall.brawler.admission.WorkerObservation;
@@ -10,7 +9,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.nio.file.Path;
-import static dev.onionall.brawler.admission.AdmissionClient.fromRuntime;
+import static dev.onionall.brawler.admission.AdmissionClient.fromRuntimeWithCapabilityFile;
 import static dev.onionall.brawler.admission.FrontierReadback.verifySession;
 
 /**
@@ -41,27 +40,39 @@ public class JobStatusService {
      * @throws IOException при ошибках доступа, конфигурации или проверки данных
      */
     public static Map<String, Object> reconcileStatus(
-        java.nio.file.Path archive,
+        Path archive,
         String id,
-        java.nio.file.Path runtimeFile,
-        java.nio.file.Path tokenFile
+        Path runtimeFile,
+        Path tokenFile
     ) throws IOException {
         Map<String, Object> result = loadJob(archive, id);
+
         String catalogAt = Instant.now().toString();
+
         WorkerObservation.Observation worker = WorkerObservation.unavailable("NO_RUNTIME_OBSERVATION");
         FrontierObservation frontier = new FrontierObservation(null, null, null);
+
         if (runtimeFile != null) {
             Map<String, Object> runtime = RuntimeDescriptor.descriptor(runtimeFile);
             worker = observeWorker(runtime, archive, id);
             frontier = readFrontier(runtime, tokenFile, result, id);
+
             if (frontier.counts() != null) {
                 result.put("authoritative_admission", frontier.session());
                 result.put("admission", "SERVER_READBACK");
                 recordAdmission(archive, id, result, frontier.session());
             }
         }
-        Map<String, Object> view = JobStatusView.assemble(result, frontier.counts(), worker, frontier.reachable(),
-            runtimeFile != null, catalogAt);
+
+        Map<String, Object> view = JobStatusView.assemble(
+                result,
+                frontier.counts(),
+                worker,
+                frontier.reachable(),
+                runtimeFile != null,
+                catalogAt
+        );
+
         recordStatus(archive, id, result, view);
         result.put("job_status", view);
         result.putAll(view);
@@ -79,7 +90,10 @@ public class JobStatusService {
      * @return изменяемая карта данных задания
      * @throws IOException при ошибке доступа к архиву
      */
-    private static Map<String, Object> loadJob(Path archive, String id) throws IOException {
+    private static Map<String, Object> loadJob(
+            Path archive,
+            String id
+    ) throws IOException {
         Map<String, Object> result;
         try (var store = new ArchiveStore(archive)) {
             result = new LinkedHashMap<>(store.job(id));
@@ -106,8 +120,17 @@ public class JobStatusService {
         String id
     ) {
         Object configured = runtime.get("work_directory");
-        if (configured instanceof String directory && !directory.isBlank() && directory.length() <= 4096) {
-            Path execution = Path.of(directory).toAbsolutePath().normalize().resolve(id).resolve("execution.json");
+        if (
+                configured instanceof String directory && // pattern matching of String
+                !directory.isBlank() &&
+                directory.length() <= 4096
+        ) {
+            Path execution = Path
+                    .of(directory)
+                    .toAbsolutePath()
+                    .normalize()
+                    .resolve(id)
+                    .resolve("execution.json");
             return WorkerObservation.read(execution, archive, id);
         }
         return WorkerObservation.unavailable("NO_RUNTIME_OBSERVATION");
@@ -135,23 +158,25 @@ public class JobStatusService {
         Map<String, Object> job,
         String id
     ) throws IOException {
-        String token = FrontierCapability.token(tokenFile);
-        try (var rpc = fromRuntime(runtime, token)) {
+        try (var rpc = fromRuntimeWithCapabilityFile(runtime, tokenFile)) {
             Map<String, Object> session;
             try {
-                session = rpc.command(Map.of("action", "session", "session_id", id));
+                session = rpc.command(Map.of(
+                        "action", "session",
+                        "session_id", id)
+                );
             } catch (IOException e) {
                 return unavailableFrontier(e);
             }
-            if (session == null) {
+
+            if (session == null)
                 throw new IOException("Null authoritative session");
-            }
-            if (!"SESSION_OPEN".equals(session.get("outcome"))) {
+            if (!"SESSION_OPEN".equals(session.get("outcome")))
                 throw new IOException("Authoritative session unavailable: " + session.get("outcome"));
-            }
-            if (!Boolean.TRUE.equals(job.get("approved"))) {
+
+            if (!Boolean.TRUE.equals(job.get("approved")))
                 throw new IOException("Stored plan is not approved");
-            }
+
             verifySession(session, job);
             Object reserved = session.get("reserved_count");
             if (!(reserved instanceof Integer || reserved instanceof Long)) {
@@ -174,6 +199,7 @@ public class JobStatusService {
             if (counts.reserved() > maxPages || counts.reserved() < sessionReserved) {
                 throw new IOException("Inconsistent Frontier readback");
             }
+
             return new FrontierObservation(session, counts, true);
         }
     }
@@ -200,7 +226,7 @@ public class JobStatusService {
                     case DEADLINE_EXCEEDED ->
                         null;
                     default ->
-                        Boolean.TRUE;
+                        null; // Credentials/interceptors can fail locally; a status is not reachability proof.
                 };
                 return new FrontierObservation(null, null, reachable);
             }

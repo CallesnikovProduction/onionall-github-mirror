@@ -1,0 +1,106 @@
+# Canonical product runtime. Historical M0/M1/M2 recipes remain independent.
+name: onionall-runtime
+x-worker: &worker
+  platform: linux/amd64
+  image: ${ONIONALL_STORM_IMAGE:-onionall-storm:3.1.0-jre25-cleanup2}
+  user: ${ONIONALL_RUNTIME_USER:?Use ./onionall up}
+  working_dir: /tmp
+  environment: {HOME: /tmp}
+  networks: [crawler]
+  dns: [127.0.0.1]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: [/tmp:rw,exec,nosuid,nodev,mode=1777]
+  volumes:
+    - ./target/onionall:/cli:ro
+    - ./target/onionall-brawler-0.1.0-SNAPSHOT.jar:/app/crawler.jar:ro
+    - ${ONIONALL_RUNTIME_DIR:?Use ./onionall up}:/state
+  stop_grace_period: 120s
+
+services:
+  frontier-init:
+    platform: linux/amd64
+    image: ${ONIONALL_STORM_IMAGE:-onionall-storm:3.1.0-jre25-cleanup2}
+    user: '0:0'
+    network_mode: none
+    environment:
+      RUNTIME_USER: ${ONIONALL_RUNTIME_USER:?Use ./onionall up}
+    entrypoint: [/bin/sh, -ec, 'mkdir -p /crawldir/rocksdb; chown "$$RUNTIME_USER" /crawldir /crawldir/rocksdb']
+    volumes: [frontier-data:/crawldir]
+
+  frontier:
+    <<: *worker
+    depends_on:
+      frontier-init: {condition: service_completed_successfully}
+    entrypoint: [/bin/sh, -ec, 'export ONIONALL_ADMISSION_TOKEN="$$(cat /state/admission-token)"; exec java -cp /app/frontier.jar crawlercommons.urlfrontier.service.URLFrontierServer rocksdb.path=/crawldir/rocksdb']
+    volumes:
+      - ./frontier-server/target/urlfrontier-admission.jar:/app/frontier.jar:ro
+      - ./target/onionall:/cli:ro
+      - ${ONIONALL_RUNTIME_DIR:?Use ./onionall up}:/state:ro
+      - frontier-data:/crawldir
+    healthcheck:
+      test: [CMD, java, -cp, '/cli/lib/*', dev.onionall.brawler.tools.RuntimeProbe, frontier, localhost, '7071', /state/admission-token]
+      interval: 5s
+      timeout: 15s
+      retries: 8
+
+  tor-state-init:
+    platform: linux/amd64
+    profiles: [tor]
+    image: ${ONIONALL_STORM_IMAGE:-onionall-storm:3.1.0-jre25-cleanup2}
+    user: '0:0'
+    network_mode: none
+    environment:
+      RUNTIME_USER: ${ONIONALL_RUNTIME_USER:?Use ./onionall up}
+    entrypoint: [/bin/sh, -ec, 'mkdir -p /tor-state/data; chown "$$RUNTIME_USER" /tor-state /tor-state/data; chmod 700 /tor-state /tor-state/data']
+    volumes: [tor-state:/tor-state]
+
+  tor:
+    platform: linux/amd64
+    profiles: [tor]
+    image: onionall-brawler-tor:0.4.9.11-obfs4-deb12u1
+    build: {context: ., dockerfile: docker/m2/Dockerfile}
+    user: ${ONIONALL_RUNTIME_USER:?Use ./onionall up}
+    depends_on:
+      tor-state-init: {condition: service_completed_successfully}
+    volumes:
+      - tor-state:/var/lib/tor
+      - ${ONIONALL_BRIDGES_FILE:-./.secrets/m2/bridges.conf}:/run/secrets/tor-bridges:ro
+    networks: [crawler, outbound]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    stop_grace_period: 30s
+
+  socks-fixture:
+    platform: linux/amd64
+    profiles: [fixture]
+    image: python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+    user: ${ONIONALL_RUNTIME_USER:?Use ./onionall up}
+    entrypoint: [python3, -B, /fixture.py, --evidence, /state]
+    volumes:
+      - ./test/archive/socks_fixture.py:/fixture.py:ro
+      - ${ONIONALL_RUNTIME_DIR:?Use ./onionall up}:/state
+    networks: [crawler]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+
+  crawler:
+    <<: *worker
+    entrypoint: [/cli/bin/onionall, --json, --archive-dir, /state/archive]
+
+  probe:
+    <<: *worker
+    profiles: [tools]
+    entrypoint: [java, -cp, '/cli/lib/*', dev.onionall.brawler.tools.RuntimeProbe]
+
+volumes:
+  frontier-data:
+  tor-state:
+networks:
+  crawler: {internal: true}
+  outbound:

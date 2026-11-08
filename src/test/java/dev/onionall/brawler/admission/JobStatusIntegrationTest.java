@@ -135,7 +135,8 @@ public class JobStatusIntegrationTest {
             try {
                 String action=JSON.readTree(request.getValue().toByteArray()).path("action").asText();Object value;
                 if(Set.of("open","session").contains(action)) value=Map.of("outcome","SESSION_OPEN","reserved_count",1,"sealed",false,"spec",spec);
-                else if(Set.of("reserve","reservation").contains(action)) value=Map.of("outcome","RESERVED","reservation_id",reservation);
+                else if(Set.of("reserve","reservation").contains(action)) value=Map.of("outcome","RESERVED","reservation_id",reservation,
+                    "session_id",id,"url",URL,"source_url","","depth",0,"enqueued",true);
                 else if(action.equals("counts")) value=JSON.readValue("{\"outcome\":\"STATE_COUNTS\",\"state_version\":1,\"session_id\":\""+id+"\",\"readback_at\":\"2026-11-04T00:00:00Z\",\"next_attempt_at\":\"2026-11-04T00:00:00Z\",\"counts\":{\"reserved\":1,\"pending\":1,\"held\":0,\"scheduled_wait\":0,\"unscheduled\":0,\"unknown\":0,\"done\":null,\"success\":null,\"terminal\":null,\"retry_wait\":null}}",Map.class);
                 else throw new AssertionError("Unexpected mutation endpoint");
                 reply.onNext(BytesValue.newBuilder().setValue(ByteString.copyFrom(JSON.writeValueAsBytes(value))).build());reply.onCompleted();

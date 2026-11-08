@@ -20,6 +20,11 @@ inside operational tooling. `lib/` and `legacy/` are not created without content
 
 ## Public commands
 
+Prefer root `./onionall build [--clean] [--images]` and `./onionall test` for
+portable containerized builds. `up/status/down/cli` use the existing Python
+runtime controller inside the same toolchain image; no host Python is needed.
+The native commands below remain available for existing acceptance workflows.
+
 | Script | Platform | Purpose / inputs | Safe to rerun |
 |---|---|---|---|
 | `cli/build-cli.sh` | Linux/Bash | Verify and package CLI; no arguments | Yes; replaces managed `target/onionall` |
