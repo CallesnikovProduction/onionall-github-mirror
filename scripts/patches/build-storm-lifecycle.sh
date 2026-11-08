@@ -21,8 +21,12 @@ candidate=${STORM_LIFECYCLE_IMAGE:-onionall-storm:3.1.0-jre25-cleanup$revision}
 name="onionall-brawler-m1-inspect-$(python3 -c 'import uuid;print(uuid.uuid4().hex[:12])')"
 trap 'docker rm -f "$name" >/dev/null 2>&1 || true' EXIT
 # No container network, mount, persistent state, or host configuration changes.
-docker image inspect "$base" > "$build/base-image.json"
-docker run --rm --name "$name" --network none --entrypoint tar "$base" -C /apache-storm -cf - lib lib-common | tar -xf - -C "$build/libs"
+if [[ -n ${STORM_LIBRARIES:-} ]]; then
+    cp -R -- "$STORM_LIBRARIES/lib" "$STORM_LIBRARIES/lib-common" "$build/libs/"
+else
+    docker image inspect "$base" > "$build/base-image.json"
+    docker run --rm --name "$name" --network none --entrypoint tar "$base" -C /apache-storm -cf - lib lib-common | tar -xf - -C "$build/libs"
+fi
 source_sha=0154b08f750c29ef7c049c3560c50520213fe256bcae2acf566d44b702d27460
 jar_sha=68c542091e40d0d974601fe852787965f2723e7c45bbd6fd981c48ff3307ef26
 source_file="$build/original/Nimbus.java"
@@ -65,6 +69,10 @@ import sys
 assert 'Active Nimbus cleanup was interrupted instead of drained' in Path(sys.argv[1]).read_text(), 'Shutdown baseline failed for an unrelated reason'
 PY_CHECK
 java -cp "$build/probe:$build/context/storm-server-3.1.0.jar:$build/libs/lib/*:$build/libs/lib-common/*" NimbusCleanupShutdownProbe | tee "$build/shutdown-patched.log"
+fi
+if [[ ${STORM_PATCH_ONLY:-0} == 1 ]]; then
+    printf 'Patched Storm JAR and lock/drain probes passed: %s\n' "$build/context/storm-server-3.1.0.jar"
+    exit 0
 fi
 cp docker/storm-lifecycle/Dockerfile "$build/context/Dockerfile"
 docker build --network none --pull=false --build-arg "STORM_BASE=$base" --build-arg "LIFECYCLE_REVISION=$revision" -t "$candidate" "$build/context"

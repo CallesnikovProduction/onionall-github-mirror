@@ -77,14 +77,22 @@ public static Map<String, Object> reconcileStatus(java.nio.file.Path archive, St
   Map runtime не заменяется новым DTO.
 - ConfigurationFactory сохраняет Tor ONLY, HTML bounds, robots, capability-путь,
   session ID и существующие имена reflective компонентов.
+- Generated product config подавляет URL/text/metadata stdout indexer, не меняя
+  legacy fixtures. Discovery page RPC budget ≤30 s и worker TTL; transient
+  onionall.discovery.retry=true выбирает selective ERROR interval до metadata
+  filtering. Hint не persist-ится; общий ERROR=-1 сохранён. Отдельного discovery
+  retry attempt cap нет, автоматический новый worker не создаётся.
 - reconcileStatus пишет admission/status observations и bounded transition history;
   результат дополняется job_status. Ошибка чтения H2 не превращается в пустое задание.
 - Frontier session/spec и counts проверяются до признания readback актуальным.
   Для gRPC UNAVAILABLE reachability=false, DEADLINE_EXCEEDED даёт null;
-  иные распознанные gRPC-ошибки дают reachability=true без подтверждённых counts.
+  иные распознанные gRPC-ошибки дают null без подтверждённых counts:
+  credentials/interceptor может отказать локально, code не доказывает достижимость.
   IOException без gRPC-причины распространяется.
 - Кэш и worker exit zero не означают crawl completion. Текущий JobStatusView
   различает свежие сведения, legacy execution state и неизвестные исходы.
+- start/status используют file-backed AdmissionClient и перечитывают capability
+  перед каждым RPC; snapshot String API остаётся для явных callers.
 
 ## Работа с пакетом
 

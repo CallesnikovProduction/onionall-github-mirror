@@ -14,11 +14,46 @@ import java.util.*;
  */
 public final class FrontierReadback {
 
+    // Admission/state v1 bounds: a session quota is independent of its requested page size.
+    static final int MAX_RESERVATIONS = 100;
+    static final int MAX_PAGE_SIZE = 200;
+
     private FrontierReadback() {
+    }
+
+    /** A structurally valid authoritative specification conflicts with the approved plan. */
+    static final class SessionConflict extends IOException {
+        private SessionConflict() {
+            super("Authoritative session differs from approved plan");
+        }
     }
 
     public enum State {
         PENDING, HELD, SCHEDULED_WAIT, UNSCHEDULED, UNKNOWN
+    }
+
+    record Reservation(String outcome, String reservationId, String url, String sourceUrl, int depth) { }
+
+    /** Validates immutable reservation identity/provenance; enqueued is a historical acknowledgement. */
+    static Reservation reservation(Map<String, Object> reply, String session, String url) throws IOException {
+        try {
+            object(reply);
+            String outcome = text(reply, "outcome", 32);
+            String reservation = text(reply, "reservation_id", 36);
+            String source = text(reply, "source_url", 2048);
+            int depth = number(reply, "depth", 0, 5);
+            if ((!"RESERVED".equals(outcome) && !"ALREADY_RESERVED".equals(outcome)) ||
+                session == null || !session.equals(text(reply, "session_id", 64)) ||
+                url == null || url.isBlank() || !url.equals(text(reply, "url", 2048)) ||
+                !UUID.fromString(reservation).toString().equals(reservation) ||
+                !Boolean.TRUE.equals(reply.get("enqueued")) ||
+                (depth == 0 ? !source.isEmpty() : source.isBlank() || source.equals(url))) {
+                throw new IllegalArgumentException();
+            }
+            return new Reservation(outcome, reservation, url, source, depth);
+        } catch (RuntimeException invalid) {
+            throw new IOException("Malformed Frontier reservation readback");
+        }
     }
 
     public record Row(
@@ -72,27 +107,58 @@ public final class FrontierReadback {
             Map<String, Object> session,
             Map<String, Object> plan
     ) throws IOException {
-        if (
-                !(session.get("spec") instanceof Map<?, ?> spec) ||
-                !Objects.equals(
-                    spec.get("session_id"),
-                    plan.get("plan_id")
-                ) ||
-                !Objects.equals(
-                        spec.get("origin"),
-                        plan.get("origin")
-                ) ||
-                !(spec.get("seeds") instanceof List<?> actualSeeds) ||
-                !(plan.get("seeds") instanceof List<?> expectedSeeds) ||
-                !new HashSet<>(actualSeeds).equals(new HashSet<>(expectedSeeds)) ||
-                !(spec.get("max_pages") instanceof Number pages) ||
-                pages.intValue() != ((Number) plan.get("max_pages")).intValue() ||
-                !(spec.get("max_depth") instanceof Number depth) ||
-                depth.intValue() != ((Number) plan.get("depth")).intValue() ||
-                !Boolean.TRUE.equals(spec.get("approved"))
-        ) {
-            throw new IOException("Authoritative session differs from approved plan");
+
+        try {
+            object(session);
+            object(plan);
+            Map<String, Object> spec = object(session.get("spec"));
+            String id = text(plan, "plan_id", 64);
+            if (!id.matches("[A-Za-z0-9-]{1,64}")) {
+                throw new IllegalArgumentException();
+            }
+            int pages = number(plan, "max_pages", 1, MAX_RESERVATIONS);
+            int depth = number(plan, "depth", 0, 5);
+            String origin = text(plan, "origin", 256);
+            Set<String> expectedSeeds = seeds(plan.get("seeds"), false);
+            Set<String> actualSeeds = seeds(spec.get("seeds"), true);
+            String actualId = text(spec, "session_id", 64);
+            String actualOrigin = text(spec, "origin", 256);
+            int actualPages = number(spec, "max_pages", 1, MAX_RESERVATIONS);
+            int actualDepth = number(spec, "max_depth", 0, 5);
+            number(session, "reserved_count", 0, actualPages);
+            // open canonicalizes local seed order/duplicates to a unique set;
+            // authoritative stored specs must already contain unique seeds.
+            if (!"SESSION_OPEN".equals(session.get("outcome")) ||
+                !Boolean.TRUE.equals(plan.get("approved")) ||
+                !Boolean.TRUE.equals(spec.get("approved")) ||
+                !(session.get("sealed") instanceof Boolean) ||
+                number(spec, "policy_version", 1, 1) != 1 ||
+                !actualId.matches("[A-Za-z0-9-]{1,64}") ||
+                origin.isBlank() || actualOrigin.isBlank() ||
+                expectedSeeds.size() > pages || actualSeeds.size() > actualPages) {
+                throw new IllegalArgumentException();
+            }
+            if (!id.equals(actualId) || !origin.equals(actualOrigin) || pages != actualPages ||
+                depth != actualDepth || !actualSeeds.equals(expectedSeeds)) {
+                throw new SessionConflict();
+            }
+        } catch (RuntimeException e) {
+            throw new IOException("Malformed approved plan or authoritative session", e);
         }
+    }
+
+    private static Set<String> seeds(Object value, boolean unique) {
+        if (!(value instanceof List<?> items) || items.isEmpty() || items.size() > MAX_RESERVATIONS) {
+            throw new IllegalArgumentException();
+        }
+        Set<String> seeds = new HashSet<>();
+        for (Object item : items) {
+            if (!(item instanceof String seed) || seed.isBlank() || seed.length() > 2048 ||
+                seed.indexOf(0) >= 0 || (!seeds.add(seed) && unique)) {
+                throw new IllegalArgumentException();
+            }
+        }
+        return seeds;
     }
 
     /**
@@ -114,14 +180,25 @@ public final class FrontierReadback {
             int limit
     ) throws IOException {
         try {
+            if (limit < 1 || limit > MAX_PAGE_SIZE) {
+                throw new IllegalArgumentException();
+            }
             Instant at = envelope(reply, session, "STATE_LIST");
-            int through = number(reply, "through_ordinal", 0, 100);
+            int through = number(reply, "through_ordinal", 0, MAX_RESERVATIONS);
             if (!(reply.get("rows") instanceof List<?> items) || items.size() > limit) {
                 throw new IllegalArgumentException();
             }
             List<Row> rows = new ArrayList<>();
+            Set<String> reservations = new HashSet<>();
+            Set<String> urls = new HashSet<>();
             int previous = 0;
+
+            // Cursor freezes reservation membership, not scheduler state or time.
+            // Each page is a separate authoritative observation under server locks.
             if (offeredCursor != null) {
+                if (offeredCursor.isEmpty() || offeredCursor.length() > 256) {
+                    throw new IllegalArgumentException();
+                }
                 String[] cursor = new String(
                         Base64.getUrlDecoder().decode(offeredCursor),
                         java.nio.charset.StandardCharsets.UTF_8
@@ -152,7 +229,7 @@ public final class FrontierReadback {
 
                 previous = ordinal;
                 String reservation = text(row, "reservation_id", 36);
-                if (!UUID.fromString(reservation).toString().equals(reservation)) {
+                if (!UUID.fromString(reservation).toString().equals(reservation) || !reservations.add(reservation)) {
                     throw new IllegalArgumentException();
                 }
                 if (!session.equals(text(row, "session_id", 64))) {
@@ -180,10 +257,14 @@ public final class FrontierReadback {
                 if ((state == State.HELD) == (lease == null)) {
                     throw new IllegalArgumentException();
                 }
+                String url = text(row, "url", 2048);
+                if (url.isBlank() || !urls.add(url)) {
+                    throw new IllegalArgumentException();
+                }
                 rows.add(new Row(
                         reservation,
                         ordinal,
-                        text(row, "url", 2048),
+                        url,
                         text(row, "source_url", 2048),
                         number(row, "depth", 0, 6),
                         state,
@@ -243,19 +324,25 @@ public final class FrontierReadback {
             Instant at = envelope(reply, session, "STATE_COUNTS");
 
             Map<String, Object> c = object(reply.get("counts"));
-            
-            int reserved = number(c, "reserved", 0, 100),
-                    pending = number(c, "pending", 0, 100);
 
-            int held = number(c, "held", 0, 100),
-                    wait = number(c, "scheduled_wait", 0, 100);
+            int reserved = number(c, "reserved", 0, MAX_RESERVATIONS),
+                    pending = number(c, "pending", 0, MAX_RESERVATIONS);
 
-            int unscheduled = number(c, "unscheduled", 0, 100),
-                    unknown = number(c, "unknown", 0, 100);
+            int held = number(c, "held", 0, MAX_RESERVATIONS),
+                    wait = number(c, "scheduled_wait", 0, MAX_RESERVATIONS);
+
+            int unscheduled = number(c, "unscheduled", 0, MAX_RESERVATIONS),
+                    unknown = number(c, "unknown", 0, MAX_RESERVATIONS);
 
             if (reserved != pending + held + wait + unscheduled + unknown) {
                 throw new IllegalArgumentException();
             }
+
+            // TODO(READBACK-003): Сохранять terminal/success/retry provenance в Frontier
+            // до версии протокола с terminal counters: AdmissionState.count видит только
+            // scheduler rows, UNSCHEDULED не доказывает исход. Нужны durable update/recovery,
+            // совместимость старых данных и версия readback; JobStatusService не вправе
+            // выводить COMPLETE из нулевых active counts. В v1 эти четыре поля строго null.
             for (String key : List.of("done", "success", "terminal", "retry_wait")) {
                 if (!c.containsKey(key) || c.get(key) != null) {
                     throw new IllegalArgumentException();
@@ -288,12 +375,17 @@ public final class FrontierReadback {
      */
     private static Instant envelope(Map<String, Object> reply, String session, String outcome) {
         if (
+                session == null || !session.matches("[A-Za-z0-9-]{1,64}") ||
                 !outcome.equals(reply.get("outcome")) ||
                 !session.equals(reply.get("session_id")) ||
                 number(reply, "state_version", 1, 1) != 1
         ) {
             throw new IllegalArgumentException();
         }
+
+        // Server wall-clock observation time, not a sequence number or freshness lease.
+        // Separate calls/pages may regress under clock adjustments; receiving a verified
+        // response makes it current for that call. No comparison with the client's clock.
         return Instant.parse(text(reply, "readback_at", 64));
     }
 

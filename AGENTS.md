@@ -23,6 +23,18 @@ constructors and Storm reflection entrypoints. The separately built URLFrontier
 candidate owns RocksDB scheduling and durable Admission. H2 is an embedded archive
 catalog. Compose supplies infrastructure/fixtures, not another scheduler.
 
+Canonical local operation uses root `./onionall` ->
+`scripts/runners/runtime.py` -> `compose.runtime.yaml`; see
+[local runtime](docs/local-runtime.md). `./onionall build`, `test` and `build --images` use the containerized JDK 25
+workflow in `docker/toolchain/`; prefer it when host Java is unavailable. It
+verifies root/crawler POMs and builds the independent Frontier Maven project
+using the image-extracted SHA-pinned baseline. The root POM declares no modules.
+Maven caches live under ignored `.runtime/`; clean/down preserve runtime data.
+Fixture mode has separate retained state and cannot run alongside canonical Tor
+mode. The launcher supplies deployment defaults; JVM CLI owns explicit approval
+and generated graph execution. Stop owned crawler containers before Frontier;
+retain all volumes.
+
 ## KEY COMPONENTS
 
 | Area | Responsibility and local instructions |
