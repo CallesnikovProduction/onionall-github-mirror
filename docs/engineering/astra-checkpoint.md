@@ -1,6 +1,6 @@
 # Astra engineering checkpoint
 
-Date: 2026-11-08 (Europe/Moscow). Pass 1: operational baseline, PARTIAL.
+Updated: 2026-11-09 (Europe/Moscow). Pass 1: operational baseline, PARTIAL.
 Branch: `feature/astra-onionall-reconstruction`.
 Base: `4b0d4daa9a56aafc9303cd7d34972bf126b1288a` (`origin/main` at preflight).
 This base includes Security RC/S1-01, M5 and the owner's portable runtime changes;
@@ -64,6 +64,18 @@ token reuse and the strict permission check. This is a local correction to exist
 Python deployment tooling, not a new application service or authorization system.
 The historical CI build results are not credited as validation of the Astra SHA.
 
+Published source checkpoints: `8f17d2f` (complete conformance selection) and
+`2e1df11` (capability creation). The fresh
+[Astra CI run 42522560099](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42522560099)
+on `2e1df11` built all images, passed container JVM/Frontier/tooling tests and
+Compose syntax checks. Startup then exposed an independent existing YAML defect:
+unquoted commas in the flow-list tmpfs entry created five mount paths, and Docker
+rejected `exec` as nonabsolute. Quoting the single mount preserves rw/exec/nosuid/
+nodev/mode=1777. A Compose CLI regression checks normalized mounts for all three
+worker-derived services; it needs no Docker Engine. Local YAML parsing reproduced
+the five-element input and confirms one corrected element. Windows without Docker
+skips this Compose regression explicitly; the next Linux run must execute it.
+
 ## Fresh verification
 
 Local commands ran with cached Temurin 25.0.5+8, Maven 3.10.0 and Python 3.12.
@@ -81,6 +93,7 @@ Kotlin 2.3.21 actually compiled at JVM target 25; no versions were changed.
 | Runtime token preparation | Before: 2 errors with the reproduced TypeError; after: 2 tests PASS. Real files, exclusive-open race and token reuse checked; Windows permission rejection retained. `runtime-token-before.log` / `runtime-token-after.log`; Linux mode enforcement still requires the Linux run |
 | Existing Python groups | M3 2/2, archive 2/2, security 4/4 pass; M1 32 selected/1 skipped; CLI 12 skipped. M2: 113 selected, 2 failures/7 errors/2 skipped; scripts: 32 selected, 2 failures/28 errors. See initial result JSON; no platform failures relabelled as success |
 | CLI entrypoint with resolved Maven classpath | PASS: `Onionall --help`, exit 0; `.runtime/astra-pass1/cli-classpath-help.log`. Direct root shaded-JAR probe lacked provided Storm Config; not the packaged CLI contract |
+| Offline CLI persistence smoke | PASS: depth-2 plan -> approve -> show -> pages across separate JVMs and fresh H2; `.runtime/astra-pass1/cli-plan-pwbwvrmz/result.json`. Approval persists; admission remains UNOBSERVED and archived pages are empty, as no fetch was run |
 | Local canonical Docker images/up/status/down | BLOCKED: Docker/WSL prerequisite absent; no real container/runtime acceptance inferred from native JVM tests |
 | Real-network/depth-2 acquisition | NOT RUN: no new approved seed or operational Tor runtime; no provider availability or persisted research-data claim |
 

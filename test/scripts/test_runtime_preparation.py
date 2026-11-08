@@ -1,7 +1,10 @@
 """Real filesystem checks for token preparation; no Docker or network access."""
 import importlib.util
+import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -62,6 +65,19 @@ class RuntimePreparationTest(unittest.TestCase):
                 self.instance.prepare()
         self.assertEqual('existing-fixture-capability', self.token.read_text())
         self.assertFalse((self.instance.state / 'runtime.json').exists())
+
+    @unittest.skipUnless(shutil.which('docker'), 'Compose CLI required; Docker Engine is not needed')
+    def test_compose_keeps_tmpfs_options_on_one_absolute_mount(self):
+        environment = dict(os.environ, ONIONALL_RUNTIME_DIR=str(self.instance.state),
+                           ONIONALL_RUNTIME_USER='1000:1000')
+        result = subprocess.run(['docker', 'compose', '-f', str(ROOT / 'compose.runtime.yaml'),
+                                 '--profile', 'fixture', '--profile', 'tools', 'config', '--format', 'json'],
+                                env=environment, capture_output=True, text=True, timeout=20)
+        self.assertEqual(0, result.returncode, result.stderr)
+        services = json.loads(result.stdout)['services']
+        for name in ('frontier', 'crawler', 'probe'):
+            self.assertEqual(['/tmp:rw,exec,nosuid,nodev,mode=1777'], services[name]['tmpfs'], name)
+            self.assertTrue(services[name]['read_only'], name)
 
 
 if __name__ == '__main__':

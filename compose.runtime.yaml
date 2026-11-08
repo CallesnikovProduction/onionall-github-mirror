@@ -11,7 +11,7 @@ x-worker: &worker
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   read_only: true
-  tmpfs: [/tmp:rw,exec,nosuid,nodev,mode=1777]
+  tmpfs: ['/tmp:rw,exec,nosuid,nodev,mode=1777']
   volumes:
     - ./target/onionall:/cli:ro
     - ./target/onionall-brawler-0.1.0-SNAPSHOT.jar:/app/crawler.jar:ro
