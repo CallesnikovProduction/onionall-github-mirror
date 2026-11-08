@@ -1,11 +1,13 @@
 """Verification signal tests, including deliberately failing disposable fixtures."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('project_verification', ROOT / 'scripts/runners/verify.py')
@@ -14,6 +16,29 @@ spec.loader.exec_module(verify)
 
 
 class VerificationTest(unittest.TestCase):
+    def test_frontier_dispatches_every_conformance_and_preserves_failed_gate(self):
+        """Новый driver нельзя молча исключить из общей проверки состояния Frontier."""
+        drivers = {p.stem for p in (ROOT / 'frontier-server/src/test/java').rglob('*Conformance.java')}
+        failed = 'AdmissionAmbiguousRpcConformance'
+        with tempfile.TemporaryDirectory() as temporary:
+            evidence = Path(temporary)
+            baseline = evidence / 'fixture.jar'
+            baseline.write_bytes(b'fixture input for orchestration only')
+            run = verify.Verification(evidence)
+            calls = []
+            def execute(name, command, **kwargs):
+                calls.append(command)
+                return (1 if name == 'frontier-' + failed else 0), evidence / (name + '.log')
+            with patch.object(verify, 'BASE_SHA256', hashlib.sha256(baseline.read_bytes()).hexdigest()), \
+                    patch.object(run, 'run', side_effect=execute):
+                run.frontier(baseline, temporary)
+            self.assertEqual({'frontier-' + name for name in drivers}, {g['name'] for g in run.gates})
+            self.assertEqual(len(drivers), len(run.gates))
+            self.assertEqual(('FAIL', 1), verify.aggregate(run.gates))
+            self.assertEqual('FAIL', next(g['status'] for g in run.gates if g['name'] == 'frontier-' + failed))
+            migration = next(c for c in calls if any(str(v).endswith('.AdmissionMigrationConformance') for v in c))
+            self.assertEqual(str(baseline), migration[-1])
+
     def test_required_skip_is_not_green_and_failure_wins(self):
         self.assertEqual(verify.aggregate([dict(status='PASS'), dict(status='NOT RUN')]), ('NOT RUN', 2))
         self.assertEqual(verify.aggregate([dict(status='NOT RUN'), dict(status='FAIL')]), ('FAIL', 1))

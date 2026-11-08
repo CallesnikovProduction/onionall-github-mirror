@@ -25,7 +25,8 @@ BASE_SHA256 = 'ff1b774bf81343234e6f34878f8b7c9a826371b3e305e96bf0e204895e3562df'
 SUITES = ('m1', 'm2', 'm3', 'archive', 'security', 'scripts', 'cli')
 CONFORMANCE = ('AdmissionConformance', 'AdmissionMigrationConformance',
                'AdmissionShutdownConformance', 'AdmissionRpcConformance',
-               'RecoveryCountersConformance', 'AdmissionStateConformance')
+               'RecoveryCountersConformance', 'AdmissionStateConformance',
+               'AdmissionAmbiguousRpcConformance')
 
 
 def markdown_links(root, files):

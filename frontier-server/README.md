@@ -10,8 +10,9 @@ No dependency download or protobuf code generation occurs.
 
 ## Maven and IntelliJ IDEA
 
-The root Maven reactor contains `crawler` and `frontier-server`. The server is
-independent of the crawler dependency graph. Its standard `src/main/java` and
+The root POM does not declare modules. The canonical launcher orchestrates
+`crawler/pom.xml` and `frontier-server/pom.xml` as independent builds; the server
+is independent of the crawler dependency graph. Its standard `src/main/java` and
 `src/test/java` roots are imported by IDEA; select JDK25 for Maven and the IDE.
 The build and tests use JDK25. The server's source/API/bytecode compatibility
 remains release11, matching the pre-existing `build.sh`; IDEA therefore shows
@@ -23,8 +24,8 @@ From the checkout root, with JDK25 on PATH:
 
 ```sh
 java frontier-server/build-support/FrontierBuild.java prepare /absolute/path/to/pinned-service.jar frontier-server
-mvn -B -U -pl frontier-server verify
-mvn -B verify
+mvn -B -U -f frontier-server/pom.xml verify
+mvn -B -f crawler/pom.xml verify
 ```
 
 Use a quoted Windows path in PowerShell. Preparation checks the exact SHA256
@@ -43,8 +44,9 @@ with a complete Maven cache. Keep the prepared repository for validation and
 packaging even after Maven caches its dependency.
 
 `validate` verifies the pinned input, every retained dependency entry and the
-actual resolved Maven JAR. `test` compiles the five existing test sources and
-runs the four existing conformance main classes in separate JVMs; failures and
+actual resolved Maven JAR. `test` compiles the conformance sources and runs all
+seven conformance main classes in separate JVMs, including ambiguous RPC,
+recovery counters and authenticated state readback; failures and
 180s subprocess timeouts fail Maven. These are executable conformance suites,
 not JUnit tests. Each run retains fresh DBs/logs under
 `target/maven-conformance-*`. The migration test alone starts a stock-baseline
@@ -57,7 +59,8 @@ single JAR, never add the original fat JAR alongside it. The thin intermediate
 JAR is replaced before Maven install/deploy. `build.sh` remains an independent
 build path and does not require the prepared Maven repository.
 
-After preparation, open/reload the root `pom.xml` in IDEA. Missing input or
+After preparation, import/reload `crawler/pom.xml` and `frontier-server/pom.xml`
+as separate Maven projects in IDEA. Missing input or
 checksum mismatch is a build failure; there is no fallback to another service
 artifact. Compilation/import contracts can be checked with Maven; actual IDEA
 indexing must also be observed in the IDE.
@@ -227,7 +230,8 @@ explicitly. Unknown terminal provenance stays null. New conformance runs with fi
 reservations/two unscheduled rows, leases and a future row; it proves zero RocksDB
 sequence changes and identical raw leases (including expired entries), auth denies,
 read-only mode, concurrent append pagination, long URL byte paging, two clean and
-one process-crash restart. --test now runs six drivers. No power-loss/soak claim.
+one process-crash restart. Both Maven and --test run seven drivers, also covering
+ambiguous RPC outcomes. No power-loss/soak claim.
 
 Rollback: deploy the previous server/client binaries together; all existing DBs
 remain readable. New typed reads against the old server report unsupported/unavailable.
