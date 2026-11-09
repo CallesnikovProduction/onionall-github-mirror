@@ -30,6 +30,11 @@ Preserve owner Javadoc/KDoc and third-party authorship. New or substantially
 rewritten project-owned source documents nontrivial contracts and attributes
 Стефан Колесников and GPT-6 Astra; do not retag unchanged or upstream code.
 
+Kotlin [ResearchCommands](src/main/kotlin/dev/onionall/brawler/cli/ResearchCommands.kt)
+adds bounded plan/run/result/graph/file-candidate commands. Its Backend is wired
+to existing Java CrawlService/ArchiveStore by ArchiveCommands; Kotlin does not
+depend on Java sources at compile time. Research ID is the existing plan ID.
+
 Canonical local operation uses root `./onionall` ->
 `scripts/runners/runtime.py` -> `compose.runtime.yaml`; see
 [local runtime](docs/local-runtime.md). `./onionall build`, `test` and `build --images` use the containerized JDK 25

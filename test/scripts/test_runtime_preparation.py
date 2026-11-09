@@ -79,6 +79,16 @@ class RuntimePreparationTest(unittest.TestCase):
             self.assertEqual(['/tmp:rw,exec,nosuid,nodev,mode=1777'], services[name]['tmpfs'], name)
             self.assertTrue(services[name]['read_only'], name)
 
+    def test_research_forwarding_retains_explicit_runtime_and_never_inserts_approval(self):
+        for action in ('run', 'results'):
+            with patch.object(self.instance, 'check_docker'), patch.object(self.instance, 'dc') as dc:
+                self.instance.cli(['research', action, '--runtime=/chosen/runtime.json',
+                                   '--admission-token-file=/chosen/token'])
+            arguments = dc.call_args.args
+            self.assertNotIn('--approve', arguments)
+            self.assertNotIn('/state/runtime.json', arguments)
+            self.assertNotIn('/state/admission-token', arguments)
+
 
 if __name__ == '__main__':
     unittest.main()

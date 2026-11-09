@@ -208,7 +208,7 @@ public final class Onionall implements Callable<Integer> {
     public Integer call() throws Exception {
         if (json) {
             print(new LinkedHashMap<>(Map.of("commands", List.of("fetch", "inspect", "status", "discover", "crawl",
-                "pages", "page", "search-local", "archive", "search-provider"), "version", "0.1.0-SNAPSHOT")));
+                "pages", "page", "search-local", "archive", "search-provider", "research"), "version", "0.1.0-SNAPSHOT")));
             return 0;
         }
         if (!tty) {
@@ -559,6 +559,7 @@ public final class Onionall implements Callable<Integer> {
         root.interactiveContent = interactiveContent;
         CommandLine cli = new CommandLine(root).setOut(out).setErr(err)
             .setColorScheme(CommandLine.Help.defaultColorScheme(CommandLine.Help.Ansi.OFF));
+        cli.addSubcommand("research", new ResearchCommands(ArchiveCommands.research(root)));
         cli.setParameterExceptionHandler((e, a) -> {
             root.json = root.json || Arrays.asList(args).contains("--json") || Arrays.asList(args)
                 .contains("--json=true");
@@ -575,7 +576,7 @@ public final class Onionall implements Callable<Integer> {
                 try {
                     root.print(new LinkedHashMap<>(Map.of("version", "0.1.0-SNAPSHOT", "commands", List.of("fetch",
                         "inspect", "status", "discover", "crawl", "pages", "page", "search-local", "archive",
-                        "search-provider"), "help", "Use --help without --json for option details")));
+                        "search-provider", "research"), "help", "Use --help without --json for option details")));
                 } catch (IOException e) {
                     return 6;
                 }

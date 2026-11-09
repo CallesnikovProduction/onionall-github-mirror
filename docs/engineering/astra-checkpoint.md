@@ -16,8 +16,35 @@ target, preserving the original graph for legacy callers. Local new acceptance
 negative controls + real loopback SOCKS redirect: 2 passed outside the socket-
 restricted sandbox; existing fixture tests: 2 passed. Initial sandbox socket
 attempt failed with WinError 10013. AST/YAML/diff/secret-signature checks passed;
-18 owner file hashes remain unchanged. Full container E2E is PENDING the new CI
-run; this test-harness publication is not a crawl acceptance claim.
+18 owner file hashes remain unchanged.
+
+Fresh [CI 42628616540](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42628616540)
+on `bd2dcca3f594072d9dbb6868f37f3aa6cfd80570` passed the canonical E2E: 6 actual
+HTTP requests; 503 then 200 retry; 302 redirect; 3 archived HTML pages at depths
+0/1/2; 9 persisted edges; 5 Frontier reservations. SHA256 object readback, graph
+identity and actual Frontier/SOCKS container recreation all passed. Archive,
+graph, quota, scheduling counts and next-attempt date survived down/up. No DB
+rows were injected. Final status was UNKNOWN / INCOMPLETE (0 pending/held,
+4 scheduled-wait, 1 unscheduled); success/terminal remain null. This is not
+proof of a terminal crawl or real Tor. The sanitized result is a CI artifact.
+
+The next verified-local scope adds Kotlin `research plan/run/results/links/files`
+over existing Java services using a narrow compilation-boundary adapter. No new
+schema, scheduler, process owner or authorization is introduced. Bounds are
+depth <=2/pages <=20; approval remains explicit. Results expose real persisted
+pages/links/file candidates and labelled bounded metrics; unknown attempt counts
+and durations remain null. First unit run exposed SQL `max_depth` versus public
+JSON `depth` confusion; fixed without changing that contract. Current targeted
+JVM regressions: 28 passed, 0 skipped. The next CI will exercise these new public
+commands through the same crawl/recreation gate.
+
+The user approved the Ahmia onion homepage, same-host depth 2/max 20. Real Tor
+remains BLOCKED: no private local bridge file/runtime, no local Docker, and the
+repository's Actions secret list is empty (names-only inspection). No bridge
+defaults or direct fallback were substituted. [Ahmia terms](https://ahmia.fi/terms/)
+prohibit scraping without permission; automatic provider search is not enabled.
+Torch's programmatic endpoint/identity is not verified. Manual selected seeds
+can already enter `crawl plan --import --provider ...`; no mock search results.
 
 ## Execution boundary and decisions
 
@@ -50,7 +77,8 @@ service, host networking or security-setting change was attempted.
 Product flow remains CLI plan/approval -> CrawlService/CrawlExecution -> protected
 Frontier -> generated Storm graph/TorProtocol -> discovery reservation and HTML/H2
 archive -> authenticated status updates. H2 is a catalog, never the scheduler.
-No new research orchestration/provider/authentication subsystem is claimed.
+The continuation adds Kotlin research CLI orchestration over that same flow;
+no second scheduler, provider scraping or authentication subsystem is introduced.
 
 ## Concrete correction in this scope
 
@@ -103,7 +131,7 @@ not a crawl: no worker research job or real Tor request was launched. Shutdown
 did not request volume deletion; persisted-data survival after container recreation
 was not asserted. The previous failed run remains part of the evidence.
 
-## Fresh verification
+## Original-pass verification (before the continuation above)
 
 Local commands ran with cached Temurin 25.0.5+8, Maven 3.10.0 and Python 3.12.
 Kotlin 2.3.21 actually compiled at JVM target 25; no versions were changed.
@@ -143,23 +171,23 @@ container workflow documented in [local runtime](../local-runtime.md).
 
 ## Blockers and next executable action
 
-1. Build/test and fixture startup/readiness/shutdown are verified in Linux CI.
-   The next operational gate is a controlled canonical depth-2 fixture crawl,
-   archive/link readback and data survival after down/up; those gates are NOT RUN.
-   Use an available Linux/WSL2 Docker host or a separately selected internal CI
-   fixture. The local Windows host still lacks Docker/WSL prerequisites.
+1. Canonical depth-2 fetch, archive/graph readback and persistence after actual
+   container recreation passed in CI 42628616540. Repeat that gate through the
+   new Kotlin research commands before claiming their end-to-end acceptance.
+   The local Windows host still lacks Docker/WSL prerequisites.
 2. Keep Windows Python portability failures distinct: missing POSIX shell paths,
    symlink/mode semantics, `os.getuid`, and sandbox MSYS startup restrictions. Do
    not weaken assertions or install OS components to produce a green summary.
-3. Only after operational local workflow verification, use one explicitly approved
-   real seed for bounded depth-2 research. Provider integration, binary acquisition,
-   authentication and GUI remain later scope, not requirements for this checkpoint.
+3. An Ahmia seed is approved; real Tor remains blocked on private bridge/runtime
+   prerequisites and automated provider access restrictions. Do not substitute
+   direct networking. No actual real Tor fetch/provider result is claimed.
 
 Tracked changes were checked with `git diff --check`, local Markdown-link
 verification and scoped secret-signature inspection. All 18 owner untracked files
 still match their preflight SHA256 values and remain outside commits. Publication
 uses only `origin/feature/astra-onionall-reconstruction`; no force push is used.
-The final evidence-only checkpoint commit does not change the tested source tree.
+The original e35bc85 checkpoint was documentation-only; continuation source/test
+changes require their own actual runs as recorded above.
 
 Full Pass 1, S1-01 security closure and real Tor acceptance remain open. No PR,
 merge, main/source branch change or deployment is part of this delivery.

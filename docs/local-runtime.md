@@ -89,6 +89,28 @@ pending, held, scheduled-wait, unscheduled and unknown scheduler states. Worker
 exit zero alone never establishes COMPLETE. H2 can report contention during
 live callbacks; inspect after foreground start returns.
 
+## Research commands
+
+New Kotlin commands reuse the same plan ID, catalog, approval and authenticated
+Frontier execution. They cap research plans at depth 2 and 20 reservations:
+
+```sh
+./onionall cli research plan --url "$SEED_URL" --depth 2 --max-pages 20
+# Inspect the returned scope and use its plan_id:
+./onionall cli crawl show PLAN_ID
+./onionall cli research run --plan PLAN_ID --approve
+./onionall cli research results PLAN_ID
+./onionall cli research links PLAN_ID
+./onionall cli research files PLAN_ID
+```
+
+`--approve` is explicit approval of the stored immutable scope. Without it only
+an already approved plan can run. `results` separates scheduler observations
+from archive counts, lists stored source-to-target links and file candidates,
+and reports unknown fetch/retry-attempt counts and durations as null. Lists are
+bounded at 100 and label possible truncation. File candidates are never downloaded.
+Legacy `crawl` commands and their JSON contracts remain supported.
+
 ## Controlled fixture
 
 After building and preparing images, select the existing internal SOCKS graph:
@@ -109,7 +131,9 @@ PLAN_ID=$(./onionall --fixture cli crawl plan --seed "$SEED_URL" --scope same-ho
 The fixture never forwards or resolves actual destinations. Real TorProtocol and
 the product graph process `/a → /b → /c` at depths 0/1/2. `/b` returns 503 once,
 then retries after one minute; `/blocked` is robots-denied, `/deep` depth-denied,
-foreign host scope-denied and `/dump.zip` metadata-only. Worker duration is 120
+foreign host scope-denied and `/dump.zip` metadata-only. A relative `/redirect`
+returns 302 to the already admitted `/b`; it does not add a new admission path.
+Worker duration is 120
 seconds. Reuse the same plan for resume/deduplication; a new plan is a new crawl.
 Retained fixture HTTP logs are cumulative. Tor is explicitly NOT_RUN_FIXTURE.
 

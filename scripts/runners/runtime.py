@@ -125,10 +125,10 @@ class Runtime:
         if not args:
             args = ['--help']
         # Deployment defaults only. Original CLI still owns plan/approval/limits and exit codes.
-        if args[:2] in (['crawl', 'start'], ['crawl', 'status']):
-            if '--runtime' not in args:
+        if args[:2] in (['crawl', 'start'], ['crawl', 'status'], ['research', 'run'], ['research', 'results']):
+            if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
-            if '--admission-token-file' not in args:
+            if not any(a == '--admission-token-file' or a.startswith('--admission-token-file=') for a in args):
                 args += ['--admission-token-file', '/state/admission-token']
         self.check_docker()
         self.dc('run', '--rm', '--no-deps', 'crawler', *args, timeout=740)

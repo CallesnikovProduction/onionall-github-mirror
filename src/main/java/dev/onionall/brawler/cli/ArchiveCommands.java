@@ -20,6 +20,41 @@ import picocli.CommandLine.*;
  */
 public final class ArchiveCommands {
 
+    /**
+     * <b>Связывает Kotlin research-команды с существующими Java services.</b>
+     * <p>Только адаптер компиляционной границы; admission, persistence и scheduling не дублируются.
+     * @author Стефан Колесников
+     * @author GPT-6 Astra
+     */
+    static ResearchCommands.Backend research(Onionall root) {
+        return new ResearchCommands.Backend() {
+            public Map<String, Object> plan(String url, int depth, int pages) throws Exception {
+                return service(root).createPlan(List.of(url), depth, pages, "direct-url");
+            }
+            public Map<String, Object> existing(String id) throws Exception {
+                return service(root).plan(id);
+            }
+            public Map<String, Object> approve(String id) throws Exception {
+                return service(root).approve(id);
+            }
+            public Map<String, Object> start(String id, Path runtime, Path token) throws Exception {
+                return service(root).start(id, runtime, token);
+            }
+            public Map<String, Object> status(String id, Path runtime, Path token) throws Exception {
+                return service(root).status(id, runtime, token);
+            }
+            public Map<String, Object> pages(String id) throws Exception {
+                try (var archive = store(root)) { return archive.pages(id, 100); }
+            }
+            public Map<String, Object> links(String id) throws Exception {
+                try (var archive = store(root)) { return archive.links(id, 100); }
+            }
+            public void print(Map<String, ? extends Object> value) throws Exception {
+                root.print(new LinkedHashMap<>(value));
+            }
+        };
+    }
+
     private ArchiveCommands() {
     }
 

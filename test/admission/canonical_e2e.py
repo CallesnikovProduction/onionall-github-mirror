@@ -79,6 +79,15 @@ def read_archive(job, host, suffix):
                 for e in edges), 'File candidate provenance absent')
     require(len(cli(['search-local', 'ARCHIVE_GAMMA', '--job', job], 'search-' + suffix)['results']) == 1,
             'Local archive search failed')
+    research = cli(['research', 'results', job], 'research-' + suffix)
+    require(research['pages'] == rows and research['status']['authoritative_readback_current'],
+            'Research result does not reflect current persisted data')
+    require(len(research['file_candidates']) == 1 and research['binary_downloads'] == 0,
+            'File-link candidate missing or binary download claimed')
+    require(research['metrics']['listed_html_bytes'] == sum(row['content_size'] for row in rows)
+            and research['metrics']['fetch_attempts'] is None, 'Research metrics are not actual observations')
+    require(cli(['research', 'links', job], 'links-' + suffix)['links'] == research['links'],
+            'Public graph readback disagrees with research results')
     return dict(pages=rows, details=details, edges=edges)
 
 
@@ -100,14 +109,14 @@ def run():
         require(not (STATE / 'archive').exists() and not (STATE / 'execution').exists(),
                 'Refusing existing archive/execution; use a fresh checkout, never delete user state')
         host = (STATE / 'onion-hostname.txt').read_text().strip()
-        plan = cli(['crawl', 'plan', '--seed', 'http://' + host + '/a', '--depth', '2',
-                    '--max-pages', '20', '--scope', 'same-host'], 'plan')
+        plan = cli(['research', 'plan', '--url', 'http://' + host + '/a', '--depth', '2',
+                    '--max-pages', '20'], 'plan')
         job = plan['plan_id']
         result['job_id'] = job
-        refused = cli(['crawl', 'start', '--plan', job], 'unapproved', success=False)
+        refused = cli(['research', 'run', '--plan', job], 'unapproved', success=False)
         require('approval' in json.dumps(refused).lower(), 'Unapproved start refused for unrelated cause')
-        require(cli(['crawl', 'approve', job], 'approve')['approved'], 'Approval not persisted')
-        start = cli(['crawl', 'start', '--plan', job], 'start', timeout=260)
+        start = cli(['research', 'run', '--plan', job, '--approve'], 'start', timeout=260)
+        require(cli(['crawl', 'show', job], 'approved-plan')['approved'], 'Explicit approval not persisted')
         require(start['admission'] == 'COMMITTED' and start['worker_exit_code'] == 0,
                 'Admission/worker execution failed')
         require(start['crawl_completed_verified'] is False, 'Worker exit manufactured completion')
