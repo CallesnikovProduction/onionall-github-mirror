@@ -121,6 +121,7 @@ Frontier execution. They cap research plans at depth 2 and 20 reservations:
 ./onionall cli research results PLAN_ID
 ./onionall cli research links PLAN_ID
 ./onionall cli research files PLAN_ID
+./onionall cli research search --query keyword --job PLAN_ID --host APPROVED_ONION_HOST
 ```
 
 `--approve` is explicit approval of the stored immutable scope. Without it only
@@ -129,6 +130,14 @@ from archive counts, lists stored source-to-target links and file candidates,
 and reports unknown fetch/retry-attempt counts and durations as null. Lists are
 bounded at 100 and label possible truncation. File candidates are never downloaded.
 Legacy `crawl` commands and their JSON contracts remain supported.
+
+`research search` is local URL/title/text search using the existing H2 catalog,
+with SQL job/host filters applied before the result limit. It makes no provider
+request and reports possible truncation. `--provider ahmia|torch` is rejected
+explicitly: automated provider access is not implemented/permitted by the current
+verified contract. Existing `search-provider QUERY --provider ahmia` prepares a
+manual URL; selected permitted URLs can enter `crawl plan --import FILE --provider
+ahmia`. A manual plan does not prove downloaded provider results or Tor acquisition.
 
 ## Controlled fixture
 

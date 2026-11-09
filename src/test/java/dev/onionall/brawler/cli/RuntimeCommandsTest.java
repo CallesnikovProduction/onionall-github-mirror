@@ -14,6 +14,11 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import static org.junit.Assert.*;
 
+/**
+ * Runtime JSON и SOCKS negotiation без обращения к onion-сервисам.
+ * @author Стефан Колесников
+ * @author GPT-6 Astra
+ */
 public class RuntimeCommandsTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
     private record Result(int code, JsonNode value) { }

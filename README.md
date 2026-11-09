@@ -332,6 +332,8 @@ M0/M1 runners remain supported. Native Windows M2 execution is not yet verified.
 
 The canonical launcher also exposes Kotlin `research plan --url URL`,
 `research run --plan ID --approve`, and `research results|links|files ID`.
+`research search --query TEXT [--job ID] [--host ONION_HOST]` searches archived
+URL/title/text locally; keyword discovery through external providers remains separate.
 Research plans are bounded to depth 2/20 reservations; file links are metadata
 only. See [verified workflow and storage](docs/local-runtime.md#research-commands)
 and the [current Astra checkpoint](docs/engineering/astra-checkpoint.md).

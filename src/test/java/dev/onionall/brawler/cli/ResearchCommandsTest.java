@@ -15,7 +15,11 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import static org.junit.Assert.*;
 
-/** Existing JUnit entrypoint verifies Kotlin CLI against a disposable real catalog. */
+/**
+ * Kotlin CLI через существующий JUnit entrypoint и одноразовый настоящий каталог.
+ * @author Стефан Колесников
+ * @author GPT-6 Astra
+ */
 public class ResearchCommandsTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
     private static final String URL = "http://" + OnionSmoke.HOST + "/";
@@ -85,5 +89,36 @@ public class ResearchCommandsTest {
         assertFalse(result.json.path("status").path("authoritative_readback_current").asBoolean());
         assertEquals(1, run(archive, "research", "links", id).json.path("links").size());
         assertEquals(0, run(archive, "research", "files", id).json.path("binary_downloads").asInt(-1));
+        assertEquals(1, run(archive, "research", "search", "--query", URL, "--job", id,
+            "--host", OnionSmoke.HOST).json.path("results").size());
+        assertEquals(1, run(archive, "research", "search", "--query", "specimen", "--host", OnionSmoke.HOST)
+            .json.path("results").size());
+        assertEquals(0, run(archive, "research", "search", "--query", "%' OR 1=1 --")
+            .json.path("results").size());
+        assertNotEquals(0, run(archive, "research", "search", "--query", "specimen", "--host", "%.onion").code);
+        assertNotEquals(0, run(archive, "research", "search", "--query", "specimen", "--provider", "ahmia").code);
+    }
+
+    @Test public void hostAndJobFiltersApplyBeforeResultLimit() throws Exception {
+        Path directory = temporary.newFolder().toPath();
+        Path archive = directory.resolve("archive");
+        Path html = directory.resolve("offline.html");
+        Files.writeString(html, "<html><title>shared marker</title><body>local specimen</body></html>");
+        String otherHost = "aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion";
+        assertNotEquals(OnionSmoke.HOST, otherHost);
+        String first = run(archive, "research", "plan", "--url", URL).json.path("plan_id").asText();
+        run(archive, "crawl", "approve", first);
+        run(archive, "archive", "import", html.toString(), "--plan", first, "--url", URL);
+        String otherUrl = "http://" + otherHost + "/";
+        String second = run(archive, "research", "plan", "--url", otherUrl).json.path("plan_id").asText();
+        run(archive, "crawl", "approve", second);
+        run(archive, "archive", "import", html.toString(), "--plan", second, "--url", otherUrl);
+        var found = run(archive, "research", "search", "--query", "shared marker",
+            "--host", OnionSmoke.HOST, "--limit", "1");
+        assertEquals(0, found.code);
+        assertEquals(1, found.json.path("results").size());
+        assertEquals(first, found.json.path("results").get(0).path("job_id").asText());
+        assertEquals(0, run(archive, "research", "search", "--query", "shared marker",
+            "--host", otherHost, "--job", first).json.path("results").size());
     }
 }

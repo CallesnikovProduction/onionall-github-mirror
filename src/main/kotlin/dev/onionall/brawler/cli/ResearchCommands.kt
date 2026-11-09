@@ -18,7 +18,8 @@ import picocli.CommandLine.ParentCommand
 @Command(name = "research", mixinStandardHelpOptions = true,
     description = ["Plan, explicitly approve/run and inspect bounded research."],
     subcommands = [ResearchCommands.Plan::class, ResearchCommands.Run::class,
-        ResearchCommands.Results::class, ResearchCommands.Links::class, ResearchCommands.Files::class])
+        ResearchCommands.Results::class, ResearchCommands.Links::class, ResearchCommands.Files::class,
+        ResearchCommands.Search::class])
 class ResearchCommands(private val backend: Backend) : Callable<Int> {
     /** Узкая граница компиляции: реализация делегирует существующим Java services. */
     interface Backend {
@@ -29,11 +30,12 @@ class ResearchCommands(private val backend: Backend) : Callable<Int> {
         @Throws(Exception::class) fun status(id: String, runtime: Path?, token: Path?): Map<String, Any?>
         @Throws(Exception::class) fun pages(id: String): Map<String, Any?>
         @Throws(Exception::class) fun links(id: String): Map<String, Any?>
+        @Throws(Exception::class) fun search(query: String, id: String?, host: String?, limit: Int): Map<String, Any?>
         @Throws(Exception::class) fun print(value: Map<String, Any?>)
     }
 
     override fun call(): Int {
-        backend.print(mapOf("commands" to listOf("plan", "run", "results", "links", "files"),
+        backend.print(mapOf("commands" to listOf("plan", "run", "results", "links", "files", "search"),
             "approval_required" to true, "scheduling_owner" to "URLFrontier"))
         return 0
     }
@@ -127,6 +129,27 @@ class ResearchCommands(private val backend: Backend) : Callable<Int> {
             parent.backend.print(mapOf("research_id" to id,
                 "file_candidates" to links.filter { it["disposition"] == "METADATA_ONLY" },
                 "source_link_limit" to 100, "may_be_truncated" to (links.size == 100), "binary_downloads" to 0))
+            return 0
+        }
+    }
+
+    @Command(name = "search", mixinStandardHelpOptions = true,
+        description = ["Search locally archived URL/title/text; optional exact host and research job filters."])
+    class Search : Callable<Int> {
+        @ParentCommand lateinit var parent: ResearchCommands
+        @Option(names = ["--query"], required = true) lateinit var query: String
+        @Option(names = ["--job"]) var job: String? = null
+        @Option(names = ["--host"]) var host: String? = null
+        @Option(names = ["--limit"], defaultValue = "20") var limit = 20
+        @Option(names = ["--provider"], defaultValue = "local") lateinit var provider: String
+        override fun call(): Int {
+            require(provider == "local") {
+                "Automated provider search is unavailable; use search-provider for manual discovery and crawl plan --import for selected seeds"
+            }
+            val result = parent.backend.search(query, job, host, limit)
+            parent.backend.print(result + mapOf("network_requests" to 0,
+                "search_fields" to listOf("url", "title", "text"),
+                "may_be_truncated" to (rows(result, "results").size == limit)))
             return 0
         }
     }

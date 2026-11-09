@@ -49,6 +49,9 @@ public final class ArchiveCommands {
             public Map<String, Object> links(String id) throws Exception {
                 try (var archive = store(root)) { return archive.links(id, 100); }
             }
+            public Map<String, Object> search(String query, String id, String host, int limit) throws Exception {
+                try (var archive = store(root)) { return archive.search(query, id, host, limit); }
+            }
             public void print(Map<String, ? extends Object> value) throws Exception {
                 root.print(new LinkedHashMap<>(value));
             }
@@ -416,7 +419,7 @@ public final class ArchiveCommands {
     }
 
     @Command(name = "search-local", mixinStandardHelpOptions = true,
-        description = "Search titles and extracted text in the local archive only.")
+        description = "Search URL, titles and extracted text in the local archive only.")
     public static final class SearchLocal implements Callable<Integer> {
 
         @ParentCommand

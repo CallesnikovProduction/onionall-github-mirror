@@ -56,6 +56,16 @@ tooling preparation: 5 passed, 1 skipped (Docker absent). The E2E gate now also
 checks configured SOCKS handshake and endpoint persistence. Real Tor remains
 blocked; no private bridge input is available locally or in repository CI secrets.
 
+Published proxy/doctor scope: `4955c3c35b8aa81265230f35a59feec3bc6c5b3f`.
+Local search now matches literal URL/title/text, with optional exact onion host
+and job predicates before LIMIT. Kotlin `research search` is explicitly local;
+external providers fail with a manual-selection instruction. No schema/index
+migration or new database was introduced. Tests verify host/job isolation before
+LIMIT, literal SQL input and unchanged manual-import provenance. Full native
+JDK25 Maven verify: 262 selected, 0 failures/errors, 3 skipped platform cases;
+`.runtime/astra-pass1/continuation-full-verify.log`. The final Linux CI must still
+verify the latest search/doctor/research combination through the real crawl.
+
 ## Execution boundary and decisions
 
 The owner master directive is the active reconstruction scope: preserve working

@@ -88,6 +88,10 @@ def read_archive(job, host, suffix):
             and research['metrics']['fetch_attempts'] is None, 'Research metrics are not actual observations')
     require(cli(['research', 'links', job], 'links-' + suffix)['links'] == research['links'],
             'Public graph readback disagrees with research results')
+    local = cli(['research', 'search', '--query', 'http://' + host + '/c', '--job', job, '--host', host],
+                'research-search-' + suffix)
+    require(len(local['results']) == 1 and local['results'][0]['depth'] == 2 and local['network_requests'] == 0,
+            'Research URL/job/host search failed')
     return dict(pages=rows, details=details, edges=edges)
 
 

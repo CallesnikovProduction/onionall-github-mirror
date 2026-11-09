@@ -31,7 +31,7 @@ rewritten project-owned source documents nontrivial contracts and attributes
 Стефан Колесников and GPT-6 Astra; do not retag unchanged or upstream code.
 
 Kotlin [ResearchCommands](src/main/kotlin/dev/onionall/brawler/cli/ResearchCommands.kt)
-adds bounded plan/run/result/graph/file-candidate commands. Its Backend is wired
+adds bounded plan/run/result/graph/file-candidate and local-search commands. Its Backend is wired
 to existing Java CrawlService/ArchiveStore by ArchiveCommands; Kotlin does not
 depend on Java sources at compile time. Research ID is the existing plan ID.
 Kotlin [RuntimeCommands](src/main/kotlin/dev/onionall/brawler/cli/RuntimeCommands.kt)

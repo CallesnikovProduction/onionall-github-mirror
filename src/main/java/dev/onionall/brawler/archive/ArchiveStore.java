@@ -1047,9 +1047,9 @@ public final class ArchiveStore implements AutoCloseable {
     }
 
     /**
-     * <b>Ищет по title и extracted_text каталога.</b>
+     * <b>Ищет по URL, title и extracted_text каталога.</b>
      *
-     * <p>Использует локальный LIKE и bounded результат; не вызывает search provider.
+     * <p>Использует literal LOCATE и bounded результат; не вызывает search provider.
      *
      * @param query поисковая строка
      * @param jobId идентификатор задания
@@ -1058,6 +1058,22 @@ public final class ArchiveStore implements AutoCloseable {
      * @throws IOException при ошибке операции или нарушении контракта
      */
     public synchronized Map<String, Object> search(String query, String jobId, int limit) throws IOException {
+        return search(query, jobId, null, limit);
+    }
+
+    /**
+     * <b>Добавляет точный onion-host фильтр к существующему catalog query.</b>
+     * <p>Фильтры применяются в SQL до LIMIT, без schema/index migration.
+     * @param query literal подстрока URL, title или text
+     * @param jobId задание либо null для общего каталога
+     * @param host точный onion v3 hostname либо null
+     * @param limit максимум 1..100 результатов
+     * @return bounded результаты каталога
+     * @throws IOException при некорректном фильтре или ошибке чтения
+     * @author Стефан Колесников
+     * @author GPT-6 Astra
+     */
+    public synchronized Map<String, Object> search(String query, String jobId, String host, int limit) throws IOException {
         bound(limit);
         bounded(query, 256, "search query");
         if (query.isBlank()) {
@@ -1066,16 +1082,30 @@ public final class ArchiveStore implements AutoCloseable {
         if (jobId != null) {
             plan(jobId);
         }
+        if (host != null) {
+            host = host.toLowerCase(Locale.ROOT);
+            if (!TorPolicy.validOnion(host)) {
+                throw new IOException("Require a valid onion host filter");
+            }
+        }
         List<Map<String, Object>> result = new ArrayList<>();
         // LOCATE treats user input literally; '%' and '_' are never wildcard operators.
         try (PreparedStatement statement = db.prepareStatement(LATEST +
-            " WHERE (LOCATE(LOWER(?),LOWER(s.title))>0 OR LOCATE(LOWER(?),LOWER(s.extracted_text))>0)" +
-            (jobId == null ? "" : " AND p.job_id=?") + " ORDER BY s.recorded_at DESC,p.id LIMIT ?")) {
+            " WHERE (LOCATE(LOWER(?),LOWER(s.title))>0 OR LOCATE(LOWER(?),LOWER(s.extracted_text))>0" +
+            " OR LOCATE(LOWER(?),LOWER(p.canonical_url))>0)" +
+            (jobId == null ? "" : " AND p.job_id=?") +
+            (host == null ? "" : " AND (LOCATE(?,LOWER(p.canonical_url))=1 OR LOCATE(?,LOWER(p.canonical_url))=1)") +
+            " ORDER BY s.recorded_at DESC,p.id LIMIT ?")) {
             statement.setString(1, query);
             statement.setString(2, query);
-            int index = 3;
+            statement.setString(3, query);
+            int index = 4;
             if (jobId != null) {
                 statement.setString(index++, jobId);
+            }
+            if (host != null) {
+                statement.setString(index++, "http://" + host + "/");
+                statement.setString(index++, "https://" + host + "/");
             }
             statement.setInt(index, limit);
             try (ResultSet rs = statement.executeQuery()) {
