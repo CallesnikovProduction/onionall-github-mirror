@@ -37,6 +37,15 @@ jobs:
         run: ./onionall --fixture up
       - name: Check controlled runtime
         run: ./onionall --fixture status
+      - name: Crawl depth two, read archive and recreate runtime
+        run: python3 -B test/admission/canonical_e2e.py
+      - name: Retain bounded canonical acceptance result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: canonical-e2e-result
+          path: .runtime/canonical-e2e/result.json
+          if-no-files-found: warn
       - name: Retain runtime data on shutdown
         if: always()
         run: ./onionall --fixture down

@@ -26,12 +26,13 @@ class Fixture(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, address, evidence):
+    def __init__(self, address, evidence, research=False):
         self.evidence = Path(evidence)
         self.host = (self.evidence/'onion-hostname.txt').read_text().strip()
         self.foreign = (self.evidence/'foreign-hostname.txt').read_text().strip()
         self.lock = threading.Lock()
         self.counts = Counter()
+        self.research = research
         super().__init__(address, Handler)
 
     def event(self, **record):
@@ -47,12 +48,16 @@ class Fixture(socketserver.ThreadingTCPServer):
             return 200, 'text/plain', b'User-agent: *\nDisallow: /blocked\n'
         if path == '/a':
             body = '<html><head><title>Alpha archive</title></head><body>ARCHIVE_ALPHA <a href="/b">B</a><a href="/b#same">duplicate B</a><a href="/blocked">robots</a><a href="/dump.zip">binary</a><a href="http://'+self.foreign+'/escape">outside</a></body></html>'
+            if self.research:
+                body = body.replace('</body>', '<a href="redirect">relative redirect</a></body>')
         elif path == '/b':
             if count == 1:
                 return 503, 'text/html', b'<html><body>CONTROLLED_TEMPORARY_FAILURE</body></html>'
             body = '<html><head><title>Beta archive</title></head><body>ARCHIVE_BETA <a href="/c">C</a><a href="/a">cycle A</a><a href="/c">duplicate C</a></body></html>'
         elif path == '/c':
             body = '<html><head><title>Gamma archive</title></head><body>ARCHIVE_GAMMA <a href="/a">cycle A</a><a href="/deep">too deep</a></body></html>'
+        elif path == '/redirect' and self.research:
+            return 302, 'text/html', b''
         else:
             raise ValueError('Unexpected fixture HTTP path')
         return 200, 'text/html', body.encode('utf-8')
@@ -88,8 +93,10 @@ class Handler(socketserver.BaseRequestHandler):
             path = raw_path.decode('ascii')
             code, mime, content = self.server.response(path)
             self.server.event(phase='http', path=path, method='GET', status=code, atyp=3)
-            reason = 'OK' if code == 200 else 'Service Unavailable'
-            sock.sendall((f'HTTP/1.0 {code} {reason}\r\nContent-Type: {mime}\r\nContent-Length: {len(content)}\r\nConnection: close\r\n\r\n').encode()+content)
+            reason = {200: 'OK', 302: 'Found', 503: 'Service Unavailable'}[code]
+            # Цель уже допущена из /a: redirect не создаёт обход Admission.
+            location = 'Location: /b\r\n' if code == 302 else ''
+            sock.sendall((f'HTTP/1.0 {code} {reason}\r\n{location}Content-Type: {mime}\r\nContent-Length: {len(content)}\r\nConnection: close\r\n\r\n').encode()+content)
         except (OSError, EOFError, ValueError) as error:
             self.server.event(phase='handler_end', error_type=type(error).__name__)
 
@@ -98,7 +105,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence', default='/evidence')
     parser.add_argument('--port', type=int, default=9050)
+    parser.add_argument('--research', action='store_true', help='Add a relative redirect to the admitted graph')
     args = parser.parse_args()
-    with Fixture(('0.0.0.0', args.port), args.evidence) as server:
+    with Fixture(('0.0.0.0', args.port), args.evidence, research=args.research) as server:
         server.event(phase='listening')
         server.serve_forever()

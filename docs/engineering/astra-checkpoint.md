@@ -7,6 +7,18 @@ This base includes Security RC/S1-01, M5 and the owner's portable runtime change
 `af171e78d9863e7c1ad2e946c7574d596229ada8` is its ancestor. The delivered checkpoint
 SHA is obtained from `git log -1` for this file; no self-referencing hash is stored.
 
+## Continuation: canonical research acceptance
+
+The continuation directive prioritizes actual depth-2 fetch/archive/recreation.
+`test/admission/canonical_e2e.py` now exercises the public canonical launcher in
+the existing portable CI. The fixture adds a relative 302 to an already admitted
+target, preserving the original graph for legacy callers. Local new acceptance
+negative controls + real loopback SOCKS redirect: 2 passed outside the socket-
+restricted sandbox; existing fixture tests: 2 passed. Initial sandbox socket
+attempt failed with WinError 10013. AST/YAML/diff/secret-signature checks passed;
+18 owner file hashes remain unchanged. Full container E2E is PENDING the new CI
+run; this test-harness publication is not a crawl acceptance claim.
+
 ## Execution boundary and decisions
 
 The owner master directive is the active reconstruction scope: preserve working
