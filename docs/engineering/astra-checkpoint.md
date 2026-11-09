@@ -46,6 +46,16 @@ prohibit scraping without permission; automatic provider search is not enabled.
 Torch's programmatic endpoint/identity is not verified. Manual selected seeds
 can already enter `crawl plan --import --provider ...`; no mock search results.
 
+Published research scope: `5c5aa1a04724a4d66ecc33f89a8e1cf17268442f`; its CI
+[42631507046](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42631507046)
+is still in progress at this checkpoint. The next scope adds Kotlin runtime
+proxy show/set and SOCKS doctor. Atomic endpoint updates preserve descriptor
+fields; canonical prepare preserves valid operator endpoint and rejects invalid
+configuration without fallback. Native targeted JVM checks: 32 passed, 0 skipped;
+tooling preparation: 5 passed, 1 skipped (Docker absent). The E2E gate now also
+checks configured SOCKS handshake and endpoint persistence. Real Tor remains
+blocked; no private bridge input is available locally or in repository CI secrets.
+
 ## Execution boundary and decisions
 
 The owner master directive is the active reconstruction scope: preserve working

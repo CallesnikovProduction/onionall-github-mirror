@@ -335,6 +335,8 @@ The canonical launcher also exposes Kotlin `research plan --url URL`,
 Research plans are bounded to depth 2/20 reservations; file links are metadata
 only. See [verified workflow and storage](docs/local-runtime.md#research-commands)
 and the [current Astra checkpoint](docs/engineering/astra-checkpoint.md).
+`config proxy show/set` updates the existing runtime descriptor; `system doctor`
+checks SOCKS5 negotiation in the current network namespace, not real Tor HTTP.
 
 Configured M4.1 supports approved plan → durable Frontier admission → bounded
 Storm/TorProtocol crawl → archive → local search. The versioned server must run

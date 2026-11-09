@@ -91,6 +91,25 @@ live callbacks; inspect after foreground start returns.
 
 ## Research commands
 
+The prepared runtime's proxy can be inspected/configured without changing host
+proxy/DNS settings. Start runtime first so its descriptor exists:
+
+```sh
+./onionall cli config proxy show
+./onionall cli config proxy set --type socks5 --host tor --port 9050
+./onionall cli system doctor
+```
+
+Use `socks-fixture` with `--fixture`; container `127.0.0.1` means that container,
+not the host. Explicit native CLI deployments can pass `--runtime PATH` and
+configure `127.0.0.1:9050` if their official Tor client runs there. Only SOCKS5,
+gateway hostname/IPv4 and ports 1..65535 are accepted; no proxy credentials or
+DIRECT fallback. `set` atomically updates host/port for the next worker and
+preserves other descriptor fields. Canonical up preserves the selected endpoint.
+`doctor` is a bounded SOCKS negotiation, not proof of official Tor identity,
+bootstrap, onion HTTP or Frontier readiness; use canonical `status` for the
+managed Tor/Frontier health checks. Raw descriptors/secrets are not printed.
+
 New Kotlin commands reuse the same plan ID, catalog, approval and authenticated
 Frontier execution. They cap research plans at depth 2 and 20 reservations:
 

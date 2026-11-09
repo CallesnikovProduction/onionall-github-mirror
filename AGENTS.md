@@ -34,6 +34,10 @@ Kotlin [ResearchCommands](src/main/kotlin/dev/onionall/brawler/cli/ResearchComma
 adds bounded plan/run/result/graph/file-candidate commands. Its Backend is wired
 to existing Java CrawlService/ArchiveStore by ArchiveCommands; Kotlin does not
 depend on Java sources at compile time. Research ID is the existing plan ID.
+Kotlin [RuntimeCommands](src/main/kotlin/dev/onionall/brawler/cli/RuntimeCommands.kt)
+edits only SOCKS host/port in the existing descriptor and probes SOCKS negotiation.
+Canonical up retains that endpoint. Doctor does not prove Tor identity/bootstrap
+or Frontier readiness; credentials and host networking remain outside its scope.
 
 Canonical local operation uses root `./onionall` ->
 `scripts/runners/runtime.py` -> `compose.runtime.yaml`; see

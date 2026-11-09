@@ -108,6 +108,11 @@ def run():
     try:
         require(not (STATE / 'archive').exists() and not (STATE / 'execution').exists(),
                 'Refusing existing archive/execution; use a fresh checkout, never delete user state')
+        proxy = cli(['config', 'proxy', 'set', '--type', 'socks5', '--host', 'socks-fixture', '--port', '9050'], 'proxy-set')
+        require(proxy['host'] == 'socks-fixture' and proxy['direct_fallback'] is False, 'Wrong configured proxy')
+        doctor = cli(['system', 'doctor'], 'doctor')
+        require(doctor['socks5_negotiation'] == 'READY' and doctor['tor_bootstrap'] == 'NOT_CHECKED',
+                'Configured proxy not checked honestly')
         host = (STATE / 'onion-hostname.txt').read_text().strip()
         plan = cli(['research', 'plan', '--url', 'http://' + host + '/a', '--depth', '2',
                     '--max-pages', '20'], 'plan')
@@ -138,6 +143,7 @@ def run():
         command(['down'], 'down', timeout=180)
         command(['up'], 'recreated-up', timeout=200)
         require(all(container_id(name) != old for name, old in ids.items()), 'Containers were not recreated')
+        require(cli(['config', 'proxy', 'show'], 'proxy-restored')['host'] == proxy['host'], 'Proxy setting lost')
         after = read_archive(job, host, 'after')
         require(before == after, 'Archive or graph changed after container recreation')
         restored = cli(['crawl', 'status', job], 'restored-status')

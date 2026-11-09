@@ -89,6 +89,26 @@ class RuntimePreparationTest(unittest.TestCase):
             self.assertNotIn('/state/runtime.json', arguments)
             self.assertNotIn('/state/admission-token', arguments)
 
+    def test_operator_proxy_survives_prepare_and_invalid_value_has_no_fallback(self):
+        self.instance.state.mkdir(parents=True)
+        descriptor = self.instance.state / 'runtime.json'
+        descriptor.write_text(json.dumps(dict(socks_host='operator-gateway', socks_port=9150)))
+        self.assertEqual(('operator-gateway', 9150), self.instance.configured_proxy())
+        if os.name == 'posix':
+            self.instance.prepare()
+            self.assertEqual(('operator-gateway', 9150), self.instance.configured_proxy())
+        descriptor.write_text(json.dumps(dict(socks_host='target.onion', socks_port=9050)))
+        with self.assertRaisesRegex(RuntimeError, 'no default fallback'):
+            self.instance.configured_proxy()
+
+    def test_proxy_commands_receive_descriptor_without_capability_or_approval(self):
+        for command in (['config', 'proxy', 'show'], ['system', 'doctor']):
+            with patch.object(self.instance, 'check_docker'), patch.object(self.instance, 'dc') as dc:
+                self.instance.cli(command)
+            self.assertIn('/state/runtime.json', dc.call_args.args)
+            self.assertNotIn('/state/admission-token', dc.call_args.args)
+            self.assertNotIn('--approve', dc.call_args.args)
+
 
 if __name__ == '__main__':
     unittest.main()
