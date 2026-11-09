@@ -36,6 +36,7 @@ public synchronized Map<String, Object> pages(String jobId, int limit) throws IO
 public synchronized Map<String, Object> page(String pageId) throws IOException;
 public synchronized Map<String, Object> links(String jobId, int limit) throws IOException;
 public synchronized Map<String, Object> search(String query, String jobId, int limit) throws IOException;
+public synchronized Map<String, Object> search(String query, String jobId, String host, int limit) throws IOException;
 public synchronized Map<String, Object> exportSummary(String jobId, int limit) throws IOException;
 public synchronized Map<String, Object> recordFailure(String jobId, String url, String category) throws IOException;
 public synchronized Map<String, Object> recordFailure(String jobId, String url, String category, FailureObservation observation) throws IOException;
@@ -49,6 +50,8 @@ through_sequence, next_cursor и nullable fetch_attempt_count.
 
 jobId у pages/search может быть null для общего просмотра. id/pageId обозначают UUID,
 cursor принадлежит конкретной истории, limit проверяется в диапазоне 1..100.
+Search сопоставляет literal URL/title/text; необязательные jobId и валидный onion
+host ограничивают SQL до LIMIT. Это bounded catalog query, не внешний provider.
 archive принимает crawler status/contentType и discovery provenance; importHtml явно
 использует source_kind=MANUAL_IMPORT, http_status=0 и fetched_at=null.
 

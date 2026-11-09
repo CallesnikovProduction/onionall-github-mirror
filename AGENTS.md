@@ -23,6 +23,22 @@ constructors and Storm reflection entrypoints. The separately built URLFrontier
 candidate owns RocksDB scheduling and durable Admission. H2 is an embedded archive
 catalog. Compose supplies infrastructure/fixtures, not another scheduler.
 
+New application-level services, models, CLI commands and adapters use Kotlin.
+Preserve correct existing Java; do not migrate it for language uniformity.
+Java exceptions are limited to demonstrated integration/generated/build-tool needs.
+Preserve owner Javadoc/KDoc and third-party authorship. New or substantially
+rewritten project-owned source documents nontrivial contracts and attributes
+Стефан Колесников and GPT-6 Astra; do not retag unchanged or upstream code.
+
+Kotlin [ResearchCommands](src/main/kotlin/dev/onionall/brawler/cli/ResearchCommands.kt)
+adds bounded plan/run/result/graph/file-candidate and local-search commands. Its Backend is wired
+to existing Java CrawlService/ArchiveStore by ArchiveCommands; Kotlin does not
+depend on Java sources at compile time. Research ID is the existing plan ID.
+Kotlin [RuntimeCommands](src/main/kotlin/dev/onionall/brawler/cli/RuntimeCommands.kt)
+edits only SOCKS host/port in the existing descriptor and probes SOCKS negotiation.
+Canonical up retains that endpoint. Doctor does not prove Tor identity/bootstrap
+or Frontier readiness; credentials and host networking remain outside its scope.
+
 Canonical local operation uses root `./onionall` ->
 `scripts/runners/runtime.py` -> `compose.runtime.yaml`; see
 [local runtime](docs/local-runtime.md). `./onionall build`, `test` and `build --images` use the containerized JDK 25
@@ -134,6 +150,8 @@ Read [canonical product topology](docs/adr/0004-canonical-product-topology.md),
 [durable Admission](docs/m41-durable-admission.md),
 [archive contract](docs/archive-mvp.md) and [script inventory](scripts/README.md).
 Security, engineering and recovery ledgers hold evidence/history, not new authority.
+Read the [Astra checkpoint](docs/engineering/astra-checkpoint.md) before continuing
+the reconstruction; it records the active pass, actual evidence and next action.
 
 ## KNOWN LIMITATIONS
 

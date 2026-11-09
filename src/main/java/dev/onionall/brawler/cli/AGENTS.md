@@ -18,6 +18,12 @@ ArchiveStore владеет persistence. Классы presentation не прин
 | [Mascot](Mascot.java) | Headless Java2D raster и ANSI half-block/ASCII output |
 
 Onionall также содержит команды Fetch/Discover/Inspect/Status.
+Kotlin ResearchCommands и RuntimeCommands находятся в `src/main/kotlin` того же
+пакета и регистрируются в Onionall.execute. Research Backend в ArchiveCommands
+делегирует существующим сервисам; Kotlin не зависит от Java sources при compilation.
+Research plans ограничены depth 2/pages 20, run сохраняет explicit approval,
+results/links/files/search читают существующий каталог. Config proxy меняет только
+endpoint descriptor; system doctor доказывает лишь SOCKS negotiation.
 Fetch выполняет один transport GET; Inspect/Discover работают с локальными файлами;
 Status делает локальный TCP connect. ArchiveCommands.Start может запустить настоящий worker,
 поэтому весь ArchiveCommands нельзя считать offline-пакетом.

@@ -4,6 +4,7 @@ import hashlib
 import base64
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import subprocess
@@ -39,6 +40,25 @@ class Runtime:
     def dc(self, *args, **kwargs):
         return execute([*self.compose, *args], env=self.env, **kwargs)
 
+    def configured_proxy(self):
+        path = self.state / 'runtime.json'
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError('Require regular runtime descriptor; run up first.')
+        try:
+            with path.open('rb') as source:
+                data = source.read(32769)
+            if len(data) > 32768:
+                raise ValueError()
+            value = json.loads(data)
+            host, port = value['socks_host'], value['socks_port']
+            if not isinstance(host, str) or not re.fullmatch(r'[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?', host) or host.lower().endswith('.onion'):
+                raise ValueError()
+            if type(port) is not int or not 1 <= port <= 65535:
+                raise ValueError()
+            return host, port
+        except (OSError, ValueError, KeyError, TypeError):
+            raise RuntimeError('Invalid runtime SOCKS configuration; no default fallback.') from None
+
     def prepare(self):
         for artifact in ('target/onionall/bin/onionall',
                          'target/onionall-brawler-0.1.0-SNAPSHOT.jar',
@@ -48,7 +68,7 @@ class Runtime:
         self.state.mkdir(parents=True, exist_ok=True, mode=0o700)
         token = self.state / 'admission-token'
         if not token.exists():
-            with token.open('x', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+            with open(token, 'x', encoding='ascii', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
                 output.write(secrets.token_hex(32))
         if token.is_symlink() or not token.is_file() or token.stat().st_mode & 0o077:
             raise RuntimeError('Admission token must be a private regular file (mode 600).')
@@ -58,6 +78,8 @@ class Runtime:
                           work_directory='/state/execution', seconds=120 if self.fixture else 180,
                           http_timeout_ms=2000 if self.fixture else 20000,
                           retry_minutes=1 if self.fixture else 120)
+        if (self.state / 'runtime.json').exists() or (self.state / 'runtime.json').is_symlink():
+            descriptor['socks_host'], descriptor['socks_port'] = self.configured_proxy()
         # Fixed deployment configuration, never remote content or a new scheduler.
         (self.state / 'runtime.json').write_text(json.dumps(descriptor, indent=2) + '\n')
         if self.fixture:
@@ -108,14 +130,17 @@ class Runtime:
                 timeout=35)
         if not self.fixture:
             self.dc('exec', '-T', 'tor', 'python3', '/usr/local/lib/tor-health.py', timeout=15)
-        self.dc('run', '--rm', '--no-deps', 'probe', 'socks',
-                'socks-fixture' if self.fixture else 'tor', '9050', timeout=25)
+        proxy_host, proxy_port = self.configured_proxy()
+        self.dc('run', '--rm', '--no-deps', 'probe', 'socks', proxy_host, str(proxy_port), timeout=25)
         # Exercise the packaged CLI and installed Storm, not just container state.
         self.dc('run', '--rm', '--no-deps', 'crawler', '--help', capture=True, timeout=25)
         self.dc('run', '--rm', '--no-deps', '--entrypoint', '/apache-storm/bin/storm',
                 'crawler', 'version', timeout=25)
         print(json.dumps(dict(frontier='READY_AUTHENTICATED', crawler='PREPARED',
-                              tor='NOT_RUN_FIXTURE' if self.fixture else 'BOOTSTRAP_100_SOCKS_READY',
+                              tor='NOT_RUN_FIXTURE' if self.fixture else
+                              'BOOTSTRAP_100_SOCKS_READY' if (proxy_host, proxy_port) == ('tor', 9050) else
+                              'MANAGED_TOR_BOOTSTRAP_100_CONFIGURED_PROXY_IDENTITY_UNVERIFIED',
+                              socks_host=proxy_host, socks_port=proxy_port,
                               data=str(self.state), project=self.project), indent=2))
         if self.fixture:
             print('Controlled seed: http://' + fixture_host(1) + '/a')
@@ -125,11 +150,14 @@ class Runtime:
         if not args:
             args = ['--help']
         # Deployment defaults only. Original CLI still owns plan/approval/limits and exit codes.
-        if args[:2] in (['crawl', 'start'], ['crawl', 'status']):
-            if '--runtime' not in args:
+        if args[:2] in (['crawl', 'start'], ['crawl', 'status'], ['research', 'run'], ['research', 'results']):
+            if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
-            if '--admission-token-file' not in args:
+            if not any(a == '--admission-token-file' or a.startswith('--admission-token-file=') for a in args):
                 args += ['--admission-token-file', '/state/admission-token']
+        if args[:2] in (['config', 'proxy'], ['system', 'doctor']):
+            if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
+                args += ['--runtime', '/state/runtime.json']
         self.check_docker()
         self.dc('run', '--rm', '--no-deps', 'crawler', *args, timeout=740)
         return 0

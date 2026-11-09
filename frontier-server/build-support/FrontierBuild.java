@@ -129,7 +129,10 @@ public class FrontierBuild {
         Path evidence = Files.createTempDirectory(module.resolve("target"), "maven-conformance-");
         String cp = module.resolve("target/classes") + File.pathSeparator + module.resolve("target/test-classes")
                 + File.pathSeparator + dependencies(module);
-        for (String name : List.of("AdmissionConformance", "AdmissionMigrationConformance", "AdmissionShutdownConformance", "AdmissionRpcConformance")) {
+        for (String name : List.of("AdmissionConformance", "AdmissionMigrationConformance",
+                "AdmissionShutdownConformance", "AdmissionRpcConformance",
+                "RecoveryCountersConformance", "AdmissionStateConformance",
+                "AdmissionAmbiguousRpcConformance")) {
             List<String> command = new ArrayList<>(List.of(jdk("java"), "--enable-native-access=ALL-UNNAMED", "-cp", cp,
                     "crawlercommons.urlfrontier.service.rocksdb." + name, evidence.resolve(name).toString()));
             if (name.equals("AdmissionMigrationConformance")) command.add(baseline(module).toString());

@@ -72,7 +72,10 @@ PLAN_ID=$(./onionall cli crawl plan --seed "$SEED_URL" --scope same-host --depth
 ./onionall cli page show PAGE_ID
 ```
 
-The launcher supplies default runtime/token paths for `crawl start/status` only.
+The launcher supplies default runtime/token paths for `crawl start/status` and
+`research run/results`. It also supplies the runtime descriptor for `config proxy`
+and `system doctor`; those commands do not receive the capability. Explicit paths
+remain supported, and the launcher never inserts approval.
 The existing implementation still owns plans, explicit approval, scope, durable
 reservations, deduplication, retry and robots. Seed depth is 0, children 1,
 grandchildren 2; depth 3 is not fetched. Foreign-host/binary-extension links are
@@ -88,6 +91,56 @@ unscheduled row. Status separates archive/failure/worker observations from
 pending, held, scheduled-wait, unscheduled and unknown scheduler states. Worker
 exit zero alone never establishes COMPLETE. H2 can report contention during
 live callbacks; inspect after foreground start returns.
+
+## Research commands
+
+The prepared runtime's proxy can be inspected/configured without changing host
+proxy/DNS settings. Start runtime first so its descriptor exists:
+
+```sh
+./onionall cli config proxy show
+./onionall cli config proxy set --type socks5 --host tor --port 9050
+./onionall cli system doctor
+```
+
+Use `socks-fixture` with `--fixture`; container `127.0.0.1` means that container,
+not the host. Explicit native CLI deployments can pass `--runtime PATH` and
+configure `127.0.0.1:9050` if their official Tor client runs there. Only SOCKS5,
+gateway hostname/IPv4 and ports 1..65535 are accepted; no proxy credentials or
+DIRECT fallback. `set` atomically updates host/port for the next worker and
+preserves other descriptor fields. Canonical up preserves the selected endpoint.
+`doctor` is a bounded SOCKS negotiation, not proof of official Tor identity,
+bootstrap, onion HTTP or Frontier readiness; use canonical `status` for the
+managed Tor/Frontier health checks. Raw descriptors/secrets are not printed.
+
+New Kotlin commands reuse the same plan ID, catalog, approval and authenticated
+Frontier execution. They cap research plans at depth 2 and 20 reservations:
+
+```sh
+./onionall cli research plan --url "$SEED_URL" --depth 2 --max-pages 20
+# Inspect the returned scope and use its plan_id:
+./onionall cli crawl show PLAN_ID
+./onionall cli research run --plan PLAN_ID --approve
+./onionall cli research results PLAN_ID
+./onionall cli research links PLAN_ID
+./onionall cli research files PLAN_ID
+./onionall cli research search --query keyword --job PLAN_ID --host APPROVED_ONION_HOST
+```
+
+`--approve` is explicit approval of the stored immutable scope. Without it only
+an already approved plan can run. `results` separates scheduler observations
+from archive counts, lists stored source-to-target links and file candidates,
+and reports unknown fetch/retry-attempt counts and durations as null. Lists are
+bounded at 100 and label possible truncation. File candidates are never downloaded.
+Legacy `crawl` commands and their JSON contracts remain supported.
+
+`research search` is local URL/title/text search using the existing H2 catalog,
+with SQL job/host filters applied before the result limit. It makes no provider
+request and reports possible truncation. `--provider ahmia|torch` is rejected
+explicitly: automated provider access is not implemented/permitted by the current
+verified contract. Existing `search-provider QUERY --provider ahmia` prepares a
+manual URL; selected permitted URLs can enter `crawl plan --import FILE --provider
+ahmia`. A manual plan does not prove downloaded provider results or Tor acquisition.
 
 ## Controlled fixture
 
@@ -109,7 +162,9 @@ PLAN_ID=$(./onionall --fixture cli crawl plan --seed "$SEED_URL" --scope same-ho
 The fixture never forwards or resolves actual destinations. Real TorProtocol and
 the product graph process `/a → /b → /c` at depths 0/1/2. `/b` returns 503 once,
 then retries after one minute; `/blocked` is robots-denied, `/deep` depth-denied,
-foreign host scope-denied and `/dump.zip` metadata-only. Worker duration is 120
+foreign host scope-denied and `/dump.zip` metadata-only. A relative `/redirect`
+returns 302 to the already admitted `/b`; it does not add a new admission path.
+Worker duration is 120
 seconds. Reuse the same plan for resume/deduplication; a new plan is a new crawl.
 Retained fixture HTTP logs are cumulative. Tor is explicitly NOT_RUN_FIXTURE.
 
