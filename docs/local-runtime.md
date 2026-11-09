@@ -72,7 +72,10 @@ PLAN_ID=$(./onionall cli crawl plan --seed "$SEED_URL" --scope same-host --depth
 ./onionall cli page show PAGE_ID
 ```
 
-The launcher supplies default runtime/token paths for `crawl start/status` only.
+The launcher supplies default runtime/token paths for `crawl start/status` and
+`research run/results`. It also supplies the runtime descriptor for `config proxy`
+and `system doctor`; those commands do not receive the capability. Explicit paths
+remain supported, and the launcher never inserts approval.
 The existing implementation still owns plans, explicit approval, scope, durable
 reservations, deduplication, retry and robots. Seed depth is 0, children 1,
 grandchildren 2; depth 3 is not fetched. Foreign-host/binary-extension links are

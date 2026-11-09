@@ -1,6 +1,6 @@
 # Astra engineering checkpoint
 
-Updated: 2026-11-09 (Europe/Moscow). Pass 1: operational baseline, PARTIAL.
+Updated: 2026-11-09 (Europe/Moscow). Continuation: verified local research, PARTIAL.
 Branch: `feature/astra-onionall-reconstruction`.
 Base: `4b0d4daa9a56aafc9303cd7d34972bf126b1288a` (`origin/main` at preflight).
 This base includes Security RC/S1-01, M5 and the owner's portable runtime changes;
@@ -28,15 +28,15 @@ rows were injected. Final status was UNKNOWN / INCOMPLETE (0 pending/held,
 4 scheduled-wait, 1 unscheduled); success/terminal remain null. This is not
 proof of a terminal crawl or real Tor. The sanitized result is a CI artifact.
 
-The next verified-local scope adds Kotlin `research plan/run/results/links/files`
+The research scope adds Kotlin `research plan/run/results/links/files`
 over existing Java services using a narrow compilation-boundary adapter. No new
 schema, scheduler, process owner or authorization is introduced. Bounds are
 depth <=2/pages <=20; approval remains explicit. Results expose real persisted
 pages/links/file candidates and labelled bounded metrics; unknown attempt counts
 and durations remain null. First unit run exposed SQL `max_depth` versus public
 JSON `depth` confusion; fixed without changing that contract. Current targeted
-JVM regressions: 28 passed, 0 skipped. The next CI will exercise these new public
-commands through the same crawl/recreation gate.
+JVM regressions: 28 passed, 0 skipped. CI 42631507046 subsequently exercised these
+public commands through the same crawl/recreation gate successfully.
 
 The user approved the Ahmia onion homepage, same-host depth 2/max 20. Real Tor
 remains BLOCKED: no private local bridge file/runtime, no local Docker, and the
@@ -48,8 +48,9 @@ can already enter `crawl plan --import --provider ...`; no mock search results.
 
 Published research scope: `5c5aa1a04724a4d66ecc33f89a8e1cf17268442f`; its CI
 [42631507046](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42631507046)
-is still in progress at this checkpoint. The next scope adds Kotlin runtime
-proxy show/set and SOCKS doctor. Atomic endpoint updates preserve descriptor
+passed: 257 JVM tests per application entrypoint with no skips, all 7 real Frontier
+suites, 39 tooling tests and research-command crawl/recreation. The next published
+scope adds Kotlin runtime proxy show/set and SOCKS doctor. Atomic endpoint updates preserve descriptor
 fields; canonical prepare preserves valid operator endpoint and rejects invalid
 configuration without fallback. Native targeted JVM checks: 32 passed, 0 skipped;
 tooling preparation: 5 passed, 1 skipped (Docker absent). The E2E gate now also
@@ -57,14 +58,57 @@ checks configured SOCKS handshake and endpoint persistence. Real Tor remains
 blocked; no private bridge input is available locally or in repository CI secrets.
 
 Published proxy/doctor scope: `4955c3c35b8aa81265230f35a59feec3bc6c5b3f`.
+[CI 42632508365](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42632508365)
+passed: 261 JVM tests per application entrypoint with no skips, all 7 real Frontier
+suites, 41 tooling tests and the full research/doctor/proxy persistence E2E.
 Local search now matches literal URL/title/text, with optional exact onion host
 and job predicates before LIMIT. Kotlin `research search` is explicitly local;
 external providers fail with a manual-selection instruction. No schema/index
 migration or new database was introduced. Tests verify host/job isolation before
 LIMIT, literal SQL input and unchanged manual-import provenance. Full native
 JDK25 Maven verify: 262 selected, 0 failures/errors, 3 skipped platform cases;
-`.runtime/astra-pass1/continuation-full-verify.log`. The final Linux CI must still
-verify the latest search/doctor/research combination through the real crawl.
+`.runtime/astra-pass1/continuation-full-verify.log`.
+
+Final functional source SHA: `68bf5aa0aa7c8a05e2eeff0f32d9f579c9bfe9b3`.
+[CI 42633512664](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42633512664)
+passed on that SHA: 262 JVM tests per root/crawler entrypoint, zero failures,
+errors or skips; all 7 real Frontier conformance suites; 41 tooling tests.
+Repeated build/test invocations are not additional distinct tests. The tooling
+negative control intentionally prints a failed suite while asserting propagation;
+all seven separately executed real conformance suites passed.
+
+The final E2E uses `research plan/run --approve/results/links/search`,
+`config proxy set/show`, `system doctor`, `pages`, `page show` and legacy local
+text search through the canonical launcher. It checks actual URL/host/job search,
+one metadata-only file candidate, SHA256 HTML readback and truthful metrics.
+Result: 6 HTTP requests, 3 archived pages at depths 0/1/2, 9 edges, 5 reservations,
+503->200 retry and HTTP 302. No depth-3, robots-denied, foreign-host or binary
+fetch occurred. Actual Frontier and SOCKS container IDs changed after down/up;
+archive/graph identity and authoritative scheduling/quota observations persisted.
+No worker exception types were reported. Final job is UNKNOWN / INCOMPLETE:
+reserved=5, pending=0, held=0, scheduled_wait=4, unscheduled=1, archived=3;
+success, terminal, done and retry_wait remain null. It does not prove a completed
+crawl or real Tor. The [sanitized result artifact](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/42633512664/artifacts/13681214932)
+contains no downloaded research content or raw worker logs; ZIP SHA256:
+`ab361810f732ef2bad0cac644346e149d5b077c015e3a6d95d50251790a57971`.
+
+Persistence proof is container recreation on the same Docker host, with retained
+bind mounts and named volumes. It is not host/disk-loss recovery. CI runner storage
+is ephemeral after the job; the sanitized result is the retained evidence.
+
+| Continuation gate | Current result and boundary |
+| --- | --- |
+| 1 Operational | PASS in Linux CI: canonical images/build/test/up, authenticated Frontier, CLI/Storm, fixture SOCKS and shutdown. Local Windows Docker execution remains BLOCKED |
+| 2 Deterministic E2E | PASS: actual generated graph HTTP acquisition, depth enforcement, persisted HTML/edges, CLI readback and container recreation |
+| 3 Real research | BLOCKED / NOT RUN: approved seed exists, but no usable private bridge/runtime input was found; no actual onion response/content claimed |
+| 4 Discovery | PARTIAL: local search and manual provider URL/selected-seed import exist; automated provider acquisition and persistent keyword-candidate results are not implemented. Ahmia permission and a verified Torch interface are absent |
+| 5 Repository quality | PARTIAL: affected runtime/CLI/AGENTS instructions, tests and checkpoint updated; owner files preserved; no blind legacy deletion or repository-wide TODO cleanup claimed |
+
+Four functional commits were pushed individually to the Astra branch and their
+remote SHA verified: `bd2dcca`, `5c5aa1a`, `4955c3c`, `68bf5aa`. The subsequent
+checkpoint/guide correction is documentation-only; it does not change the tested
+source SHA. Its `[skip ci]` avoids rerunning the same functional build; local link,
+whitespace, diff and scoped secret-signature checks still apply.
 
 ## Execution boundary and decisions
 
@@ -191,9 +235,10 @@ container workflow documented in [local runtime](../local-runtime.md).
 
 ## Blockers and next executable action
 
-1. Canonical depth-2 fetch, archive/graph readback and persistence after actual
-   container recreation passed in CI 42628616540. Repeat that gate through the
-   new Kotlin research commands before claiming their end-to-end acceptance.
+1. Canonical depth-2 research commands, doctor, local URL/host/job search and
+   persistence after actual container recreation passed at source `68bf5aa` in
+   CI 42633512664. The next real-network milestone needs an existing authorized
+   Linux Docker/Tor runtime with private bridge input and permitted source access.
    The local Windows host still lacks Docker/WSL prerequisites.
 2. Keep Windows Python portability failures distinct: missing POSIX shell paths,
    symlink/mode semantics, `os.getuid`, and sandbox MSYS startup restrictions. Do
@@ -201,6 +246,11 @@ container workflow documented in [local runtime](../local-runtime.md).
 3. An Ahmia seed is approved; real Tor remains blocked on private bridge/runtime
    prerequisites and automated provider access restrictions. Do not substitute
    direct networking. No actual real Tor fetch/provider result is claimed.
+4. Research result lists are bounded at 100 with possible-truncation labels.
+   Total fetch/retry attempts and durations remain null because no durable source
+   establishes them. Reliable terminal outcome, durable query/candidate storage
+   and additional metrics need a narrow contract review before persistent changes;
+   do not infer success from archived rows or unscheduled status.
 
 Tracked changes were checked with `git diff --check`, local Markdown-link
 verification and scoped secret-signature inspection. All 18 owner untracked files
@@ -209,5 +259,5 @@ uses only `origin/feature/astra-onionall-reconstruction`; no force push is used.
 The original e35bc85 checkpoint was documentation-only; continuation source/test
 changes require their own actual runs as recorded above.
 
-Full Pass 1, S1-01 security closure and real Tor acceptance remain open. No PR,
+Full research-system acceptance, S1-01 security closure and real Tor acceptance remain open. No PR,
 merge, main/source branch change or deployment is part of this delivery.
