@@ -1,5 +1,200 @@
 # Astra engineering checkpoint
 
+## Post-Astra: независимая проверка Sol — 2026-11-11
+
+Эта запись дополняет, а не заменяет исторические результаты ниже.
+Исходный фактический HEAD: `5ed275e5da3df899ddd602fd17706be6085c16c4`,
+merge Astra в GitHub `main`. Проверен диапазон `4b0d4da..5e08b3f`:
+24 изменённых/добавленных файла, удалений и изменений production dependencies нет.
+Начальное рабочее дерево чистое. По новой инструкции владельца дальнейшая
+публикация выполняется в GitHub `main`, затем тот же HEAD отправляется в Entire
+`origin/main`; feature больше не обновляется. Уже опубликованный в feature
+checkpoint `8ddde82` сохранён без переписывания истории.
+
+### Вывод и review
+
+**Да: существующий generated product действительно получил и сохранил страницы
+Ahmia через официальный Tor.** Это не утверждение о полном завершении crawl,
+контейнерной приёмке или закрытии security review.
+
+- CRITICAL/HIGH: новых подтверждённых блокирующих дефектов в проверенном Astra
+  delta и capability wiring не найдено; это направленный engineering review,
+  не исчерпывающий повторный аудит репозитория.
+- MEDIUM, исправлено: `scripts/runners/runtime.py`, прежние проверки `args[:2]`
+  теряли runtime/token defaults при глобальных `--json`, `--archive-dir` перед
+  командой. `cli_command_path` пропускает известные inherited options вместе с
+  их значениями. До fix регрессия падала в 12 комбинациях, после проходит;
+  approval не добавляется, явные пути сохраняются.
+- Подозрение на host search с `:80`/`:443` снято: `ArchiveStore.normalize`
+  удаляет default ports перед persistence. Новый настоящий CLI/catalog regression
+  подтверждает поиск; production SQL не менялся.
+- MEDIUM, остаётся: `ArchiveStatusUpdaterBolt.recordOutcome` не восстанавливает
+  точную Tor-категорию из generic exception class, оставленного SimpleFetcher.
+  Часть реальных ошибок имеет `transport_category=UNKNOWN`. Не записываем raw
+  exception и не объявляем это доказанным timeout без дополнительных наблюдений.
+- S1-01 остаётся **FIX IMPLEMENTED / PARTIALLY VERIFIED / NOT CLOSED**.
+  Независимо проверены `AdmissionRpc.guard`, фактическая регистрация обоих
+  services, обязательные capability clients и реальные conformance assertions.
+  Missing/wrong capability не допускаются к Command/PutURLs/GetURLs; admin
+  mutations запрещены. Полный controlled-deployment auth-negative Storm gate
+  из `docs/security/SECURITY-REVIEW.md` не заменён native/transport результатами.
+  Shared token, plaintext RPC, active-stream revocation и hostile filesystem
+  writer ограничения сохраняются.
+
+Реальная цепочка: Kotlin research CLI → Java CrawlService/CrawlExecution →
+capability Admission/Frontier/RocksDB → generated Storm LocalCluster →
+SimpleFetcher/TorProtocol → JSoup/discovery → HTML objects/H2/observed graph.
+Frontier остаётся единственным scheduler и владельцем reservations. Нового
+crawler, schema, application service или production dependency не добавлено.
+
+### Свежая матрица доказательств
+
+| Проверка | Результат | Наблюдение |
+| --- | --- | --- |
+| Post-Astra review | PASS | Независимый scoped review, воспроизведение launcher bug; S1-01 не закрыт |
+| JVM build | PASS | JDK 25.0.5, Kotlin 2.3.21, root verify и crawler/thin CLI packaging; 263 JVM tests, 0 failures/errors/skips |
+| Frontier | PASS | Отдельный Maven verify; все 7 настоящих conformance suites; authenticated RPC readiness |
+| StormCrawler | PASS | Настоящий generated graph в fixture и реальном crawl |
+| Tor bootstrap | PASS | Tor 0.4.9.14 + установленный obfs4proxy, существующие приватные bridges; cookie-authenticated bootstrap=100 |
+| SOCKS/onion routing | PASS | Remote-name SOCKS5, Ahmia robots HTTP200; настоящий HTTP через TorProtocol; DIRECT отсутствует |
+| Depth-2 fixture | PASS | Ветвящийся index/categories/articles: 6 HTML, 12 edges, 8 reservations, 9 HTTP requests, 503→200, 302 |
+| Archive/graph | PASS | Реальные parser callbacks, provenance, размеры, SHA256 и CLI readback; без fake catalog rows |
+| Process restart persistence | PASS | Повторный Frontier JVM на тех же RocksDB; H2/graph/counts/admission/next due и повторный HTML readback |
+| Container recreation | PASS в свежем CI; NOT RUN локально | CI 43026423823: actual container IDs changed, повторный HTML/graph/Frontier readback; локальный daemon недоступен |
+| Real Tor crawl | PASS | 7 HTML / 46233 bytes / 66 persisted edges; фактическая глубина 1 при maxDepth=2 |
+| CLI | PASS | plan/show/approve/run/results/links/pages/page show/errors/search-local, proxy show/doctor; proxy set отдельно покрыт тестами |
+| Tooling/config | PASS | 43 tooling + 2 прежних archive fixture tests, обе Compose profile config, workflow syntax, diff/link checks |
+
+После возобновления задачи [portable CI 43026423823](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/43026423823)
+на source `c0fc1a7b2159ba07d42c23fa708bea907aab0f04` прошёл полностью:
+образы, обе Maven entrypoints, 7 Frontier suites, 43 tooling tests, readiness,
+настоящий CLI/Storm depth-2 crawl и безопасный shutdown. Canonical fixture:
+3 HTML на глубинах 0/1/2, 9 edges, 6 HTTP requests, 503→200 и 302;
+после реального пересоздания Frontier/SOCKS containers совпали pages, hashes,
+graph, admission/quota, scheduler counts и next-attempt date. Итог PAUSED /
+INCOMPLETE, не завершённый crawl. [Sanitized result artifact](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/43026423823/artifacts/13860535383)
+содержит только result.json; ZIP digest
+`f423f3bfae011828d804577fd5b8085600e036471b5bc34ed03fe8c50b9d4631`.
+Это новое container-persistence доказательство, а не повторное использование
+результатов Astra.
+
+Отдельный [verification CI 43026423796](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/43026423796)
+завершился exit 2 / NOT RUN. Все исполняемые JVM, Python и 7 Frontier suites
+прошли. Runner намеренно оставляет общую приёмку незелёной:
+`archive-write-ack-acceptance` требует отдельного parent-fail/retry решения при
+ошибке archive commit; старые opt-in product/crash gates в этом default run не
+запускались. Этот контракт в `scripts/runners/verify.py` и комментарии
+`.github/workflows/verify.yml` сохранён. PASS portable workflow не закрывает
+общую fault/security приёмку. Дальнейшая публикация документации не меняет
+проверенный source; повторный дорогой CI для неё помечается `[skip ci]`.
+
+Root и crawler POM запускают одни и те же 263 tests: это не 526 разных tests.
+Первый sandbox Maven запуск был ограничен Kotlin cache; первый tooling запуск
+не имел локальных sockets. Повторные разрешённые native runs прошли полностью.
+Первый native smoke обнаружил старый packaged CLI без research; после завершения
+актуальной упаковки повторный E2E прошёл. Эти неудачи не превращены в PASS.
+
+### Реальный crawl Ahmia
+
+Владелец явно подтвердил разрешение администраторов и seed:
+`http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/`.
+Torch отдельно не запускался: точный доверенный URL не был предоставлен.
+Scope: same-host, depth=2, max-pages=20, effective concurrency=1/per-host=1,
+HTML ≤128 KiB, worker TTL=180 s плюс bounded cleanup, binary downloads disabled,
+robots enabled. Никакого расширения на найденные внешние hosts.
+
+Первый job `28c98592-b797-4b6b-af37-75718f3e7e01` с timeout=20 s
+дал FETCH_ERROR/REQUEST_TIMEOUT в private worker diagnostic, 0 HTML, 1
+future-scheduled reservation. Состояние сохранено, успех не заявлен.
+После настоящего Tor homepage preflight HTTP200 (4735 bytes, 4.71 s) повторный
+job использовал поддерживаемые timeout=30 s и retry=1 min:
+
+- Job: `684c0cf6-3795-47a1-9ca1-0318be86274f`.
+- Fetch timestamps: 2026-11-11 **15:18:19–15:18:35 Europe/Istanbul**
+  (12:18:19–12:18:35 UTC).
+- 7 genuine HTTP200 `text/html` snapshots: `/`, `/about/`, `/add/`, `/blacklist/`,
+  `/legal/`, `/privacy/`, `/terms/`; все `source_kind=CRAWLER`.
+- 46233 HTML bytes, 66 source-to-target link observations, 10 reservations.
+- Максимальная успешно архивированная глубина: **1**, не 2. Depth-2 candidates
+  `/onions/` и `/blacklist/banned/` достигли maxFetchErrors; не подменяем их fake
+  deeper pages. `/banned/` дал 301. Всего 7 failure observations: redirect,
+  четыре transient FETCH_ERROR и два TERMINAL_MAX_FETCH_ERRORS.
+- Итог: **PAUSED / INCOMPLETE**, pending=0, held=0, scheduled_wait=8,
+  unscheduled=2, archived=7; success/done/terminal/retry_wait остаются null.
+  Нулевой worker exit не объявляет завершение задания.
+- Root object SHA256:
+  `26c953d3f595fffc93bb40a81e945d7743e32ff284829b1111cffdcc4e3feafc`.
+
+Docker не использовался: worker и owning Frontier работали в отдельном Linux
+network namespace только с loopback. Test-only byte relay передавал SOCKS bytes
+по приватному UNIX socket официальному Tor, работавшему вне namespace; relay не
+разрешал имена и не выполнял HTTP. Системные службы/маршруты/DNS не менялись.
+У Tor сохранены bridge-only, SafeSocks и OnionTrafficOnly. Это native integration
+proof с сохранённой сетевой изоляцией, а не новая production startup схема.
+Оба owning Frontier JVM были остановлены штатно; после повторного запуска
+прочитаны те же pages/links/counts. Затем отдельные CLI processes ещё раз
+прочитали все 7 catalog records и HTML, проверили hash/size. Tor завершён,
+приватные данные и identity сохранены; volumes/user state не удалялись.
+
+Локальные retained evidence (Git-ignored, не включать в commits/artifacts):
+
+- `.runtime/sol-review/`: build/test логи и ограниченные результаты transport;
+- `.runtime/native-jpw3lvjk/result.json`: линейный fixture, 3 pages/9 edges;
+- `.runtime/native-40v168_r/result.json`: branching fixture, 6 pages/12 edges;
+- `.runtime/sol-real-mxfxf8un/`: первая неуспешная попытка;
+- `.runtime/sol-real-b70lba2e/archive/catalog.mv.db` и `archive/objects/`:
+  настоящий H2 catalog и 7 immutable HTML objects;
+- `.runtime/sol-real-b70lba2e/result.json`, `post-stop-readback.json`:
+  scalar verification/metadata; execution logs остаются private.
+
+### Проверенные команды и границы запуска
+
+Из корня checkout на этом Linux с доступным JDK25 и подготовленным cache:
+
+```sh
+mvn -B -o -Dmaven.repo.local=.runtime/maven-linux-repository -Dkotlin.compiler.daemon=false verify
+mvn -B -o -Dmaven.repo.local="$PWD/.runtime/maven-linux-repository" -f frontier-server/pom.xml verify
+ONIONALL_OFFLINE=1 MAVEN_OPTS=-Dkotlin.compiler.daemon=false bash scripts/cli/build-cli.sh
+FIXTURE_PARENT_NETNS=$(readlink /proc/self/ns/net) unshare -Urn sh -c 'ip link set lo up; exec python3 -B test/admission/native_smoke.py --branching --storm-libs .runtime/storm-lifecycle-build-cleanup2/libs --patched-server .runtime/storm-lifecycle-build-cleanup2/context/storm-server-3.1.0.jar'
+```
+
+Последняя команда требует уже извлечённых pinned Storm libs/cleanup2 patch;
+создаёт новое retained test state, не production runtime и не реальный Tor.
+Ограничения sockets/namespace текущего окружения требуют соответствующего
+разрешения исполнения; файлы Kotlin daemon можно избежать указанным property.
+
+Для чтения **уже сохранённых реальных данных** сейчас, без поднятого runtime:
+
+```sh
+target/onionall/bin/onionall --json --archive-dir .runtime/sol-real-b70lba2e/archive pages --job 684c0cf6-3795-47a1-9ca1-0318be86274f
+target/onionall/bin/onionall --json --archive-dir .runtime/sol-real-b70lba2e/archive page show 63f89808-a6f6-4110-9782-907206f18071
+target/onionall/bin/onionall --json --archive-dir .runtime/sol-real-b70lba2e/archive research links 684c0cf6-3795-47a1-9ca1-0318be86274f
+```
+
+Canonical Docker build/start/status/proxy/plan/approve/run/results/down команды
+остаются в [local runtime](../local-runtime.md). Их fresh local Compose execution
+BLOCKED отсутствующим daemon; не выдаём native proof за container proof.
+В существующий portable workflow добавлен push trigger `main` по новому маршруту
+публикации владельца. Real Tor не добавлен в default CI.
+
+### Изменённые файлы и оставшиеся действия
+
+- `scripts/runners/runtime.py`, `test/scripts/test_runtime_preparation.py`:
+  исправление inherited-option forwarding и red/green regression.
+- `src/test/java/dev/onionall/brawler/cli/ResearchCommandsTest.java`:
+  подтверждение canonical default-port search без изменения production SQL.
+- `test/archive/socks_fixture.py`, `test/admission/native_smoke.py`,
+  `test/scripts/test_canonical_e2e.py`: optional branching graph, настоящий
+  research/redirect/retry/restart/HTML proof; legacy fixture сохранён.
+- `.github/workflows/portable.yml`: `main` запускает уже существующий CI.
+- `docs/local-runtime.md`, этот checkpoint: актуальные команды и evidence.
+
+Остаются: archive-write fault ACK/retry contract; надёжный terminal job
+contract и точная persisted transport category; S1-01 controlled-deployment
+security gate; отдельный доверенный Torch URL, если требуется второй источник.
+
+---
+
 Updated: 2026-11-09 (Europe/Moscow). Continuation: verified local research, PARTIAL.
 Branch: `feature/astra-onionall-reconstruction`.
 Base: `4b0d4daa9a56aafc9303cd7d34972bf126b1288a` (`origin/main` at preflight).
