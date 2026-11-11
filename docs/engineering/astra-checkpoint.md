@@ -60,10 +60,33 @@ crawler, schema, application service или production dependency не доба�
 | Depth-2 fixture | PASS | Ветвящийся index/categories/articles: 6 HTML, 12 edges, 8 reservations, 9 HTTP requests, 503→200, 302 |
 | Archive/graph | PASS | Реальные parser callbacks, provenance, размеры, SHA256 и CLI readback; без fake catalog rows |
 | Process restart persistence | PASS | Повторный Frontier JVM на тех же RocksDB; H2/graph/counts/admission/next due и повторный HTML readback |
-| Container recreation | NOT RUN | Docker CLI есть, daemon/socket недоступен; historical CI ниже не считается свежим запуском |
+| Container recreation | PASS в свежем CI; NOT RUN локально | CI 43026423823: actual container IDs changed, повторный HTML/graph/Frontier readback; локальный daemon недоступен |
 | Real Tor crawl | PASS | 7 HTML / 46233 bytes / 66 persisted edges; фактическая глубина 1 при maxDepth=2 |
 | CLI | PASS | plan/show/approve/run/results/links/pages/page show/errors/search-local, proxy show/doctor; proxy set отдельно покрыт тестами |
 | Tooling/config | PASS | 43 tooling + 2 прежних archive fixture tests, обе Compose profile config, workflow syntax, diff/link checks |
+
+После возобновления задачи [portable CI 43026423823](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/43026423823)
+на source `c0fc1a7b2159ba07d42c23fa708bea907aab0f04` прошёл полностью:
+образы, обе Maven entrypoints, 7 Frontier suites, 43 tooling tests, readiness,
+настоящий CLI/Storm depth-2 crawl и безопасный shutdown. Canonical fixture:
+3 HTML на глубинах 0/1/2, 9 edges, 6 HTTP requests, 503→200 и 302;
+после реального пересоздания Frontier/SOCKS containers совпали pages, hashes,
+graph, admission/quota, scheduler counts и next-attempt date. Итог PAUSED /
+INCOMPLETE, не завершённый crawl. [Sanitized result artifact](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/43026423823/artifacts/13860535383)
+содержит только result.json; ZIP digest
+`f423f3bfae011828d804577fd5b8085600e036471b5bc34ed03fe8c50b9d4631`.
+Это новое container-persistence доказательство, а не повторное использование
+результатов Astra.
+
+Отдельный [verification CI 43026423796](https://github.com/CallesnikovProduction/onionall-github-mirror/actions/runs/43026423796)
+завершился exit 2 / NOT RUN. Все исполняемые JVM, Python и 7 Frontier suites
+прошли. Runner намеренно оставляет общую приёмку незелёной:
+`archive-write-ack-acceptance` требует отдельного parent-fail/retry решения при
+ошибке archive commit; старые opt-in product/crash gates в этом default run не
+запускались. Этот контракт в `scripts/runners/verify.py` и комментарии
+`.github/workflows/verify.yml` сохранён. PASS portable workflow не закрывает
+общую fault/security приёмку. Дальнейшая публикация документации не меняет
+проверенный source; повторный дорогой CI для неё помечается `[skip ci]`.
 
 Root и crawler POM запускают одни и те же 263 tests: это не 526 разных tests.
 Первый sandbox Maven запуск был ограничен Kotlin cache; первый tooling запуск
@@ -166,7 +189,7 @@ BLOCKED отсутствующим daemon; не выдаём native proof за c
 - `.github/workflows/portable.yml`: `main` запускает уже существующий CI.
 - `docs/local-runtime.md`, этот checkpoint: актуальные команды и evidence.
 
-Остаются: fresh container recreation в portable CI; надёжный terminal job
+Остаются: archive-write fault ACK/retry contract; надёжный terminal job
 contract и точная persisted transport category; S1-01 controlled-deployment
 security gate; отдельный доверенный Torch URL, если требуется второй источник.
 
