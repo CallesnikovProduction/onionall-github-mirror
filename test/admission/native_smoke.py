@@ -37,6 +37,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--storm-libs', type=Path, required=True)
     parser.add_argument('--patched-server', type=Path, required=True)
+    parser.add_argument('--branching', action='store_true', help='Use six pages on two independent depth-two branches')
     args = parser.parse_args()
     require({name for _, name in socket.if_nameindex()} == {'lo'}, 'Run only in an isolated network namespace')
     require(os.readlink('/proc/self/ns/net') != os.environ['FIXTURE_PARENT_NETNS'], 'Host network forbidden')
@@ -46,6 +47,14 @@ def main():
     result = dict(passed=False, evidence=str(state), real_tor='NOT_RUN', compose='BLOCKED_DOCKER_UNAVAILABLE')
     print(state, flush=True)
     host, foreign = fixture_host(1), fixture_host(2)
+    depths = ({'/index.html': 0, '/category-a.html': 1, '/category-b.html': 1,
+               '/article-1.html': 2, '/article-2.html': 2, '/article-3.html': 2}
+              if args.branching else {'/a': 0, '/b': 1, '/c': 2})
+    seed_path = '/index.html' if args.branching else '/a'
+    retry_path = '/article-2.html' if args.branching else '/b'
+    deep_path = '/deep.html' if args.branching else '/deep'
+    search_marker = 'ARCHIVE_ARTICLE_3' if args.branching else 'ARCHIVE_GAMMA'
+    reservations = len(depths) + 2  # Robots-denied URL и redirect тоже расходуют reservation.
     (state / 'onion-hostname.txt').write_text(host)
     (state / 'foreign-hostname.txt').write_text(foreign)
     token = state / 'admission-token'
@@ -85,7 +94,7 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
                       work_directory=str(state / 'execution'), seconds=120,
                       http_timeout_ms=2000, retry_minutes=1)
     (state / 'runtime.json').write_text(json.dumps(descriptor))
-    fixture = Fixture(('127.0.0.1', 19050), state, research=True)
+    fixture = Fixture(('127.0.0.1', 19050), state, research=True, branching=args.branching)
     thread = threading.Thread(target=fixture.serve_forever, daemon=True)
     thread.start()
     log = (state / 'frontier.log').open('w')
@@ -117,7 +126,7 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
         else:
             raise RuntimeError('Authenticated Frontier readiness timed out')
         result['frontier'] = 'READY_AUTHENTICATED'
-        plan = cli(['research', 'plan', '--url', 'http://' + host + '/a', '--depth', '2',
+        plan = cli(['research', 'plan', '--url', 'http://' + host + seed_path, '--depth', '2',
                     '--max-pages', '20'], 'plan')
         job = plan['plan_id']
         result['job_id'] = job
@@ -133,15 +142,16 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
         status = cli(['crawl', 'status', job, '--runtime', str(state / 'runtime.json'),
                       '--admission-token-file', str(token)], 'status')
         require(status['authoritative_readback_current'], 'No current Frontier readback')
-        require(status['authoritative_admission']['reserved_count'] == 5, 'Unexpected admission quota')
-        require(status['archived_pages'] == 3 and status['snapshots'] == 3, 'Missing actual archive records')
-        require(any(row['category'] == 'FETCH_ERROR' and row['url'].endswith('/b')
+        require(status['authoritative_admission']['reserved_count'] == reservations, 'Unexpected admission quota')
+        require(status['archived_pages'] == len(depths) and status['snapshots'] == len(depths),
+                'Missing actual archive records')
+        require(any(row['category'] == 'FETCH_ERROR' and row['url'].endswith(retry_path)
                     for row in status['failure_records']), 'HTTP503 failure observation missing')
         require(any(row['category'] == 'ROBOTS_DENIED' for row in status['failure_records']),
                 'Robots failure observation missing')
         rows = cli(['pages', '--job', job], 'pages')['pages']
         require({row['canonical_url']: row['depth'] for row in rows} ==
-                {'http://' + host + path: depth for path, depth in (('/a', 0), ('/b', 1), ('/c', 2))},
+                {'http://' + host + path: depth for path, depth in depths.items()},
                 'Depth 0/1/2 archive mismatch')
         links = []
         for row in rows:
@@ -152,12 +162,19 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
             require(page['source_kind'] == 'CRAWLER' and page['http_status'] == 200, 'Not actual crawl HTML')
             require(len(page['history']) == 1, 'Duplicate snapshot')
             links += page['links']
-        require(any(edge['disposition'] == 'DEPTH_REJECTED' and edge['target_url'].endswith('/deep')
+        require(any(edge['disposition'] == 'DEPTH_REJECTED' and edge['target_url'].endswith(deep_path)
                     for edge in links), 'Missing depth-3 rejection')
         require(any(edge['disposition'] == 'SCOPE_REJECTED' and foreign in edge['target_url']
                     for edge in links), 'Missing foreign-host rejection')
         require(all(edge['job_id'] == job and edge['source_page_id'] for edge in links), 'Missing graph provenance')
-        require(len(cli(['search-local', 'ARCHIVE_GAMMA', '--job', job], 'search')['results']) == 1, 'Local search failed')
+        require(len(cli(['search-local', search_marker, '--job', job], 'search')['results']) == 1, 'Local search failed')
+        if args.branching:
+            for source, target in (('/index.html', '/category-a.html'), ('/index.html', '/category-b.html'),
+                                   ('/category-a.html', '/article-1.html'), ('/category-a.html', '/article-2.html'),
+                                   ('/category-b.html', '/article-3.html')):
+                require(any(edge['source_url'] == 'http://' + host + source
+                            and edge['target_url'] == 'http://' + host + target and edge['target_page_id']
+                            for edge in links), 'Missing persisted branch edge: ' + source + ' -> ' + target)
         research = cli(['research', 'results', job, '--runtime', str(state / 'runtime.json'),
                         '--admission-token-file', str(token)], 'research-results')
         require(research['pages'] == rows and research['links'] == cli(
@@ -166,10 +183,11 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
                 'Untruthful research metrics')
         traffic = [json.loads(line) for line in (state / 'archive-requests.jsonl').read_text().splitlines()]
         http = [row for row in traffic if row['phase'] == 'http']
-        require(Counter(row['path'] for row in http) == Counter(
-            {'/robots.txt': 1, '/a': 1, '/b': 2, '/c': 1, '/redirect': 1}),
+        expected_traffic = Counter({path: 1 for path in depths})
+        expected_traffic.update({'/robots.txt': 1, '/redirect': 1, retry_path: 1})
+        require(Counter(row['path'] for row in http) == expected_traffic,
                 'Unexpected HTTP traffic; depth/scope/robots/dedup failure')
-        require([row['status'] for row in http if row['path'] == '/b'] == [503, 200], 'Retry not executed')
+        require([row['status'] for row in http if row['path'] == retry_path] == [503, 200], 'Retry not executed')
         require([row['status'] for row in http if row['path'] == '/redirect'] == [302], 'Redirect not fetched')
         require(all(row['atyp'] == 3 for row in http), 'Target names were not resolved remotely')
         config = json.loads((state / 'execution' / job / 'crawler-conf.json').read_text())['config']
@@ -197,8 +215,16 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
         require(restored['pages'] == rows and restored['links'] == research['links'], 'Archive/graph lost on restart')
         for key in ('counts', 'next_attempt_at', 'authoritative_admission'):
             require(restored['status'][key] == research['status'][key], 'Frontier state changed on restart: ' + key)
-        result.update(passed=True, archived_pages=len(rows), snapshots=3, persisted_links=len(links),
-                      frontier_reservations=5, depths=[0, 1, 2], scheduled_retry_verified=True,
+        for row in rows:
+            page = cli(['page', 'show', row['page_id']], 'page-after-restart-' + row['page_id'])
+            snapshot = Path(page['storage_location'])
+            require(snapshot.parent == state / 'archive/objects', 'Unexpected restarted snapshot path')
+            body = snapshot.read_bytes()
+            require(hashlib.sha256(body).hexdigest() == page['content_hash'] and len(body) == page['content_size'],
+                    'Restarted HTML readback mismatch')
+        result.update(passed=True, archived_pages=len(rows), snapshots=len(rows), persisted_links=len(links),
+                      frontier_reservations=reservations, depths=[0, 1, 2], scheduled_retry_verified=True,
+                      fixture_graph='BRANCHING' if args.branching else 'LINEAR',
                       http_requests=len(http), redirect_status=302, remote_dns_verified=True,
                       frontier_process_restarted=True, archive_readback=True, graph_persistence=True,
                       frontier_persistence=True, container_recreation='NOT_RUN',

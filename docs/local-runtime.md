@@ -76,6 +76,8 @@ The launcher supplies default runtime/token paths for `crawl start/status` and
 `research run/results`. It also supplies the runtime descriptor for `config proxy`
 and `system doctor`; those commands do not receive the capability. Explicit paths
 remain supported, and the launcher never inserts approval.
+Inherited root options such as `cli --json research results PLAN_ID` or
+`cli --archive-dir /state/archive config proxy show` retain these defaults.
 The existing implementation still owns plans, explicit approval, scope, durable
 reservations, deduplication, retry and robots. Seed depth is 0, children 1,
 grandchildren 2; depth 3 is not fetched. Foreign-host/binary-extension links are
@@ -185,3 +187,17 @@ graph with the existing fixture in a separate Linux network namespace containing
 only loopback. It requires extracted Storm 3.1.0 libraries and the existing
 cleanup2 patched server JAR. This is separate evidence and never substitutes for
 Compose/Tor acceptance; no native production crawl launcher is introduced.
+
+Add `--branching` to the native smoke invocation to exercise
+`index.html -> category-a/category-b -> article-1/article-2/article-3` at depths
+0/1/2. It verifies real HTTP 503 retry, relative/duplicate links, a 302 redirect,
+depth-3/robots/scope/binary exclusion, and every HTML object's hash after an
+authenticated Frontier process restart. Existing fixture modes are unchanged.
+
+The [2026-11-11 checkpoint](engineering/astra-checkpoint.md) records a separate
+approved real Tor crawl: 7 archived Ahmia HTML pages and 66 link observations,
+with CLI/hash readback after Frontier restart. Its actual successful depth was 1;
+future scheduling and two failed depth-2 candidates prevent a completed-crawl
+claim. The retained run lives under `.runtime/sol-real-b70lba2e/`, separate from
+canonical `.runtime/local/`; no downloaded HTML, bridge configuration or raw logs
+belong in Git.

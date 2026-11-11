@@ -62,6 +62,50 @@ class CanonicalAcceptanceTest(unittest.TestCase):
                     server.shutdown()
                     thread.join(timeout=5)
 
+    def test_optional_branching_graph_serves_relative_links_redirect_and_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            host = 'a' * 56 + '.onion'
+            (root / 'onion-hostname.txt').write_text(host)
+            (root / 'foreign-hostname.txt').write_text('b' * 56 + '.onion')
+            with socks.Fixture(('127.0.0.1', 0), root, branching=True) as server:
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    def get(path):
+                        with socket.create_connection(server.server_address, timeout=5) as client:
+                            client.sendall(b'\x05\x01\x00')
+                            self.assertEqual(b'\x05\x00', socks.receive(client, 2))
+                            client.sendall(b'\x05\x01\x00\x03' + bytes([len(host)]) + host.encode() + b'\x00\x50')
+                            self.assertEqual(b'\x05\x00', socks.receive(client, 10)[:2])
+                            client.sendall(b'GET ' + path.encode() + b' HTTP/1.0\r\nHost: ' + host.encode() + b'\r\n\r\n')
+                            data = bytearray()
+                            while chunk := client.recv(1024):
+                                data.extend(chunk)
+                            return bytes(data)
+
+                    index = get('/index.html')
+                    self.assertIn(b'href="category-a.html"', index)
+                    self.assertIn(b'href="category-a.html#same"', index)
+                    self.assertIn(b'href="/category-b.html"', index)
+                    self.assertIn(b'href="article-1.html"', get('/category-a.html'))
+                    self.assertIn(b'href="article-3.html"', get('/category-b.html'))
+                    self.assertIn(b'href="deep.html"', get('/article-1.html'))
+                    self.assertIn(b'HTTP/1.0 503 Service Unavailable', get('/article-2.html'))
+                    self.assertIn(b'ARCHIVE_ARTICLE_2', get('/article-2.html'))
+                    self.assertIn(b'ARCHIVE_ARTICLE_3', get('/article-3.html'))
+                    self.assertIn(b'HTTP/1.0 302 Found\r\nLocation: /category-a.html\r\n', get('/redirect'))
+                    for forbidden in ('/deep.html', '/blocked', '/dump.zip'):
+                        with self.subTest(path=forbidden), self.assertRaises(ValueError):
+                            server.response(forbidden)
+                finally:
+                    server.shutdown()
+                    thread.join(timeout=5)
+            with socks.Fixture(('127.0.0.1', 0), root, research=True) as original:
+                with self.assertRaises(ValueError):
+                    original.response('/index.html')
+                self.assertIn(b'ARCHIVE_ALPHA', original.response('/a')[2])
+
 
 if __name__ == '__main__':
     unittest.main()
