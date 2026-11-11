@@ -121,4 +121,24 @@ public class ResearchCommandsTest {
         assertEquals(0, run(archive, "research", "search", "--query", "shared marker",
             "--host", otherHost, "--job", first).json.path("results").size());
     }
+
+    @Test public void hostFilterIncludesExplicitDefaultPorts() throws Exception {
+        Path directory = temporary.newFolder().toPath();
+        Path archive = directory.resolve("archive");
+        Path html = directory.resolve("offline.html");
+        Files.writeString(html, "<html><title>port marker</title><body>local</body></html>");
+        for (String url : List.of("http://" + OnionSmoke.HOST + ":80/page",
+                                  "https://" + OnionSmoke.HOST + ":443/page")) {
+            String job = run(archive, "research", "plan", "--url", url).json.path("plan_id").asText();
+            run(archive, "crawl", "approve", job);
+            assertEquals(0, run(archive, "archive", "import", html.toString(),
+                "--plan", job, "--url", url).code);
+            var found = run(archive, "research", "search", "--query", "port marker",
+                "--host", OnionSmoke.HOST, "--job", job, "--limit", "1");
+            assertEquals(0, found.code);
+            assertEquals(1, found.json.path("results").size());
+            assertEquals(url.replace(":80/", "/").replace(":443/", "/"),
+                found.json.path("results").get(0).path("canonical_url").asText());
+        }
+    }
 }

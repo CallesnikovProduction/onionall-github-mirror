@@ -25,6 +25,26 @@ def fixture_host(number):
     return base64.b32encode(payload).decode().lower() + '.onion'
 
 
+def cli_command_path(args):
+    """Read two command names without treating inherited option values as commands."""
+    values = {'--socks-port', '--timeout-ms', '--max-bytes', '--download-dir', '--archive-dir'}
+    commands = []
+    index = 0
+    while index < len(args) and len(commands) < 2:
+        argument = args[index]
+        option, separator, _ = argument.partition('=')
+        if option in values:
+            index += 1 if separator else 2
+        elif option in {'--json', '--no-color'}:
+            index += 1
+        elif argument.startswith('-'):
+            return ()  # Не интерпретируем неизвестные опции вместо JVM parser.
+        else:
+            commands.append(argument)
+            index += 1
+    return tuple(commands)
+
+
 class Runtime:
     def __init__(self, fixture=False):
         self.fixture = fixture
@@ -150,12 +170,13 @@ class Runtime:
         if not args:
             args = ['--help']
         # Deployment defaults only. Original CLI still owns plan/approval/limits and exit codes.
-        if args[:2] in (['crawl', 'start'], ['crawl', 'status'], ['research', 'run'], ['research', 'results']):
+        command = cli_command_path(args)
+        if command in (('crawl', 'start'), ('crawl', 'status'), ('research', 'run'), ('research', 'results')):
             if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
             if not any(a == '--admission-token-file' or a.startswith('--admission-token-file=') for a in args):
                 args += ['--admission-token-file', '/state/admission-token']
-        if args[:2] in (['config', 'proxy'], ['system', 'doctor']):
+        if command in (('config', 'proxy'), ('system', 'doctor')):
             if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
         self.check_docker()

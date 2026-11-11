@@ -3,6 +3,9 @@
 Run through unshare -Urn after enabling ONLY that namespace's loopback. Requires
 locally extracted Storm 3.1.0 lib/lib-common and the existing cleanup2 patched JAR.
 Never enables network access or changes host networking. Not Compose/Tor evidence.
+
+@author Стефан Колесников
+@author GPT-6.1 Sol
 """
 import argparse
 from collections import Counter
@@ -82,7 +85,7 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
                       work_directory=str(state / 'execution'), seconds=120,
                       http_timeout_ms=2000, retry_minutes=1)
     (state / 'runtime.json').write_text(json.dumps(descriptor))
-    fixture = Fixture(('127.0.0.1', 19050), state)
+    fixture = Fixture(('127.0.0.1', 19050), state, research=True)
     thread = threading.Thread(target=fixture.serve_forever, daemon=True)
     thread.start()
     log = (state / 'frontier.log').open('w')
@@ -114,20 +117,23 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
         else:
             raise RuntimeError('Authenticated Frontier readiness timed out')
         result['frontier'] = 'READY_AUTHENTICATED'
-        plan = cli(['crawl', 'plan', '--seed', 'http://' + host + '/a', '--depth', '2',
-                    '--max-pages', '20', '--scope', 'same-host'], 'plan')
+        plan = cli(['research', 'plan', '--url', 'http://' + host + '/a', '--depth', '2',
+                    '--max-pages', '20'], 'plan')
         job = plan['plan_id']
         result['job_id'] = job
-        start = ['crawl', 'start', '--plan', job, '--runtime', str(state / 'runtime.json'),
+        start = ['research', 'run', '--plan', job, '--runtime', str(state / 'runtime.json'),
                  '--admission-token-file', str(token)]
         refused = cli(start, 'unapproved', success=False)
         require('approval' in json.dumps(refused).lower(), 'Approval failed for unrelated reason')
         require(cli(['crawl', 'approve', job], 'approve')['approved'], 'Plan not approved')
-        cli(start, 'start')
+        execution = cli(start, 'start')
+        require(execution['admission'] == 'COMMITTED' and execution['worker_exit_code'] == 0,
+                'Admission/worker failed')
+        require(execution['crawl_completed_verified'] is False, 'Worker exit manufactured completion')
         status = cli(['crawl', 'status', job, '--runtime', str(state / 'runtime.json'),
                       '--admission-token-file', str(token)], 'status')
         require(status['authoritative_readback_current'], 'No current Frontier readback')
-        require(status['authoritative_admission']['reserved_count'] == 4, 'Unexpected admission quota')
+        require(status['authoritative_admission']['reserved_count'] == 5, 'Unexpected admission quota')
         require(status['archived_pages'] == 3 and status['snapshots'] == 3, 'Missing actual archive records')
         require(any(row['category'] == 'FETCH_ERROR' and row['url'].endswith('/b')
                     for row in status['failure_records']), 'HTTP503 failure observation missing')
@@ -152,11 +158,20 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
                     for edge in links), 'Missing foreign-host rejection')
         require(all(edge['job_id'] == job and edge['source_page_id'] for edge in links), 'Missing graph provenance')
         require(len(cli(['search-local', 'ARCHIVE_GAMMA', '--job', job], 'search')['results']) == 1, 'Local search failed')
+        research = cli(['research', 'results', job, '--runtime', str(state / 'runtime.json'),
+                        '--admission-token-file', str(token)], 'research-results')
+        require(research['pages'] == rows and research['links'] == cli(
+            ['research', 'links', job], 'research-links')['links'], 'Research archive/graph mismatch')
+        require(len(research['file_candidates']) == 1 and research['metrics']['fetch_attempts'] is None,
+                'Untruthful research metrics')
         traffic = [json.loads(line) for line in (state / 'archive-requests.jsonl').read_text().splitlines()]
         http = [row for row in traffic if row['phase'] == 'http']
-        require(Counter(row['path'] for row in http) == Counter({'/robots.txt': 1, '/a': 1, '/b': 2, '/c': 1}),
+        require(Counter(row['path'] for row in http) == Counter(
+            {'/robots.txt': 1, '/a': 1, '/b': 2, '/c': 1, '/redirect': 1}),
                 'Unexpected HTTP traffic; depth/scope/robots/dedup failure')
         require([row['status'] for row in http if row['path'] == '/b'] == [503, 200], 'Retry not executed')
+        require([row['status'] for row in http if row['path'] == '/redirect'] == [302], 'Redirect not fetched')
+        require(all(row['atyp'] == 3 for row in http), 'Target names were not resolved remotely')
         config = json.loads((state / 'execution' / job / 'crawler-conf.json').read_text())['config']
         require(config['fetcher.threads.number'] <= 4 and config['fetcher.threads.per.queue'] == 1,
                 'Concurrency ceiling violated')
@@ -164,8 +179,29 @@ os.execvp('java',['java','--enable-native-access=ALL-UNNAMED',
         process.terminate()
         require(process.wait(timeout=20) == 143, 'Frontier shutdown exit mismatch')
         require(cli(['pages', '--job', job], 'pages-after-stop')['pages'] == rows, 'Archive lost on stop')
+        process = subprocess.Popen(['java', '--enable-native-access=ALL-UNNAMED', '-cp', str(server),
+                                    'crawlercommons.urlfrontier.service.URLFrontierServer',
+                                    'rocksdb.path=' + str(state / 'rocksdb')],
+                                   env=env, stdout=log, stderr=subprocess.STDOUT)
+        until = time.monotonic() + 25
+        while time.monotonic() < until:
+            require(process.poll() is None, 'Frontier exited during restart')
+            if subprocess.run(probe, env=env, capture_output=True, timeout=15).returncode == 0:
+                break
+            time.sleep(.25)
+        else:
+            raise RuntimeError('Restarted Frontier readiness timed out')
+        restored = cli(['research', 'results', job, '--runtime', str(state / 'runtime.json'),
+                        '--admission-token-file', str(token)], 'research-after-restart')
+        require(restored['status']['authoritative_readback_current'], 'No authenticated restart readback')
+        require(restored['pages'] == rows and restored['links'] == research['links'], 'Archive/graph lost on restart')
+        for key in ('counts', 'next_attempt_at', 'authoritative_admission'):
+            require(restored['status'][key] == research['status'][key], 'Frontier state changed on restart: ' + key)
         result.update(passed=True, archived_pages=len(rows), snapshots=3, persisted_links=len(links),
-                      frontier_reservations=4, depths=[0, 1, 2], scheduled_retry_verified=True,
+                      frontier_reservations=5, depths=[0, 1, 2], scheduled_retry_verified=True,
+                      http_requests=len(http), redirect_status=302, remote_dns_verified=True,
+                      frontier_process_restarted=True, archive_readback=True, graph_persistence=True,
+                      frontier_persistence=True, container_recreation='NOT_RUN',
                       robots_verified=True, scope_verified=True, data_retained=True,
                       concurrency_ceiling=4, effective_fetch_concurrency=1,
                       failure_observations=len(status['failure_records']), scheduler_counts=status['counts'],
