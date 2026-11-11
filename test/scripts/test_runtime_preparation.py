@@ -109,6 +109,24 @@ class RuntimePreparationTest(unittest.TestCase):
             self.assertNotIn('/state/admission-token', dc.call_args.args)
             self.assertNotIn('--approve', dc.call_args.args)
 
+    def test_global_options_do_not_hide_commands_or_consume_option_values_as_commands(self):
+        for prefix in (['--json'], ['--archive-dir', 'research'],
+                       ['--json', '--archive-dir=/chosen/archive', '--no-color']):
+            for command, capability in ((['research', 'run'], True),
+                                        (['crawl', 'status'], True),
+                                        (['config', 'proxy', 'show'], False),
+                                        (['system', 'doctor'], False)):
+                with self.subTest(prefix=prefix, command=command):
+                    with patch.object(self.instance, 'check_docker'), patch.object(self.instance, 'dc') as dc:
+                        self.instance.cli([*prefix, *command])
+                    forwarded = dc.call_args.args
+                    self.assertIn('/state/runtime.json', forwarded)
+                    self.assertEqual(capability, '/state/admission-token' in forwarded)
+                    self.assertNotIn('--approve', forwarded)
+        with patch.object(self.instance, 'check_docker'), patch.object(self.instance, 'dc') as dc:
+            self.instance.cli(['--archive-dir', 'research', 'search-local', 'run'])
+        self.assertNotIn('/state/runtime.json', dc.call_args.args)
+
 
 if __name__ == '__main__':
     unittest.main()
