@@ -559,7 +559,7 @@ public final class Onionall implements Callable<Integer> {
         root.interactiveContent = interactiveContent;
         CommandLine cli = new CommandLine(root).setOut(out).setErr(err)
             .setColorScheme(CommandLine.Help.defaultColorScheme(CommandLine.Help.Ansi.OFF));
-        cli.addSubcommand("research", new ResearchCommands(ArchiveCommands.research(root)));
+        cli.addSubcommand("research", new ResearchCommands(ArchiveCommands.research(root), ArchiveCommands.sessions(root)));
         var runtimeCommands = new RuntimeCommands(value -> root.print(new LinkedHashMap<>(value)));
         cli.addSubcommand("config", runtimeCommands.config());
         cli.addSubcommand("system", runtimeCommands.system());

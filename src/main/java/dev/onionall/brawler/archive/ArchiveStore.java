@@ -3,6 +3,7 @@ package dev.onionall.brawler.archive;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.onionall.brawler.tor.TorPolicy;
+import dev.onionall.brawler.research.ResearchCatalog;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.ByteBuffer;
@@ -90,6 +91,31 @@ public final class ArchiveStore implements AutoCloseable {
 
     private static IOException failure(Exception e) {
         return new IOException("Archive operation failed: " + e.getClass().getSimpleName(), e);
+    }
+
+    /**
+     * <b>Compilation bridge к Kotlin research extension того же каталога.</b>
+     * Соединение не покидает владельца; версия основной схемы и crawler writes не меняются.
+     * @author Стефан Колесников
+     * @author GPT-6.1 Sol
+     */
+    public synchronized Map<String, Object> createResearchSession(Map<String, ? extends Object> document) throws IOException {
+        capacity();
+        return new ResearchCatalog(db).create(document);
+    }
+
+    public synchronized Map<String, Object> researchSession(String id) throws IOException {
+        return new ResearchCatalog(db).get(id);
+    }
+
+    public synchronized Map<String, Object> updateResearchSession(String id, long revision,
+        Map<String, ? extends Object> document) throws IOException {
+        capacity();
+        return new ResearchCatalog(db).update(id, revision, document);
+    }
+
+    public synchronized boolean researchSessionExists(String id) throws IOException {
+        return new ResearchCatalog(db).exists(id);
     }
 
     /**
