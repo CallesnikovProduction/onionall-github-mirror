@@ -102,12 +102,22 @@ class RuntimePreparationTest(unittest.TestCase):
             self.instance.configured_proxy()
 
     def test_proxy_commands_receive_descriptor_without_capability_or_approval(self):
-        for command in (['config', 'proxy', 'show'], ['system', 'doctor']):
+        for command in (['config', 'proxy', 'show'], ['system', 'doctor'], ['research', 'discover']):
             with patch.object(self.instance, 'check_docker'), patch.object(self.instance, 'dc') as dc:
                 self.instance.cli(command)
             self.assertIn('/state/runtime.json', dc.call_args.args)
             self.assertNotIn('/state/admission-token', dc.call_args.args)
             self.assertNotIn('--approve', dc.call_args.args)
+
+    def test_batch_status_and_deadline_forwarding(self):
+        with patch.object(self.instance, 'check_docker'), patch.object(self.instance, 'dc') as dc:
+            self.instance.cli(['--json', 'research', 'status', 'session'])
+        self.assertIn('/state/runtime.json', dc.call_args.args)
+        self.assertIn('/state/admission-token', dc.call_args.args)
+        with patch.object(self.instance, 'check_docker'), patch.object(self.instance, 'dc') as dc:
+            self.instance.cli(['research', 'run', '--session', 'session', '--total-seconds=1200'])
+        self.assertEqual(1440, dc.call_args.kwargs['timeout'])
+        self.assertNotIn('--approve', dc.call_args.args)
 
     def test_global_options_do_not_hide_commands_or_consume_option_values_as_commands(self):
         for prefix in (['--json'], ['--archive-dir', 'research'],
