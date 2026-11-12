@@ -61,6 +61,15 @@ Exports bound size, preserve URL/timestamp/job/session boundaries and write only
 new local outputs. No external AI upload, script execution, archive extraction
 or automatic binary download is part of this contract.
 
+Session graph readback aggregates the persisted links of every listed page's
+latest snapshot, rather than applying the legacy per-job 100-edge display cap.
+`links_view=LATEST_SNAPSHOTS` and `metrics.listed_link_observations` identify this
+view; it is not a historical all-snapshot total. Each page retains the existing
+100-observation bound, exposed as `per_page_link_limit` and a conservative
+`links_may_be_truncated` flag. Export rejects a snapshot change between listing
+and page-text readback; retry after the worker stops. Remote Markdown syntax is
+escaped as literal text so captured images/links do not become active markup.
+
 ## CLI workflow
 
 Legacy `research plan --url ...`, `run --plan ...`, local search and ordinary

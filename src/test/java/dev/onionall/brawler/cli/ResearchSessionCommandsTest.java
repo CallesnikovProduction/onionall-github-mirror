@@ -239,4 +239,59 @@ public class ResearchSessionCommandsTest {
         assertEquals(0, success(archive, "research", "links", id).path("links").size());
         assertEquals(0, success(archive, "research", "files", id).path("file_candidates").size());
     }
+
+    @Test public void sessionReadbackIncludesEveryLatestPageLinkBeyondLegacyJobLimit() throws Exception {
+        Path directory = temporary.newFolder().toPath();
+        Path archive = directory.resolve("archive");
+        String session = success(archive, "research", "import", "--seed", URLS.get(0),
+            "--label", "Manual link-readback regression").path("session_id").asText();
+        success(archive, "research", "select", session, "--all-valid");
+        JsonNode plan = success(archive, "research", "plan", "--session", session,
+            "--depth", "2", "--pages-per-seed", "5", "--global-pages", "5");
+        String job = plan.path("seeds").get(0).path("job_id").asText();
+        success(archive, "research", "approve", session);
+        Set<String> sourcePages = new HashSet<>();
+        Set<String> expectedTargets = new HashSet<>();
+        for (int page = 1; page <= 2; page++) {
+            StringBuilder html = new StringBuilder("<html><title>Manual discussion page ")
+                .append(page).append("</title><body>");
+            for (int link = 0; link < 60; link++) {
+                String path = "/resource-" + page + "-" + link;
+                html.append("<a href='").append(path).append("'>observed link</a>");
+                expectedTargets.add("http://" + OnionSmoke.HOST + path);
+            }
+            html.append("</body></html>");
+            Path file = directory.resolve("page-" + page + ".html");
+            Files.writeString(file, html);
+            JsonNode imported = success(archive, "archive", "import", file.toString(),
+                "--plan", job, "--url", "http://" + OnionSmoke.HOST + "/thread/page-" + page);
+            assertEquals("MANUAL_IMPORT", imported.path("import_mode").asText());
+            assertEquals(0, imported.path("network_requests").asInt(-1));
+        }
+        JsonNode result = success(archive, "research", "results", session);
+        assertEquals(2, result.path("pages").size());
+        for (JsonNode page : result.path("pages")) {
+            sourcePages.add(page.path("page_id").asText());
+            assertEquals("MANUAL_IMPORT", page.path("source_kind").asText());
+        }
+        assertEquals(2, sourcePages.size());
+        // Два genuine MANUAL_IMPORT snapshot по 60 ссылок: это readback, не fake fetch success.
+        assertEquals(120, result.path("links").size());
+        assertEquals("LATEST_SNAPSHOTS", result.path("links_view").asText());
+        assertEquals(100, result.path("per_page_link_limit").asInt());
+        assertEquals(120, result.path("metrics").path("listed_link_observations").asInt());
+        assertTrue(result.path("metrics").path("pages_fetched").isNull());
+        Set<String> observedSources = new HashSet<>();
+        Set<String> observedTargets = new HashSet<>();
+        for (JsonNode link : result.path("links")) {
+            observedSources.add(link.path("source_page_id").asText());
+            observedTargets.add(link.path("target_url").asText());
+            assertEquals(job, link.path("job_id").asText());
+        }
+        assertEquals(sourcePages, observedSources);
+        assertEquals(expectedTargets, observedTargets);
+        JsonNode links = success(archive, "research", "links", session);
+        assertEquals(120, links.path("links").size());
+        assertEquals(result.path("links"), links.path("links"));
+    }
 }

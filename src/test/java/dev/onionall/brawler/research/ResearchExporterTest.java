@@ -110,7 +110,7 @@ public class ResearchExporterTest {
             if (format.equals("markdown")) {
                 assertFalse(text.contains("<script>"));
                 assertTrue(text.contains("&lt;script&gt;"));
-                assertTrue(text.contains("> # forged heading"));
+                assertTrue(text.contains("> \\# forged heading"));
             }
         }
     }
@@ -120,6 +120,23 @@ public class ResearchExporterTest {
         var page = page("я".repeat(ResearchExporter.MAX_EXPORT_BYTES / 2));
         assertThrows(IOException.class, () -> ResearchExporter.export(result(), List.of(page), "json", output));
         assertFalse(Files.exists(output));
+    }
+
+    @Test public void markdownKeepsRemoteImagesAndLinksAsLiteralText() throws Exception {
+        var page = page("![probe](https://example.invalid/pixel)\n[remote](https://example.invalid/)\n```html\n<img src=x>\n```");
+        page.put("title", "![title](https://example.invalid/title)");
+        var reply = ResearchExporter.export(result(), List.of(page), "markdown",
+            temporary.newFolder().toPath().resolve("literal"));
+        String output = Files.readString(Path.of((String) reply.get("output_file")));
+        assertFalse(output.contains("![probe]("));
+        assertFalse(output.contains("![title]("));
+        assertFalse(output.contains("[remote]("));
+        assertFalse(output.contains("<img"));
+        assertTrue(output.contains("\\!\\[probe\\]\\("));
+        assertTrue(output.contains("\\!\\[title\\]\\("));
+        assertTrue(output.contains("\\[remote\\]\\("));
+        assertTrue(output.contains("> \\`\\`\\`html"));
+        assertEquals(0, ((Number) reply.get("network_requests")).intValue());
     }
 
     @Test public void existingContentsAndSymlinkOutputsAreNeverOverwritten() throws Exception {
