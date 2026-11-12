@@ -171,16 +171,31 @@ class Runtime:
             args = ['--help']
         # Deployment defaults only. Original CLI still owns plan/approval/limits and exit codes.
         command = cli_command_path(args)
-        if command in (('crawl', 'start'), ('crawl', 'status'), ('research', 'run'), ('research', 'results')):
+        if command in (('crawl', 'start'), ('crawl', 'status'), ('research', 'run'), ('research', 'results'), ('research', 'status')):
             if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
             if not any(a == '--admission-token-file' or a.startswith('--admission-token-file=') for a in args):
                 args += ['--admission-token-file', '/state/admission-token']
-        if command in (('config', 'proxy'), ('system', 'doctor')):
+        if command in (('config', 'proxy'), ('system', 'doctor'), ('research', 'discover')):
             if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
         self.check_docker()
-        self.dc('run', '--rm', '--no-deps', 'crawler', *args, timeout=740)
+        timeout = 740
+        if command == ('research', 'run') and any(a == '--session' or a.startswith('--session=') for a in args):
+            budget = 600
+            for index, argument in enumerate(args):
+                if argument == '--total-seconds' and index + 1 < len(args):
+                    try:
+                        budget = int(args[index + 1])
+                    except ValueError:
+                        pass  # JVM CLI reports invalid arguments before starting work.
+                elif argument.startswith('--total-seconds='):
+                    try:
+                        budget = int(argument.split('=', 1)[1])
+                    except ValueError:
+                        pass
+            timeout = max(740, min(3600, max(30, budget)) + 240)
+        self.dc('run', '--rm', '--no-deps', 'crawler', *args, timeout=timeout)
         return 0
 
     def down(self):

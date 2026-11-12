@@ -28,7 +28,7 @@ Preserve correct existing Java; do not migrate it for language uniformity.
 Java exceptions are limited to demonstrated integration/generated/build-tool needs.
 Preserve owner Javadoc/KDoc and third-party authorship. New or substantially
 rewritten project-owned source documents nontrivial contracts and attributes
-Стефан Колесников and GPT-6 Astra; do not retag unchanged or upstream code.
+Стефан Колесников and GPT-6.1 Sol for new work; preserve prior agent/upstream attribution.
 
 Kotlin [ResearchCommands](src/main/kotlin/dev/onionall/brawler/cli/ResearchCommands.kt)
 adds bounded plan/run/result/graph/file-candidate and local-search commands. Its Backend is wired
@@ -38,6 +38,15 @@ Kotlin [RuntimeCommands](src/main/kotlin/dev/onionall/brawler/cli/RuntimeCommand
 edits only SOCKS host/port in the existing descriptor and probes SOCKS negotiation.
 Canonical up retains that endpoint. Doctor does not prove Tor identity/bootstrap
 or Frontier readiness; credentials and host networking remain outside its scope.
+
+M6 [research sessions](src/main/kotlin/dev/onionall/brawler/research/AGENTS.md)
+add actual authorized Ahmia form search, durable candidates/selection/approval,
+bounded multi-seed coordination and local exports. A session owns separate existing
+same-origin crawl plans; the sum of child page caps fits its immutable global cap.
+Frontier remains scheduler/quota authority. Kotlin ResearchCatalog adds only
+research_sessions_v1 in the existing H2 catalog through Java forwarding adapters.
+File candidates are observations, not downloaded files. See [M6 contract](docs/m6-research.md)
+and [M6 checkpoint](docs/engineering/m6-checkpoint.md) for current continuation.
 
 Canonical local operation uses root `./onionall` ->
 `scripts/runners/runtime.py` -> `compose.runtime.yaml`; see
@@ -59,6 +68,7 @@ retain all volumes.
 | [Admission](src/main/java/dev/onionall/brawler/admission/AGENTS.md) | Crawl service, generated product graph, RPC and worker ownership |
 | [Archive](src/main/java/dev/onionall/brawler/archive/AGENTS.md) | H2 catalog, immutable HTML objects and observations |
 | [CLI](src/main/java/dev/onionall/brawler/cli/AGENTS.md) | Commands, offline workflows and terminal presentation |
+| [Research](src/main/kotlin/dev/onionall/brawler/research/AGENTS.md) | Provider discovery, session/CAS persistence, approved child plans, document hints and exports |
 | [Capability adapters](src/main/java/org/apache/stormcrawler/urlfrontier/AGENTS.md) | Source-pinned capability Spout/status updater |
 | [Tor](src/main/kotlin/dev/onionall/brawler/tor/AGENTS.md) / [Discovery](src/main/kotlin/dev/onionall/brawler/discovery/AGENTS.md) | Fail-closed transport/scope and local-test discovery |
 | [Resources](src/main/resources/AGENTS.md) | Default parser/filter resources and generated override boundary |

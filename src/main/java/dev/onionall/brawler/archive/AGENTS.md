@@ -3,6 +3,10 @@
 Наследует [общие Java-соглашения](../AGENTS.md).
 Хранит планы/approval, immutable HTML, snapshots, provenance, связи и failure observations.
 Admission, quota, leases и retry scheduling принадлежат Frontier.
+M6 добавляет Kotlin ResearchCatalog с additive `research_sessions_v1` в этом же H2.
+Методы createResearchSession/researchSession/updateResearchSession/researchSessionExists
+— только compilation bridge; JDBC connection не покидает ArchiveStore. Записи сохраняют
+catalog_guard/CAS revision и capacity guard; core schema version не меняется.
 
 ## Классы
 

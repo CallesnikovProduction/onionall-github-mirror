@@ -5,6 +5,7 @@ import dev.onionall.brawler.archive.ArchiveStore;
 import dev.onionall.brawler.archive.SearchProvider;
 import dev.onionall.brawler.crawl.CrawlService;
 import dev.onionall.brawler.tor.TorPolicy;
+import dev.onionall.brawler.research.ResearchWorkflow;
 import java.net.URI;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -56,6 +57,52 @@ public final class ArchiveCommands {
                 root.print(new LinkedHashMap<>(value));
             }
         };
+    }
+
+    /**
+     * <b>Тонкий Java/Kotlin bridge без собственного scheduler или research domain logic.</b>
+     * @author Стефан Колесников
+     * @author GPT-6.1 Sol
+     */
+    static ResearchWorkflow sessions(Onionall root) {
+        return new ResearchWorkflow(new ResearchWorkflow.Backend() {
+            public Path archiveRoot() { return root.archiveDirectory(); }
+            public Map<String, Object> create(Map<String, ? extends Object> document) throws Exception {
+                try (var archive = store(root)) { return archive.createResearchSession(document); }
+            }
+            public Map<String, Object> load(String id) throws Exception {
+                try (var archive = store(root)) { return archive.researchSession(id); }
+            }
+            public Map<String, Object> save(String id, long revision, Map<String, ? extends Object> document) throws Exception {
+                try (var archive = store(root)) { return archive.updateResearchSession(id, revision, document); }
+            }
+            public boolean exists(String id) throws Exception {
+                try (var archive = store(root)) { return archive.researchSessionExists(id); }
+            }
+            public Map<String, Object> plan(String url, int depth, int pages, String provider) throws Exception {
+                return service(root).createPlan(List.of(url), depth, pages, provider);
+            }
+            public Map<String, Object> approve(String id) throws Exception { return service(root).approve(id); }
+            public Map<String, Object> start(String id, Path runtime, Path token) throws Exception {
+                return service(root).start(id, runtime, token);
+            }
+            public Map<String, Object> status(String id, Path runtime, Path token) throws Exception {
+                return service(root).status(id, runtime, token);
+            }
+            public Map<String, Object> pages(String id) throws Exception {
+                try (var archive = store(root)) { return archive.pages(id, 100); }
+            }
+            public Map<String, Object> page(String id) throws Exception {
+                try (var archive = store(root)) { return archive.page(id); }
+            }
+            public Map<String, Object> links(String id) throws Exception {
+                try (var archive = store(root)) { return archive.links(id, 100); }
+            }
+            public Map<String, Object> errors(String id) throws Exception { return service(root).errors(id, null, 100); }
+            public void print(Map<String, ? extends Object> value) throws Exception {
+                root.print(new LinkedHashMap<>(value));
+            }
+        });
     }
 
     private ArchiveCommands() {
