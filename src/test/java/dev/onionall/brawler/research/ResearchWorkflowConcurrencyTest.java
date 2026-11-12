@@ -208,4 +208,50 @@ public class ResearchWorkflowConcurrencyTest {
         try (var entries = Files.list(outside)) { assertEquals(0, entries.count()); }
         assertTrue(Files.isSymbolicLink(link));
     }
+
+    @Test public void frozenExportRowsRejectChangedSnapshotAndSnapshotIdOnlyMismatch() throws Exception {
+        Fixture fixture = ready();
+        String job = (String) firstSeed(fixture.backend.load(fixture.session)).get("job_id");
+        Map<String, Object> first;
+        try (var store = new ArchiveStore(fixture.backend.root)) {
+            first = store.importHtml(job, URL, "<html><title>Snapshot A</title><body>first capture</body></html>"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8), List.of());
+        }
+        Map<String, Object> frozen = fixture.workflow.results(fixture.session, null, null);
+        var frozenDetails = fixture.workflow.pageDetails(frozen);
+        assertEquals(1, frozenDetails.size());
+        assertEquals("MANUAL_IMPORT", frozenDetails.getFirst().get("source_kind"));
+        assertEquals(first.get("snapshot_id"), frozenDetails.getFirst().get("snapshot_id"));
+
+        Map<String, Object> second;
+        try (var store = new ArchiveStore(fixture.backend.root)) {
+            second = store.importHtml(job, URL, "<html><title>Snapshot B</title><body>later capture</body></html>"
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8), List.of());
+        }
+        assertEquals(first.get("page_id"), second.get("page_id"));
+        assertNotEquals(first.get("snapshot_id"), second.get("snapshot_id"));
+        assertNotEquals(first.get("content_hash"), second.get("content_hash"));
+        assertThrows(IOException.class, () -> fixture.workflow.pageDetails(frozen));
+
+        Map<String, Object> fresh = fixture.workflow.results(fixture.session, null, null);
+        var freshDetails = fixture.workflow.pageDetails(fresh);
+        assertEquals(1, freshDetails.size());
+        assertEquals(second.get("snapshot_id"), freshDetails.getFirst().get("snapshot_id"));
+        assertEquals("Snapshot B", freshDetails.getFirst().get("title"));
+        assertEquals("MANUAL_IMPORT", freshDetails.getFirst().get("source_kind"));
+        assertNull(freshDetails.getFirst().get("fetched_at"));
+        assertEquals(0, fixture.backend.starts.get());
+        @SuppressWarnings("unchecked") var metrics = (Map<String, Object>) fresh.get("metrics");
+        assertNull(metrics.get("pages_fetched"));
+
+        // Same-hash manual replay намеренно переиспользует snapshot_id в настоящем каталоге.
+        // Отдельный in-memory negative control проверяет identity, не создавая выдуманных DB rows.
+        @SuppressWarnings("unchecked") var pageRows = (List<Map<String, Object>>) fresh.get("pages");
+        var staleIdentity = new LinkedHashMap<>(pageRows.getFirst());
+        staleIdentity.put("snapshot_id", first.get("snapshot_id"));
+        assertEquals(second.get("content_hash"), staleIdentity.get("content_hash"));
+        var identityMismatch = new LinkedHashMap<>(fresh);
+        identityMismatch.put("pages", List.of(staleIdentity));
+        assertThrows(IOException.class, () -> fixture.workflow.pageDetails(identityMismatch));
+    }
 }

@@ -169,8 +169,22 @@ object ResearchExporter {
     private fun quoted(writer: Writer, text: String, markdown: Boolean) {
         for (line in plain(text).lineSequence()) {
             writer.write(if (markdown) "> " else "| ")
-            writer.write(if (markdown) line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") else line)
+            writer.write(if (markdown) markdownData(line) else line)
             writer.write("\n")
+        }
+    }
+
+    // Blockquote сам по себе допускает images/links/code: экранируем всю ASCII punctuation.
+    private fun markdownData(value: String): String = buildString {
+        for (character in value) when (character) {
+            '&' -> append("&amp;")
+            '<' -> append("&lt;")
+            '>' -> append("&gt;")
+            else -> {
+                if (character.code in 33..47 || character.code in 58..64 ||
+                    character.code in 91..96 || character.code in 123..126) append('\\')
+                append(character)
+            }
         }
     }
 

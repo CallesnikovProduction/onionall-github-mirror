@@ -199,9 +199,10 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
                 "host" to seed["host"], "execution_state" to seed["execution_state"], "status" to observation)
         }
         val pages = seeds.flatMap { maps(backend.pages(it["job_id"] as String)["pages"]) }
-        val links = seeds.flatMap { maps(backend.links(it["job_id"] as String)["links"]) }
+        val details = readPageDetails(pages).associateBy { it["page_id"] as String }
+        val links = details.values.flatMap { maps(it["links"]) }
         val errors = seeds.flatMap { maps(backend.errors(it["job_id"] as String)["rows"]) }
-        val files = ResearchFiles.extract(id, pages, backend::page, backend.archiveRoot())
+        val files = ResearchFiles.extract(id, pages, { details.getValue(it) }, backend.archiveRoot())
         if (doc["file_candidates"] != files) doc = patch(id) { fresh ->
             mapOf("file_candidates" to (maps(fresh["file_candidates"]) + files)
                 .associateBy { it["file_id"] }.values.take(ResearchFiles.MAX_CANDIDATES))
@@ -240,6 +241,7 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
         return mapOf("session_id" to id, "session_status" to state, "session" to doc,
             "per_host" to perHost, "per_seed" to hosts, "pages" to pages, "links" to links, "file_candidates" to storedFiles,
             "errors" to errors, "metrics" to mapOf("pages_fetched" to null, "pages_archived" to pages.size,
+                "listed_link_observations" to links.size,
                 "html_bytes" to pages.sumOf { (it["content_size"] as Number).toLong() },
                 "seeds_selected" to maps(doc["candidates"]).count { it["selected"] == true },
                 "seeds_planned" to seeds.size, "seeds_attempted" to attempted,
@@ -251,11 +253,19 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
                 "terminal_failures" to null, "completed" to null),
             "terminal_provenance" to "UNKNOWN_FRONTIER_V1", "binary_downloads" to 0,
             "files_may_be_truncated" to (storedFiles.size == ResearchFiles.MAX_CANDIDATES),
-            "per_job_link_limit" to 100, "links_may_be_truncated" to seeds.any {
-                maps(backend.links(it["job_id"] as String)["links"]).size == 100 })
+            "links_view" to "LATEST_SNAPSHOTS", "per_page_link_limit" to 100,
+            "links_may_be_truncated" to details.values.any { maps(it["links"]).size == 100 })
     }
 
-    fun pageDetails(result: Map<String, Any?>): List<Map<String, Any?>> = maps(result["pages"]).map { backend.page(it["page_id"] as String) }
+    fun pageDetails(result: Map<String, Any?>): List<Map<String, Any?>> = readPageDetails(maps(result["pages"]))
+    private fun readPageDetails(pages: List<Map<String, Any?>>): List<Map<String, Any?>> = pages.map { row ->
+        val page = backend.page(row["page_id"] as String)
+        // Даже одинаковый HTML может принадлежать новому snapshot с другими links/time metadata.
+        if (listOf("page_id", "job_id", "snapshot_id", "content_hash").any { page[it] != row[it] }) {
+            throw IOException("Archive snapshot changed; inspect after the worker stops")
+        }
+        page
+    }
     private fun updateSeed(doc: Map<String, Any?>, job: String, fields: Map<String, Any?>) = patch(doc["session_id"] as String) { fresh ->
         mapOf("seeds" to maps(fresh["seeds"]).map { if (it["job_id"] == job) it + fields else it }) }
     // Observer может обновить file metadata между child jobs; сливаем только собственные поля.
