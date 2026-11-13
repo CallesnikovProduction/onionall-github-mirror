@@ -355,10 +355,7 @@ class TorProtocol @JvmOverloads constructor(
                             throw IOException("SCOPE_REJECTED")
                         }
                         try {
-                            val target = policy.normalize(URI(safe)
-                                .resolve(locations.single())
-                                .toString()
-                            )
+                            val target = policy.normalize(UriReferences.resolve(safe, locations.single()).toString())
                             md.setValue("location", target)
                         } catch (e: IllegalArgumentException) {
                             throw IOException("SCOPE_REJECTED", e)

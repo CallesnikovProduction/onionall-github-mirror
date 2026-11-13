@@ -26,11 +26,11 @@ def fixture_host(number):
 
 
 def cli_command_path(args):
-    """Read two command names without treating inherited option values as commands."""
+    """Read the command path, including the thread subgroup, skipping inherited options."""
     values = {'--socks-port', '--timeout-ms', '--max-bytes', '--download-dir', '--archive-dir'}
     commands = []
     index = 0
-    while index < len(args) and len(commands) < 2:
+    while index < len(args) and len(commands) < (3 if commands[:2] == ['research', 'thread'] else 2):
         argument = args[index]
         option, separator, _ = argument.partition('=')
         if option in values:
@@ -171,7 +171,7 @@ class Runtime:
             args = ['--help']
         # Deployment defaults only. Original CLI still owns plan/approval/limits and exit codes.
         command = cli_command_path(args)
-        if command in (('crawl', 'start'), ('crawl', 'status'), ('research', 'run'), ('research', 'results'), ('research', 'status')):
+        if command in (('crawl', 'start'), ('crawl', 'status'), ('research', 'run'), ('research', 'results'), ('research', 'status'), ('research', 'thread', 'crawl')):
             if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
             if not any(a == '--admission-token-file' or a.startswith('--admission-token-file=') for a in args):
@@ -181,7 +181,7 @@ class Runtime:
                 args += ['--runtime', '/state/runtime.json']
         self.check_docker()
         timeout = 740
-        if command == ('research', 'run') and any(a == '--session' or a.startswith('--session=') for a in args):
+        if command == ('research', 'thread', 'crawl') or (command == ('research', 'run') and any(a == '--session' or a.startswith('--session=') for a in args)):
             budget = 600
             for index, argument in enumerate(args):
                 if argument == '--total-seconds' and index + 1 < len(args):

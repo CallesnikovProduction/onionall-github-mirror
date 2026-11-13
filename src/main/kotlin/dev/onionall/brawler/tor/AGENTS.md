@@ -17,6 +17,8 @@ TorPolicy validates configured v3 origins without networking. TorProtocol uses a
 ## KEY COMPONENTS
 
 `TorPolicy`, `TorProtocol` and `TorScopeFilter`; Java-visible no-arg protocol construction is required by Storm.
+`UriReferences` resolves raw relative references consistently for HTTP Location and HTML
+callers, including query-only references. It performs no HTML decoding or network I/O.
 
 ## DATA FLOW
 
