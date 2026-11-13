@@ -1,6 +1,7 @@
 package dev.onionall.brawler.research
 
 import dev.onionall.brawler.tor.TorPolicy
+import dev.onionall.brawler.tor.UriReferences
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.URI
@@ -29,6 +30,14 @@ object ResearchFiles {
     private val media = setOf("application/pdf", "application/epub+zip", "text/plain", "text/markdown",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.oasis.opendocument.text", "application/rtf", "text/rtf")
+
+    /** Общая read-only проверка настоящего content-addressed HTML для discussion extraction. */
+    @JvmStatic @Throws(IOException::class)
+    fun verifiedHtml(page: Map<String, Any?>, archiveRoot: Path): ByteArray {
+        val root = archiveRoot.toAbsolutePath().normalize()
+        noSymlinks(root)
+        return body(page, root)
+    }
 
     /**
      * loadPage читает действительный ArchiveStore page; archiveRoot задаёт оператор.
@@ -60,7 +69,7 @@ object ResearchFiles {
             if (kind !in setOf("CRAWLER", "MANUAL_IMPORT")) throw IOException("Unknown archived source kind")
             val document = Jsoup.parse(ByteArrayInputStream(html), null, source)
             val rawBase = document.selectFirst("base[href]")?.attr("href")?.trim()
-            val base = try { if (rawBase == null) sourceUri else sourceUri.resolve(URI(rawBase)) }
+            val base = try { if (rawBase == null) sourceUri else UriReferences.resolve(source, rawBase) }
                 catch (_: Exception) { sourceUri }
             val links = (page["links"] as? List<*>)?.filterIsInstance<Map<*, *>>() ?: emptyList()
             for ((ordinal, anchor) in document.select("a[href],area[href]").withIndex()) {
@@ -69,7 +78,7 @@ object ResearchFiles {
                 val reference = try { URI(raw.trim()) } catch (_: Exception) { continue }
                 if (reference.rawUserInfo != null || reference.scheme?.lowercase(Locale.ROOT)?.let {
                     it !in setOf("http", "https") } == true) continue
-                val target = try { canonical(base.resolve(reference).toString()) } catch (_: IOException) { continue }
+                val target = try { canonical(UriReferences.resolve(base.toString(), reference.toString()).toString()) } catch (_: IOException) { continue }
                 val targetUri = URI(target)
                 val download = anchor.attr("download").takeIf { anchor.hasAttr("download") }
                 val declared = anchor.attr("type").trim().takeIf { it.isNotEmpty() }?.take(256)

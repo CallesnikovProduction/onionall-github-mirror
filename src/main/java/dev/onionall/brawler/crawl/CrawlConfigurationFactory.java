@@ -103,6 +103,7 @@ public final class CrawlConfigurationFactory {
         c.put("admission.port", number(runtime, "frontier_port", 7071, 65535));
         c.put("admission.token.file", tokenFile.toString());
         c.put("admission.session.id", plan.get("plan_id"));
+        c.putAll(dev.onionall.brawler.research.ForumPagination.configuration(plan));
         return c;
     }
 }

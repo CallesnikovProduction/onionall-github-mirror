@@ -62,6 +62,20 @@ class RuntimeTest(unittest.TestCase):
         self.assertIn('kotlinx-coroutines-core-jvm-[0-9]*.jar', source)
         self.assertNotIn('-pl :onionall-brawler', source)
 
+    def test_thread_subgroup_forwards_runtime_and_bounded_budget_without_approval(self):
+        instance = runtime.Runtime()
+        with patch.object(instance, 'check_docker'), patch.object(instance, 'dc') as dc:
+            instance.cli(['--json', '--archive-dir', '/state/archive', 'research', 'thread', 'crawl', 'session', '--total-seconds', '900'])
+        args = dc.call_args.args
+        self.assertIn('/state/runtime.json', args)
+        self.assertIn('/state/admission-token', args)
+        self.assertNotIn('--approve', args)
+        self.assertEqual(1140, dc.call_args.kwargs['timeout'])
+        with patch.object(instance, 'check_docker'), patch.object(instance, 'dc') as dc:
+            instance.cli(['research', 'thread', 'plan', 'http://example.invalid/thread'])
+        self.assertNotIn('--runtime', dc.call_args.args)
+        self.assertNotIn('--admission-token-file', dc.call_args.args)
+
 
 if __name__ == '__main__':
     unittest.main()

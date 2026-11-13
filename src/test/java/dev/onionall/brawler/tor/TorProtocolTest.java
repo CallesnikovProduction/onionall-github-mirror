@@ -252,6 +252,26 @@ public class TorProtocolTest {
         }
     }
 
+    @Test public void queryOnlyRedirectRetainsDocumentPathAndRawQueryWithoutFollowing() throws Exception {
+        String host = TorPolicyTest.onion(5);
+        String query = "?page=2&id=123&label=a%26b&empty=#discard";
+        try (SocksWire wire = new SocksWire(redirect(query))) {
+            TorProtocol protocol = protocol(host, wire.port());
+            try {
+                ProtocolResponse response = protocol.getProtocolOutput(
+                        "http://" + host + "/forum/thread?id=123&page=1", new Metadata());
+                assertEquals(302, response.getStatusCode());
+                assertArrayEquals(new String[]{"http://" + host + "/forum/thread?page=2&id=123&label=a%26b&empty="},
+                        response.getMetadata().getValues("location"));
+                var attempts = wire.await(1);
+                assertEquals(3, attempts.get(0).type);
+                assertEquals(host, attempts.get(0).host);
+                assertTrue(attempts.get(0).request.startsWith("GET /forum/thread?id=123&page=1 HTTP/1.1"));
+                wire.assertNoFurtherConnection();
+            } finally { protocol.cleanup(); }
+        }
+    }
+
     @Test public void ambiguousMissingAndBlankRedirectLocationsArePolicyFailures() throws Exception {
         String host = TorPolicyTest.onion(5);
         for (String headers : List.of("Location: /safe\r\nLocation: http://example.com/\r\n",

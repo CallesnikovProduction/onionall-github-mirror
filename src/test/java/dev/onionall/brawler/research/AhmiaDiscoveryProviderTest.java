@@ -87,6 +87,32 @@ public class AhmiaDiscoveryProviderTest {
             .discover("Kotlin", 1).getCandidates().isEmpty());
     }
 
+    @Test public void htmlEntitiesDecodeOnceAtAttributeBoundaryWithoutRewritingRawQueryIdentity() throws Exception {
+        String prefix = "<li class='result'><h4><a href='/search/redirect?search_term=Kotlin&amp;redirect_url=" + URL;
+        String suffix = "'>Observed result</a></h4><p>Snippet</p></li>";
+        String entries = prefix + "topic?thread=123&amp;page=2" + suffix
+            + prefix + "topic?thread=123&#38;page=2#post" + suffix
+            + prefix + "topic?thread=123&amp;amp;page=2" + suffix
+            + prefix + "topic?thread=123&amp;page=%26amp%3B" + suffix
+            + prefix + "topic?page=2&amp;thread=123" + suffix;
+        var batch = provider(results(entries), new ArrayList<>()).discover("Kotlin", 20);
+        assertEquals(5, batch.getActualResultCount());
+        assertEquals(4, batch.getValidUniqueCount());
+        assertEquals(List.of(
+            URL + "topic?thread=123&page=2",
+            URL + "topic?thread=123&amp;page=2",
+            URL + "topic?thread=123&page=%26amp%3B",
+            URL + "topic?page=2&thread=123"),
+            batch.getCandidates().stream().map(DiscoveryCandidate::getCanonicalUrl).toList());
+        assertEquals(1, batch.getRejected().size());
+        assertEquals("DUPLICATE", batch.getRejected().getFirst().get("validation_status"));
+        assertTrue(batch.getCandidates().getFirst().getOriginalResultUrl().contains("thread=123&page=2"));
+        // Литеральный '&amp;' и '%26amp%3B' могут принадлежать настоящему URL.
+        // Повторное HTML/form decoding в общей canonicalization разрушило бы такую identity.
+        assertNotEquals(batch.getCandidates().getFirst().getCanonicalUrl(),
+            batch.getCandidates().getLast().getCanonicalUrl());
+    }
+
     @Test public void refusesUnsafeTargetsAndUnrelatedRedirectWrappersWithoutVisitingThem() throws Exception {
         var requests = new ArrayList<String>();
         String html = results(entry("http://user@" + HOST + "/", "userinfo")

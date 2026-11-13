@@ -1,0 +1,110 @@
+{
+  "result": {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "session_status": "DRAFT",
+    "acquisition_status": "PARTIAL",
+    "scheduler_readback_current": false,
+    "status_basis": "CURRENT_OBSERVATION",
+    "session": {
+      "query": "Ordinary page fixture",
+      "provider": "fixture",
+      "created_at": "2026-11-13T09:00:00Z",
+      "run_started_at": null,
+      "actual_result_count": 1,
+      "candidates": [
+        {
+          "candidate_id": "00000000-0000-4000-8000-000000000005",
+          "canonical_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+          "host": "juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion",
+          "validation_status": "VALID",
+          "selected": true
+        }
+      ],
+      "seeds": [
+        {
+          "candidate_id": "00000000-0000-4000-8000-000000000005",
+          "job_id": "00000000-0000-4000-8000-000000000002",
+          "url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+          "execution_state": "PAUSED"
+        }
+      ],
+      "approved": false,
+      "private_fixture_field": "MACHINE_ONLY_SESSION_METADATA"
+    },
+    "per_seed": [
+      {
+        "candidate_id": "00000000-0000-4000-8000-000000000005",
+        "job_id": "00000000-0000-4000-8000-000000000002",
+        "execution_state": "PAUSED",
+        "status": {
+          "authoritative_readback_current": false
+        }
+      }
+    ],
+    "pages": [
+      {
+        "page_id": "00000000-0000-4000-8000-000000000003",
+        "snapshot_id": "00000000-0000-4000-8000-000000000004"
+      }
+    ],
+    "metrics": {
+      "pages_fetched": null,
+      "terminal_failures": null,
+      "completed": null
+    },
+    "file_candidates": [],
+    "errors": [
+      {
+        "url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+        "category": "FETCH_ERROR",
+        "status": "TIMEOUT",
+        "secret": "MACHINE_ONLY_ERROR_DETAILS"
+      }
+    ],
+    "links_may_be_truncated": false,
+    "files_may_be_truncated": false,
+    "threads": [
+      {
+        "thread_id": "00000000-0000-4000-8000-000000000006",
+        "source_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42",
+        "source_host": "juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion",
+        "title": "General information",
+        "captured_pages": [
+          {
+            "page_id": "00000000-0000-4000-8000-000000000003",
+            "snapshot_id": "00000000-0000-4000-8000-000000000004",
+            "job_id": "00000000-0000-4000-8000-000000000002",
+            "url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+            "fetched_at": null,
+            "recorded_at": "2026-11-13T10:00:00Z",
+            "source_kind": "MANUAL_IMPORT",
+            "extraction_status": "PAGE_TEXT_ONLY",
+            "extraction_method": "FIXTURE_CONTROLLED_DOM",
+            "page_text_truncated": false
+          }
+        ],
+        "observed_pagination": [],
+        "extraction_status": "PAGE_TEXT_ONLY",
+        "completeness_status": "PARTIAL_OR_UNKNOWN",
+        "full_thread_coverage_verified": false,
+        "posts": []
+      }
+    ]
+  },
+  "details": [
+    {
+      "page_id": "00000000-0000-4000-8000-000000000003",
+      "job_id": "00000000-0000-4000-8000-000000000002",
+      "snapshot_id": "00000000-0000-4000-8000-000000000004",
+      "canonical_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+      "fetched_at": null,
+      "recorded_at": "2026-11-13T10:00:00Z",
+      "source_kind": "MANUAL_IMPORT",
+      "title": "Generic ![title](https://example.invalid/image)",
+      "text": "A readable generic page, not invented posts.\n> nested source quote\n![image](https://example.invalid/image)\n<div>literal HTML</div>",
+      "links": [],
+      "storage_location": "MACHINE_ONLY_STORAGE_PATH",
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}

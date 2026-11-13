@@ -1,0 +1,175 @@
+{
+  "result": {
+    "session_id": "00000000-0000-4000-8000-000000000001",
+    "session_status": "PAUSED",
+    "acquisition_status": "DATA_ACQUIRED",
+    "scheduler_readback_current": false,
+    "status_basis": "PERSISTED_BOUNDED_RUN",
+    "session": {
+      "query": "Kotlin discussion | ![query](https://example.invalid/query)\n# forged summary",
+      "provider": "fixture",
+      "created_at": "2026-11-13T09:00:00Z",
+      "run_started_at": "2026-11-13T09:55:00Z",
+      "actual_result_count": 1,
+      "candidates": [
+        {
+          "candidate_id": "00000000-0000-4000-8000-000000000005",
+          "canonical_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+          "host": "juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion",
+          "validation_status": "VALID",
+          "selected": true
+        }
+      ],
+      "seeds": [
+        {
+          "candidate_id": "00000000-0000-4000-8000-000000000005",
+          "job_id": "00000000-0000-4000-8000-000000000002",
+          "url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+          "execution_state": "PAUSED"
+        }
+      ],
+      "approved": true,
+      "private_fixture_field": "MACHINE_ONLY_SESSION_METADATA"
+    },
+    "per_seed": [
+      {
+        "candidate_id": "00000000-0000-4000-8000-000000000005",
+        "job_id": "00000000-0000-4000-8000-000000000002",
+        "execution_state": "PAUSED",
+        "status": {
+          "authoritative_readback_current": false
+        }
+      }
+    ],
+    "pages": [
+      {
+        "page_id": "00000000-0000-4000-8000-000000000003",
+        "snapshot_id": "00000000-0000-4000-8000-000000000004"
+      }
+    ],
+    "metrics": {
+      "pages_fetched": null,
+      "terminal_failures": null,
+      "completed": null
+    },
+    "file_candidates": [
+      {
+        "original_filename": "notes | ![file](https://example.invalid/file).pdf",
+        "extension": "pdf",
+        "content_type": null,
+        "content_length": null,
+        "source_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+        "target_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/notes.pdf",
+        "status": "CANDIDATE",
+        "downloaded": false
+      }
+    ],
+    "errors": [],
+    "links_may_be_truncated": false,
+    "files_may_be_truncated": false,
+    "threads": [
+      {
+        "thread_id": "00000000-0000-4000-8000-000000000006",
+        "source_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42",
+        "source_host": "juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion",
+        "title": "![title](https://example.invalid/title)",
+        "captured_pages": [
+          {
+            "page_id": "00000000-0000-4000-8000-000000000003",
+            "snapshot_id": "00000000-0000-4000-8000-000000000004",
+            "job_id": "00000000-0000-4000-8000-000000000002",
+            "url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+            "fetched_at": "2026-11-13T10:00:00Z",
+            "recorded_at": "2026-11-13T10:00:00Z",
+            "source_kind": "CRAWLER",
+            "extraction_status": "STRUCTURED_POSTS",
+            "extraction_method": "FIXTURE_CONTROLLED_DOM",
+            "page_text_truncated": false
+          }
+        ],
+        "observed_pagination": [
+          {
+            "source_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+            "target_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=2",
+            "disposition": "HELD",
+            "captured": false
+          }
+        ],
+        "extraction_status": "PARTIAL",
+        "completeness_status": "PARTIAL_OR_UNKNOWN",
+        "full_thread_coverage_verified": false,
+        "posts": [
+          {
+            "post_id": "00000000-0000-4000-8000-000000000007",
+            "source_post_id": "p7",
+            "thread_id": "00000000-0000-4000-8000-000000000006",
+            "source_page_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+            "source_page_id": "00000000-0000-4000-8000-000000000003",
+            "snapshot_id": "00000000-0000-4000-8000-000000000004",
+            "author": null,
+            "posted_at": null,
+            "text": "Useful Kotlin answer.\n![probe](https://example.invalid/pixel)\n<script>remote()</script>\n# forged heading\ncontrol:\u001b[31m",
+            "quoted_text": [
+              "First quoted reply\n> nested quote",
+              "Second quote with [link](https://example.invalid/)"
+            ],
+            "referenced_links": [
+              {
+                "url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/guide?x=1&y=2"
+              }
+            ],
+            "attachments": [
+              {
+                "original_filename": "notes.pdf",
+                "target_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/notes.pdf",
+                "filename": "notes.pdf"
+              }
+            ],
+            "extraction_method": "TRADITIONAL_FORUM_POST",
+            "confidence": "DOM_BOUNDARIES_IDENTIFIED",
+            "evidence": {
+              "container_selector": "div.post",
+              "fixture": "MACHINE_ONLY_POST_EVIDENCE"
+            }
+          },
+          {
+            "post_id": "00000000-0000-4000-8000-000000000008",
+            "source_post_id": "p8",
+            "thread_id": "00000000-0000-4000-8000-000000000006",
+            "source_page_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+            "source_page_id": "00000000-0000-4000-8000-000000000003",
+            "snapshot_id": "00000000-0000-4000-8000-000000000004",
+            "author": "Alice",
+            "posted_at": "2026-11-13T08:30:00Z",
+            "text": "A second observed message with available author and time.",
+            "quoted_text": [],
+            "referenced_links": [],
+            "attachments": [],
+            "extraction_method": "TRADITIONAL_FORUM_POST",
+            "confidence": "DOM_BOUNDARIES_IDENTIFIED",
+            "evidence": {
+              "container_selector": "div.post",
+              "fixture": "MACHINE_ONLY_POST_EVIDENCE"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "details": [
+    {
+      "page_id": "00000000-0000-4000-8000-000000000003",
+      "job_id": "00000000-0000-4000-8000-000000000002",
+      "snapshot_id": "00000000-0000-4000-8000-000000000004",
+      "canonical_url": "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/viewtopic.php?t=42&page=1",
+      "fetched_at": "2026-11-13T10:00:00Z",
+      "recorded_at": "2026-11-13T10:00:00Z",
+      "source_kind": "CRAWLER",
+      "title": "Captured title",
+      "text": "Full page text includes navigation; avoid duplicating extracted messages.",
+      "links": [],
+      "storage_location": "MACHINE_ONLY_STORAGE_PATH",
+      "content_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ]
+}
