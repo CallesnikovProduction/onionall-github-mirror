@@ -32,6 +32,8 @@ public final class DurableDiscoveryFilter extends ParseFilter {
 
     private int pageBudgetMillis;
 
+    private String threadSeed;
+
     private final LongSupplier nanoTime;
 
     public DurableDiscoveryFilter() {
@@ -66,6 +68,7 @@ public final class DurableDiscoveryFilter extends ParseFilter {
             throw new IllegalArgumentException("Require durable-v1 admission");
         }
         policy = new dev.onionall.brawler.tor.TorPolicy(conf);
+        threadSeed = conf.get("research.thread.seed") instanceof String value ? value : null;
         try {
             pageBudgetMillis = dev.onionall.brawler.crawl.RuntimeDescriptor.number(
                 conf, "discovery.admission.timeout.ms", 30000, 30000);
@@ -123,6 +126,7 @@ public final class DurableDiscoveryFilter extends ParseFilter {
      */
     private String canonicalTarget(String url) throws IOException {
         String normalized = policy.normalize(url);
+        if (threadSeed != null) normalized = dev.onionall.brawler.research.ForumPagination.canonical(normalized);
         URI parsed = URI.create(normalized);
         // Frontier canonical identity omits the scheme's default port.
         return parsed.getPort() == -1 ? normalized : parsed.getScheme() + "://" + parsed.getHost() +
@@ -178,7 +182,7 @@ public final class DurableDiscoveryFilter extends ParseFilter {
             Set<String> seen = new HashSet<>();
             URI origin = URI.create(url);
             int examined = 0;
-            for (var anchor : document.select("a[href]")) {
+            for (var anchor : document.select(threadSeed == null ? "a[href]" : "a[href],link[rel=next][href]")) {
                 remaining(deadline);
                 if (++examined > 100) {
                     break;
@@ -189,13 +193,15 @@ public final class DurableDiscoveryFilter extends ParseFilter {
                 }
                 URI resolved;
                 try {
-                    resolved = origin.resolve(URI.create(raw));
+                    resolved = dev.onionall.brawler.tor.UriReferences.resolve(url, raw);
                 } catch (IllegalArgumentException invalidCandidate) {
                     edges.add(edge(url, "", "INVALID_URL"));
                     continue;
                 }
                 if (!Set.of("http", "https").contains(Objects.toString(resolved.getScheme(), "")) ||
                     resolved.getHost() == null || resolved.getRawUserInfo() != null) {
+                    String rejected = resolved.toString().split("#", 2)[0];
+                    edges.add(edge(url, rejected.length() <= 2048 ? rejected : "", "UNSUPPORTED_OR_INVALID_URL"));
                     continue;
                 }
                 String target = resolved.toASCIIString().split("#", 2)[0];
@@ -218,7 +224,9 @@ public final class DurableDiscoveryFilter extends ParseFilter {
                     } else {
                         if (!target.equals(canonical) && !seen.add(canonical)) continue;
                         target = canonical;
-                        disposition = reserve(client, url, parent.depth() + 1, target, deadline);
+                        if (threadSeed != null && dev.onionall.brawler.research.ForumPagination.eligible(threadSeed,
+                            url, target) == null) disposition = "THREAD_REJECTED";
+                        else disposition = reserve(client, url, parent.depth() + 1, target, deadline);
                     }
                 }
                 edges.add(edge(url, target, disposition));

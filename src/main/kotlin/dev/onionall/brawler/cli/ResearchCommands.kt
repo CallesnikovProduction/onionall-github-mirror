@@ -23,7 +23,7 @@ import picocli.CommandLine.ParentCommand
         ResearchCommands.Results::class, ResearchCommands.Links::class, ResearchCommands.Files::class,
         ResearchCommands.Search::class, SessionCommands.Discover::class, SessionCommands.Import::class,
         SessionCommands.Candidates::class, SessionCommands.Select::class, SessionCommands.Approve::class,
-        SessionCommands.Status::class, SessionCommands.Pages::class, SessionCommands.Export::class])
+        SessionCommands.Status::class, SessionCommands.Pages::class, SessionCommands.Export::class, ThreadCommands::class])
 class ResearchCommands @JvmOverloads constructor(private val backend: Backend,
     private val workflow: ResearchWorkflow? = null) : Callable<Int> {
     fun sessions(): ResearchWorkflow = requireNotNull(workflow) { "Research session backend unavailable" }
@@ -43,7 +43,7 @@ class ResearchCommands @JvmOverloads constructor(private val backend: Backend,
 
     override fun call(): Int {
         backend.print(mapOf("commands" to listOf("discover", "import", "candidates", "select", "plan", "approve",
-            "run", "status", "pages", "results", "links", "files", "search", "export"),
+            "run", "status", "pages", "results", "links", "files", "search", "export", "thread"),
             "approval_required" to true, "scheduling_owner" to "URLFrontier"))
         return 0
     }

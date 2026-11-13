@@ -31,6 +31,11 @@ M6 SessionCommands добавляет live `research discover`, `import`, `candi
 не запускает crawl; batch approval относится к frozen child scopes и отдельным budget caps.
 Экспорт локальный, bounded и сохраняет source/time provenance; file candidates не скачиваются.
 Контракт: [M6](../../../../../../../docs/m6-research.md).
+M6.1 ThreadCommands добавляет thread plan/crawl/show поверх того же workflow и approval.
+Session navigation поддерживает depth3; отдельный thread plan использует max5 pages и
+pagination hops0..4, не расширяя legacy research plan/run. Читаемый экспорт показывает
+сообщения с provenance и ограничения; полный machine metadata остаётся JSON/JSONL.
+Контракт: [M6.1](../../../../../../../docs/m61-forum-research.md).
 Fetch выполняет один transport GET; Inspect/Discover работают с локальными файлами;
 Status делает локальный TCP connect. ArchiveCommands.Start может запустить настоящий worker,
 поэтому весь ArchiveCommands нельзя считать offline-пакетом.

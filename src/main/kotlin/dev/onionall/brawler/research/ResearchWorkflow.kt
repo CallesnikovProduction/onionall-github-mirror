@@ -97,7 +97,7 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
     @Throws(Exception::class)
     fun plan(id: String, depth: Int, pagesPerSeed: Int, globalPages: Int): Map<String, Any?> {
         var doc = session(id)
-        require(depth in 0..2 && pagesPerSeed in 1..20 && globalPages in 1..100)
+        require(depth in 0..(if (doc["mode"] == "THREAD") 4 else 3) && pagesPerSeed in 1..20 && globalPages in 1..100)
         val selected = maps(doc["candidates"]).filter { it["selected"] == true }
         require(selected.isNotEmpty() && selected.size <= 20) { "Select 1..20 valid candidates first" }
         require(selected.size * pagesPerSeed <= globalPages) { "Child page caps exceed separate global page budget" }
@@ -118,12 +118,24 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
             if (maps(doc["seeds"]).any { it["candidate_id"] == candidate["candidate_id"] }) continue
             val url = canonical(candidate["canonical_url"] as String)
             val job = backend.plan(url, number(doc["depth"]), number(doc["pages_per_seed"]),
-                "m6:" + doc["provider"])
+                if (doc["mode"] == "THREAD") "m61:thread" else "m6:" + doc["provider"])
             doc = save(doc, mapOf("seeds" to maps(doc["seeds"]) + mapOf(
                 "candidate_id" to candidate["candidate_id"], "url" to url, "host" to URI(url).host,
                 "job_id" to job["plan_id"], "execution_state" to "PENDING")))
         }
         return save(doc, mapOf("planning_state" to "READY"))
+    }
+
+    /** Отдельный approved child: обычная navigation запрещена, Frontier depth считает pagination hops. */
+    fun threadPlan(url: String, maxPages: Int): Map<String, Any?> {
+        require(maxPages in 1..5) { "Thread page budget must be 1..5" }
+        val seed = ForumPagination.canonical(url)
+        val created = importSeeds(listOf(seed), "Thread capture")
+        val id = created["session_id"] as String
+        patch(id) { mapOf("mode" to "THREAD", "thread_seed_url" to seed, "thread_max_pages" to maxPages,
+            "navigation_depth" to 0, "pagination_budget_basis" to "SEPARATE_IMMUTABLE_FRONTIER_PLAN") }
+        select(id, emptyList(), true, emptyList())
+        return plan(id, maxPages - 1, maxPages, maxPages)
     }
 
     @Throws(Exception::class)
@@ -202,10 +214,12 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
         val details = readPageDetails(pages).associateBy { it["page_id"] as String }
         val links = details.values.flatMap { maps(it["links"]) }
         val errors = seeds.flatMap { maps(backend.errors(it["job_id"] as String)["rows"]) }
-        val files = ResearchFiles.extract(id, pages, { details.getValue(it) }, backend.archiveRoot())
-        if (doc["file_candidates"] != files) doc = patch(id) { fresh ->
+        val threads = ResearchThreads.extract(doc, details.values.toList(), backend.archiveRoot())
+        val files = ResearchThreads.attachPostSources(ResearchFiles.extract(id, pages, { details.getValue(it) }, backend.archiveRoot()), threads)
+        if (doc["file_candidates"] != files || doc["threads"] != threads) doc = patch(id) { fresh ->
             mapOf("file_candidates" to (maps(fresh["file_candidates"]) + files)
-                .associateBy { it["file_id"] }.values.take(ResearchFiles.MAX_CANDIDATES))
+                .associateBy { it["file_id"] }.values.take(ResearchFiles.MAX_CANDIDATES),
+                "threads" to threads, "discussion_cache_basis" to "DERIVED_VERIFIED_ARCHIVE_SNAPSHOTS")
         }
         val storedFiles = maps(doc["file_candidates"])
         val current = hosts.isNotEmpty() && hosts.all { (it["status"] as Map<*, *>)["authoritative_readback_current"] == true }
@@ -235,13 +249,21 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
             attempted < seeds.size -> "PENDING"
             seeds.isNotEmpty() && seeds.all { it["execution_state"] == "EXECUTION_FAILED" } -> "EXECUTION_FAILED"
             seeds.any { it["execution_state"] == "EXECUTION_FAILED" } -> "PARTIAL"
-            !current -> "UNKNOWN"
+            !current && !(doc["run_state"] in setOf("PAUSED", "PAUSED_TIME_BUDGET") && doc["run_finished_at"] is String) -> "UNKNOWN"
             else -> "PAUSED"
         }
         return mapOf("session_id" to id, "session_status" to state, "session" to doc,
+            "status_basis" to if (current) "CURRENT_OBSERVATION" else if (state == "PAUSED") "PERSISTED_BOUNDED_RUN" else "PERSISTED_EXECUTION_AND_OBSERVATIONS",
+            "scheduler_readback_current" to current,
+            "acquisition_status" to if (pages.isEmpty()) "NO_ARCHIVED_HTML" else if (seeds.any { seed -> pages.none { it["job_id"] == seed["job_id"] } }) "PARTIAL" else "DATA_ACQUIRED",
             "per_host" to perHost, "per_seed" to hosts, "pages" to pages, "links" to links, "file_candidates" to storedFiles,
+            "threads" to threads,
+            "discussion_scope_rejected_pages" to if (doc["mode"] == "THREAD") pages.filter {
+                ForumPagination.identity(it["canonical_url"] as String) != ForumPagination.identity(doc["thread_seed_url"] as String)
+            }.map { mapOf("page_id" to it["page_id"], "url" to it["canonical_url"], "reason" to "OUTSIDE_APPROVED_THREAD_IDENTITY") } else emptyList<Map<String, Any?>>(),
             "errors" to errors, "metrics" to mapOf("pages_fetched" to null, "pages_archived" to pages.size,
                 "listed_link_observations" to links.size,
+                "threads_extracted" to threads.size, "posts_extracted" to threads.sumOf { maps(it["posts"]).size },
                 "html_bytes" to pages.sumOf { (it["content_size"] as Number).toLong() },
                 "seeds_selected" to maps(doc["candidates"]).count { it["selected"] == true },
                 "seeds_planned" to seeds.size, "seeds_attempted" to attempted,
@@ -257,7 +279,12 @@ class ResearchWorkflow @JvmOverloads constructor(private val backend: Backend,
             "links_may_be_truncated" to details.values.any { maps(it["links"]).size == 100 })
     }
 
-    fun pageDetails(result: Map<String, Any?>): List<Map<String, Any?>> = readPageDetails(maps(result["pages"]))
+    fun pageDetails(result: Map<String, Any?>): List<Map<String, Any?>> = readPageDetails(maps(result["pages"])).map { page ->
+        val parsed = ForumExtractor.extract(page["canonical_url"] as String, ResearchFiles.verifiedHtml(page, backend.archiveRoot()))
+        page + mapOf("readable_text" to parsed["page_text"], "readable_extraction_status" to parsed["extraction_status"],
+            "readable_extraction_method" to parsed["extraction_method"],
+            "readable_text_truncated" to (parsed["evidence"] as? Map<*, *>)?.get("page_text_truncated"))
+    }
     private fun readPageDetails(pages: List<Map<String, Any?>>): List<Map<String, Any?>> = pages.map { row ->
         val page = backend.page(row["page_id"] as String)
         // Даже одинаковый HTML может принадлежать новому snapshot с другими links/time metadata.

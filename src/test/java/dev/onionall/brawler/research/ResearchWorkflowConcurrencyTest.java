@@ -144,7 +144,9 @@ public class ResearchWorkflowConcurrencyTest {
         assertEquals(0, ((Number) firstSeed(persisted).get("last_worker_exit_code")).intValue());
         assertFalse(firstSeed(persisted).containsKey("error_category"));
         assertEquals(1, fixture.backend.starts.get());
-        assertEquals("UNKNOWN", result.get("session_status"));
+        assertEquals("PAUSED", result.get("session_status"));
+        assertEquals("PERSISTED_BOUNDED_RUN", result.get("status_basis"));
+        assertEquals(false, result.get("scheduler_readback_current"));
         assertTrue(((List<?>) result.get("pages")).isEmpty());
         assertTrue(((List<?>) result.get("links")).isEmpty());
         @SuppressWarnings("unchecked") var metrics = (Map<String, Object>) result.get("metrics");

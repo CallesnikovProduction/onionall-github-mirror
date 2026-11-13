@@ -17,6 +17,10 @@ local_integration.py assembles an isolated Compose runtime and internal syntheti
 ## KEY COMPONENTS
 
 `local_integration.py`, `AdmissionProbe.java`, `WorkerOwnershipProbe.java`.
+`m61_forum_fixture.py` and `m61_native_smoke.py` exercise two controlled discussion DOM
+layouts, ordinary depth3 navigation, separate thread plans, extraction/provenance and
+restart readback through actual native Frontier/Storm. In-flight instrumentation reports
+observed concurrency; independent socket overlap controls are not crawler parallelism proof.
 
 ## DATA FLOW
 

@@ -48,6 +48,15 @@ research_sessions_v1 in the existing H2 catalog through Java forwarding adapters
 File candidates are observations, not downloaded files. See [M6 contract](docs/m6-research.md)
 and [M6 checkpoint](docs/engineering/m6-checkpoint.md) for current continuation.
 
+M6.1 [forum research](docs/m61-forum-research.md) adds a separately approved
+thread-only plan (`provider=m61:thread`), verified numeric pagination, conservative
+DOM post extraction and readable exports. Frontier depth in that plan counts
+pagination hops; ordinary site navigation retains its own scope/depth allocation.
+Derived thread/post observations stay in the existing research document. Source
+post IDs, internal observation IDs and page-text fallback are distinct. A persisted
+paused run and unavailable live scheduler counters are separate observations.
+Continuation/evidence: [M6.1 checkpoint](docs/engineering/m61-checkpoint.md).
+
 Canonical local operation uses root `./onionall` ->
 `scripts/runners/runtime.py` -> `compose.runtime.yaml`; see
 [local runtime](docs/local-runtime.md). `./onionall build`, `test` and `build --images` use the containerized JDK 25
