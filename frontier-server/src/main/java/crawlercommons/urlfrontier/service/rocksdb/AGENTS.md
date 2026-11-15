@@ -18,6 +18,15 @@ AdmissionLedger serializes admission operations under the admission lock. A sync
 
 `RocksDBService`, `AdmissionLedger`, `AdmissionState`, `QueueMetadata` and `ShardedRocksDBService` (upstream alternative, outside candidate admission entrypoint).
 
+`RocksDBService` сохраняет владение базой, CF handles, admissionLock и остановкой.
+Package-private `QueueRecovery` заимствует базу/три CF и карту очередей: сканирует
+постоянные строки при запуске и сохраняет счётчики при остановке.
+Package-private `UrlIndex` заимствует default/queues CF: кодирует прежние ключи
+и читает scheduling projection без изменения leases. Новых блокировок нет;
+вызывающий сохраняет admissionLock и monitor очереди для readback.
+Компоненты остаются в исходном пакете, без публичного моста и context со всем
+состоянием. Не переносите в них Admission policy, commit или закрытие ресурсов.
+
 ## DATA FLOW
 
 Immutable session -> authoritative parent/depth validation -> duplicate replay or new reservation/quota/enqueue batch -> lease/status updates -> reopen scan and counter reconstruction.
