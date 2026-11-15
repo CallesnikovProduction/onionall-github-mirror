@@ -10,12 +10,16 @@ import java.util.*;
 import org.apache.stormcrawler.Metadata;
 import org.apache.stormcrawler.parse.ParseFilter;
 import org.apache.stormcrawler.parse.ParseResult;
+import org.jspecify.annotations.NonNull;
 import org.w3c.dom.DocumentFragment;
 
 /**
- * <b>Сохранение успешного HTML перед эмиссией parser.</b>
+ * <b>Сохранение поддерживаемого документа, уже достигшего parser callback.</b>
  *
- * <p>Проверяет Tor-конфигурацию и approval. Ошибка commit попадает в существующий ERROR-путь JSoupParserBolt; replay использует идемпотентную запись каталога.
+ * <p>Не меняет transport/parser MIME gates до callback. Проверяет Tor-конфигурацию и approval. Ошибка commit попадает в существующий ERROR-путь JSoupParserBolt; replay использует идемпотентную запись каталога.
+ *
+ * @author Stephan Kolesnikov
+ * @author GPT-6.1 Sol
  */
 public final class ArchiveParseFilter extends ParseFilter {
 
@@ -39,7 +43,11 @@ public final class ArchiveParseFilter extends ParseFilter {
      * @param name имя фильтра
      */
     @Override
-    public void configure(Map<String, Object> conf, JsonNode params, String name) {
+    public void configure(
+            @NonNull Map<String, Object> conf,
+            @NonNull JsonNode params,
+            @NonNull String name
+    ) {
         super.configure(conf, params, name);
         root = requiredRoot(conf);
         job = requiredJob(conf);
@@ -104,7 +112,12 @@ public final class ArchiveParseFilter extends ParseFilter {
      * @param parse результат разбора
      */
     @Override
-    public void filter(String url, byte[] content, DocumentFragment fragment, ParseResult parse) {
+    public void filter(
+            String url,
+            byte[] content,
+            DocumentFragment fragment,
+            ParseResult parse
+    ) {
         if (root == null) {
             throw new IllegalStateException("Archive filter not configured");
         }
@@ -114,9 +127,11 @@ public final class ArchiveParseFilter extends ParseFilter {
             int status = Integer.parseInt(Objects.requireNonNull(md.getFirstValue("fetch.statusCode"),
                 "Missing HTTP status"));
             String type = md.getFirstValue(prefix + "content-type");
-            if (type == null || !type.split(";", 2)[0].trim().equalsIgnoreCase("text/html") || status < 200 ||
-                status >= 300) {
-                throw new IOException("Archive requires successful HTML response");
+            String media = type == null ? "" : type.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+            String encoding = md.getFirstValue(prefix + "content-encoding");
+            if (!Set.of("text/html", "text/plain", "text/markdown").contains(media) ||
+                    status < 200 || status >= 300 || encoding != null && !encoding.equalsIgnoreCase("identity")) {
+                throw new IOException("Archive requires supported decoded successful document");
             }
             int depth = Integer.parseInt(Objects.requireNonNullElse(md.getFirstValue("discovery.depth"), "0"));
             String source = Objects.requireNonNullElse(md.getFirstValue("discovery.source"), canonical);
@@ -135,9 +150,15 @@ public final class ArchiveParseFilter extends ParseFilter {
                 }
             }
             try (var store = new ArchiveStore(root)) {
-                Map<String, Object> archived = store.archive(job, canonical, depth, source, status, type, content,
-                    links);
-                md.setValue("archive.page.id", Objects.toString(archived.get("page_id")));
+                Map<String, Object> archived = media.equals("text/html")
+                    ? store.archive(job, canonical, depth, source, status, type, content, links)
+                    : store.archiveDocument(job, canonical, depth, source, status, type, content);
+                if (media.equals("text/html")) {
+                    md.setValue("archive.page.id", Objects.toString(archived.get("page_id")));
+                } else {
+                    md.setValue("archive.document.id", Objects.toString(archived.get("document_id")));
+                    md.setValue("archive.document.format", Objects.toString(archived.get("document_format")));
+                }
                 md.setValue("archive.committed", "true");
             }
         } catch (IOException | IllegalArgumentException e) {

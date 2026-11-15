@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.security.MessageDigest;
-import java.sql.Connection;
 import java.util.*;
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -17,6 +16,14 @@ public class ArchiveStoreTest {
         String id=(String)store.createPlan(List.of(URL),depth,count,"user").get("plan_id");store.approvePlan(id);return id;
     }
     @SuppressWarnings("unchecked") private static List<Map<String,Object>> list(Map<String,Object> map,String key){return (List<Map<String,Object>>)map.get(key);}
+
+    private static void fixtureSql(Path root, String... statements) throws Exception {
+        try (var db=java.sql.DriverManager.getConnection("jdbc:h2:file:"+root.resolve("catalog")+
+                ";AUTO_SERVER=FALSE;WRITE_DELAY=0;DB_CLOSE_ON_EXIT=FALSE","sa","");
+                var statement=db.createStatement()) {
+            for (String sql:statements) { statement.execute(sql); }
+        }
+    }
 
     @Test public void immutableSameOriginPlanCanonicalizesSeedsAndRequiresApproval() throws Exception {
         try(ArchiveStore store=new ArchiveStore(Files.createTempDirectory("archive-plan"))){
@@ -88,11 +95,10 @@ public class ArchiveStoreTest {
         Path root=Files.createTempDirectory("archive-rollback");
         try(ArchiveStore store=new ArchiveStore(root)){
             String job=plan(store,1,2);
-            var field=ArchiveStore.class.getDeclaredField("db");field.setAccessible(true);Connection db=(Connection)field.get(store);
-            try(var statement=db.createStatement()){statement.execute("ALTER TABLE snapshots ADD CONSTRAINT injected_failure CHECK(http_status<>200)");}
+            fixtureSql(root,"ALTER TABLE snapshots ADD CONSTRAINT injected_failure CHECK(http_status<>200)");
             assertThrows(IOException.class,()->store.archive(job,URL,0,URL,200,"text/html",html("x"),List.of()));
             assertEquals(0L,store.job(job).get("snapshots"));assertEquals(0L,store.job(job).get("archived_pages"));
-            try(var statement=db.createStatement()){statement.execute("ALTER TABLE snapshots DROP CONSTRAINT injected_failure");}
+            fixtureSql(root,"ALTER TABLE snapshots DROP CONSTRAINT injected_failure");
             store.archive(job,URL,0,URL,200,"text/html",html("x"),List.of());
             assertEquals(1L,store.job(job).get("snapshots"));
         }
@@ -164,13 +170,9 @@ public class ArchiveStoreTest {
             String job=plan(store,1,2);
             var first=store.archive(job,URL,0,URL,200,"text/html",html("legacy"),List.of(Map.of("target_url",URL+"b","disposition","ADMITTED")));
             page=(String)first.get("page_id");recorded=(String)first.get("recorded_at");
-            var field=ArchiveStore.class.getDeclaredField("db");field.setAccessible(true);Connection db=(Connection)field.get(store);
-            try(var statement=db.createStatement()) {
-                statement.execute("ALTER TABLE page_links DROP COLUMN discovered_at");
-                statement.execute("ALTER TABLE page_links DROP COLUMN discovery_time_basis");
-                statement.execute("DELETE FROM schema_version");
-                statement.execute("INSERT INTO schema_version VALUES(1)");
-            }
+            fixtureSql(root,"ALTER TABLE page_links DROP COLUMN discovered_at",
+                "ALTER TABLE page_links DROP COLUMN discovery_time_basis",
+                "DELETE FROM schema_version", "INSERT INTO schema_version VALUES(1)");
         }
         try(ArchiveStore store=new ArchiveStore(root)) {
             var edge=list(store.page(page),"links").getFirst();

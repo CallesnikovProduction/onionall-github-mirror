@@ -24,6 +24,18 @@ Kotlin ResearchCommands и RuntimeCommands находятся в `src/main/kotli
 Research plans ограничены depth 2/pages 20, run сохраняет explicit approval,
 results/links/files/search читают существующий каталог. Config proxy меняет только
 endpoint descriptor; system doctor доказывает лишь SOCKS negotiation.
+M6 SessionCommands добавляет live `research discover`, `import`, `candidates`, `select`,
+`approve`, `status`, `pages`, `export`; plan/run принимают `--session` наряду с legacy
+`--url`/`--plan`. Research session ID отличается от child plan IDs. ArchiveCommands.sessions
+только соединяет Kotlin ResearchWorkflow с Java CrawlService/ArchiveStore. Selection
+не запускает crawl; batch approval относится к frozen child scopes и отдельным budget caps.
+Экспорт локальный, bounded и сохраняет source/time provenance; file candidates не скачиваются.
+Контракт: [M6](../../../../../../../docs/m6-research.md).
+M6.1 ThreadCommands добавляет thread plan/crawl/show поверх того же workflow и approval.
+Session navigation поддерживает depth3; отдельный thread plan использует max5 pages и
+pagination hops0..4, не расширяя legacy research plan/run. Читаемый экспорт показывает
+сообщения с provenance и ограничения; полный machine metadata остаётся JSON/JSONL.
+Контракт: [M6.1](../../../../../../../docs/m61-forum-research.md).
 Fetch выполняет один transport GET; Inspect/Discover работают с локальными файлами;
 Status делает локальный TCP connect. ArchiveCommands.Start может запустить настоящий worker,
 поэтому весь ArchiveCommands нельзя считать offline-пакетом.

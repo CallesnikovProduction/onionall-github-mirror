@@ -12,6 +12,7 @@ import org.apache.storm.tuple.Tuple;
 import org.apache.stormcrawler.Metadata;
 import org.apache.stormcrawler.persistence.Status;
 import org.apache.stormcrawler.urlfrontier.StatusUpdaterBolt;
+import org.jspecify.annotations.NonNull;
 
 /**
  * <b>Наблюдение scheduler intent перед записью статуса Frontier.</b>
@@ -34,7 +35,11 @@ public final class ArchiveStatusUpdaterBolt extends StatusUpdaterBolt {
      * @param collector collector компонента
      */
     @Override
-    public void prepare(Map<String, Object> conf, TopologyContext context, OutputCollector collector) {
+    public void prepare(
+            Map<String, Object> conf,
+            TopologyContext context,
+            OutputCollector collector
+    ) {
         root = ArchiveParseFilter.requiredRoot(conf);
         job = ArchiveParseFilter.requiredJob(conf);
         super.prepare(conf, context, collector);
@@ -65,10 +70,18 @@ public final class ArchiveStatusUpdaterBolt extends StatusUpdaterBolt {
             return;
         }
         String cause = metadata.getFirstValue("error.cause");
-        String category = status == Status.REDIRECTION ? "REDIRECTION" : "robots.txt".equals(cause) ?
-            "ROBOTS_DENIED" : status == Status.ERROR && "maxFetchErrors".equals(cause) ?
-            "TERMINAL_MAX_FETCH_ERRORS" : status == Status.ERROR && nextFetch.isEmpty() ? "TERMINAL_ERROR" :
-            status.name();
+        String category =
+                status == Status.REDIRECTION
+                        ? "REDIRECTION"
+                        : "robots.txt".equals(cause)
+                            ? "ROBOTS_DENIED"
+                            : status == Status.ERROR &&
+                                "maxFetchErrors".equals(cause)
+                                    ? "TERMINAL_MAX_FETCH_ERRORS"
+                                    : status == Status.ERROR && nextFetch.isEmpty()
+                                        ? "TERMINAL_ERROR"
+                                        : status.name();
+
         Integer http = null;
         String code = metadata.getFirstValue("fetch.statusCode");
         String exception = metadata.getFirstValue("fetch.exception");
@@ -99,8 +112,8 @@ public final class ArchiveStatusUpdaterBolt extends StatusUpdaterBolt {
             FailureObservation.Phase.ARCHIVE : FailureObservation.Phase.UNKNOWN;
         boolean scheduledFailure = status == Status.FETCH_ERROR || status == Status.ERROR;
         var observation = new FailureObservation(phase, FailureObservation.Source.STORM_STATUS_INTENT, http,
-            scheduledFailure ? Boolean.valueOf(nextFetch.isPresent()) : null, scheduledFailure ?
-            Boolean.valueOf(nextFetch.isEmpty()) : null, nextFetch.map(date -> date.getTime() / 1000).orElse(null),
+            scheduledFailure ? nextFetch.isPresent() : null, scheduledFailure ?
+                nextFetch.isEmpty() : null, nextFetch.map(date -> date.getTime() / 1000).orElse(null),
             transport);
         try (var store = new ArchiveStore(root)) {
             store.recordFailure(job, url, category, observation);
@@ -119,7 +132,13 @@ public final class ArchiveStatusUpdaterBolt extends StatusUpdaterBolt {
      * @param tuple исходный tuple
      */
     @Override
-    public void store(String url, Status status, Metadata metadata, Optional<Date> nextFetch, Tuple tuple) {
+    public void store(
+            @NonNull String url,
+            @NonNull Status status,
+            @NonNull Metadata metadata,
+            @NonNull Optional<Date> nextFetch,
+            @NonNull Tuple tuple
+    ) {
         try {
             recordOutcome(root, job, url, status, metadata, nextFetch);
         } catch (IOException e) {

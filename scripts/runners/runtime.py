@@ -26,11 +26,11 @@ def fixture_host(number):
 
 
 def cli_command_path(args):
-    """Read two command names without treating inherited option values as commands."""
+    """Read the command path, including the thread subgroup, skipping inherited options."""
     values = {'--socks-port', '--timeout-ms', '--max-bytes', '--download-dir', '--archive-dir'}
     commands = []
     index = 0
-    while index < len(args) and len(commands) < 2:
+    while index < len(args) and len(commands) < (3 if commands[:2] == ['research', 'thread'] else 2):
         argument = args[index]
         option, separator, _ = argument.partition('=')
         if option in values:
@@ -171,16 +171,31 @@ class Runtime:
             args = ['--help']
         # Deployment defaults only. Original CLI still owns plan/approval/limits and exit codes.
         command = cli_command_path(args)
-        if command in (('crawl', 'start'), ('crawl', 'status'), ('research', 'run'), ('research', 'results')):
+        if command in (('crawl', 'start'), ('crawl', 'status'), ('research', 'run'), ('research', 'results'), ('research', 'status'), ('research', 'thread', 'crawl')):
             if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
             if not any(a == '--admission-token-file' or a.startswith('--admission-token-file=') for a in args):
                 args += ['--admission-token-file', '/state/admission-token']
-        if command in (('config', 'proxy'), ('system', 'doctor')):
+        if command in (('config', 'proxy'), ('system', 'doctor'), ('research', 'discover')):
             if not any(a == '--runtime' or a.startswith('--runtime=') for a in args):
                 args += ['--runtime', '/state/runtime.json']
         self.check_docker()
-        self.dc('run', '--rm', '--no-deps', 'crawler', *args, timeout=740)
+        timeout = 740
+        if command == ('research', 'thread', 'crawl') or (command == ('research', 'run') and any(a == '--session' or a.startswith('--session=') for a in args)):
+            budget = 600
+            for index, argument in enumerate(args):
+                if argument == '--total-seconds' and index + 1 < len(args):
+                    try:
+                        budget = int(args[index + 1])
+                    except ValueError:
+                        pass  # JVM CLI reports invalid arguments before starting work.
+                elif argument.startswith('--total-seconds='):
+                    try:
+                        budget = int(argument.split('=', 1)[1])
+                    except ValueError:
+                        pass
+            timeout = max(740, min(3600, max(30, budget)) + 240)
+        self.dc('run', '--rm', '--no-deps', 'crawler', *args, timeout=timeout)
         return 0
 
     def down(self):

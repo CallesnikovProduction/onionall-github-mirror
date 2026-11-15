@@ -58,8 +58,23 @@ class RuntimeTest(unittest.TestCase):
     def test_build_targets_existing_crawler_project_and_packages_crawl_services(self):
         source = (ROOT / 'scripts/cli/build-cli.sh').read_text()
         self.assertIn('-f "$root/crawler/pom.xml"', source)
-        self.assertIn('archive admission crawl;', source)
+        self.assertIn('archive admission crawl research;', source)
+        self.assertIn('kotlinx-coroutines-core-jvm-[0-9]*.jar', source)
         self.assertNotIn('-pl :onionall-brawler', source)
+
+    def test_thread_subgroup_forwards_runtime_and_bounded_budget_without_approval(self):
+        instance = runtime.Runtime()
+        with patch.object(instance, 'check_docker'), patch.object(instance, 'dc') as dc:
+            instance.cli(['--json', '--archive-dir', '/state/archive', 'research', 'thread', 'crawl', 'session', '--total-seconds', '900'])
+        args = dc.call_args.args
+        self.assertIn('/state/runtime.json', args)
+        self.assertIn('/state/admission-token', args)
+        self.assertNotIn('--approve', args)
+        self.assertEqual(1140, dc.call_args.kwargs['timeout'])
+        with patch.object(instance, 'check_docker'), patch.object(instance, 'dc') as dc:
+            instance.cli(['research', 'thread', 'plan', 'http://example.invalid/thread'])
+        self.assertNotIn('--runtime', dc.call_args.args)
+        self.assertNotIn('--admission-token-file', dc.call_args.args)
 
 
 if __name__ == '__main__':

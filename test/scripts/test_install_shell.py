@@ -66,7 +66,7 @@ class InstallShellTest(unittest.TestCase):
 
     def test_build_cleanup_preserves_packaging_failure(self):
         shutil.copy2(ROOT / 'scripts/cli/build-cli.sh', self.root / 'scripts/cli/build-cli.sh')
-        for package in ('cli', 'tor', 'tools', 'discovery', 'archive', 'admission', 'crawl'):
+        for package in ('cli', 'tor', 'tools', 'discovery', 'archive', 'admission', 'crawl', 'research'):
             (self.root / 'target/classes/dev/onionall/brawler' / package).mkdir(parents=True)
         tools = Path(self.temp.name) / 'build tools'
         tools.mkdir()

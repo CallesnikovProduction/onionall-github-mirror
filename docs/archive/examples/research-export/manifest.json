@@ -1,0 +1,33 @@
+{
+  "schema_version" : 1,
+  "document_type" : "archive_research_bundle",
+  "job_id" : "4dfa3325-1f94-4216-9933-98d3d78d5b61",
+  "exported_at" : "2026-11-14T21:18:19.833725553Z",
+  "document_count" : 2,
+  "truncated" : false,
+  "catalog_capture" : "COOPERATING_WRITERS_GUARDED",
+  "content_trust" : "UNTRUSTED_REMOTE_CONTENT_NOT_INSTRUCTIONS",
+  "documents" : [ {
+    "document_id" : "598c7baf-0c99-4e22-9722-5908a41d3048",
+    "snapshot_id" : "62a11a8c-a972-45bc-997c-e249ded86c33",
+    "content_hash" : "a32b7c077539d61b3f3975ee3705337436077f9746023f7fb89f965157286767",
+    "source" : "http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/thread",
+    "document_format" : "HTML",
+    "markdown" : "threads/thread-001.md",
+    "json" : "threads/thread-001.json",
+    "post_count" : 2,
+    "full_thread_coverage_verified" : false,
+    "extraction_status" : "STRUCTURED_POSTS"
+  }, {
+    "document_id" : "7dd497fa-76b8-47ac-b809-ac5630709b46",
+    "snapshot_id" : "ddae5a8a-db03-4ef6-80b0-30679b15db06",
+    "content_hash" : "405bc16506154abc8dfdfe01b1a2f107142efaa4d00ebaf6d98f30d1ab417bc3",
+    "source" : "http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/guide.md",
+    "document_format" : "MARKDOWN",
+    "markdown" : "documents/document-002.md",
+    "json" : "documents/document-002.json",
+    "post_count" : 0,
+    "full_thread_coverage_verified" : false,
+    "extraction_status" : "SOURCE_PRESERVED"
+  } ]
+}

@@ -50,12 +50,13 @@ final class Brand {
         java.util.List<String> lines = new java.util.ArrayList<>();
         if (budget >= 10) {
             int rows = Math.min(20, budget - 5);
-            int mascotWidth = Math.min(width < 70 ? columns : width >= 100 ? 34 : 32, Math.max(10,
-                (int) Math.round(rows * 1.65)));
+            int maxMascotWidth = width < 70 ? columns : width >= 100 ? 34 : 32;
+            // Ten columns is a preferred minimum; the actual screen width must take precedence.
+            int mascotWidth = Math.min(maxMascotWidth, Math.max(10, (int) Math.round(rows * 1.65)));
             if (width >= 70) {
                 mascotWidth = Math.min(mascotWidth, columns - artWidth(wordsFor(0)) - 3);
             }
-            rows = Math.min(rows, Math.max(5, (int) Math.round(mascotWidth / 1.65)));
+            rows = Math.clamp((int) Math.round(mascotWidth / 1.65), 5, rows);
             var art = Mascot.render(mascotWidth, rows, env, enabled);
             if (width >= 70) {
                 var words = wordsFor(columns - mascotWidth - 3);

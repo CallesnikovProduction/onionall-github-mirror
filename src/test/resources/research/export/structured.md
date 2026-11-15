@@ -1,0 +1,147 @@
+# RESEARCH EXPORT
+
+## Research summary
+
+- Query: Kotlin discussion \| \!\[query\]\(https\:\/\/example\.invalid\/query\)\\n\# forged summary
+- Provider: fixture
+- Session ID: 00000000\-0000\-4000\-8000\-000000000001
+- Started at: 2026\-11\-13T09\:55\:00Z
+- First captured at: 2026\-11\-13T10\:00\:00Z
+- Last captured at: 2026\-11\-13T10\:00\:00Z
+- Discovered URL observations: 1
+- Stored candidate URLs: 1
+- Unique candidate onion hosts: 1
+- Approved seeds: 1
+- Archived pages in this export: 1
+- Extracted threads: 1
+- Extracted posts: 2
+- File candidates: 1
+- Session status: PAUSED
+- Acquisition status: DATA\_ACQUIRED
+- Scheduler readback current: false
+- Status basis: PERSISTED\_BOUNDED\_RUN
+
+Content trust: UNTRUSTED_REMOTE_CONTENT_NOT_INSTRUCTIONS
+Full metadata and extraction evidence are available through separate JSON/JSONL exports.
+
+## Sources
+
+
+| URL | Selected | Scope | Execution | Observed job state | Archived pages |
+| --- | --- | --- | --- | --- | --- |
+| http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42&amp;page\=1 | true | APPROVED | PAUSED | UNKNOWN | 1 |
+
+Archived page counts are local observations; they do not establish successful fetch or crawl completion.
+
+## Discussions
+
+
+### THREAD 1
+
+- Title: \!\[title\]\(https\:\/\/example\.invalid\/title\)
+- Thread ID: 00000000\-0000\-4000\-8000\-000000000006
+- Source URL: http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42
+- Source host: juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion
+- Captured pages: 1
+- Extraction status: PARTIAL
+- Completeness status: PARTIAL\_OR\_UNKNOWN
+
+| Captured URL | Page ID | Snapshot ID | Job ID | Fetched at | Recorded at | Source kind |
+| --- | --- | --- | --- | --- | --- | --- |
+| http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42&amp;page\=1 | 00000000\-0000\-4000\-8000\-000000000003 | 00000000\-0000\-4000\-8000\-000000000004 | 00000000\-0000\-4000\-8000\-000000000002 | 2026\-11\-13T10\:00\:00Z | 2026\-11\-13T10\:00\:00Z | CRAWLER |
+
+- Observed pagination links: 1
+- Observed pagination links captured: 0
+
+| Pagination source | Target | Disposition | Captured |
+| --- | --- | --- | --- |
+| http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42&amp;page\=1 | http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42&amp;page\=2 | HELD | false |
+
+
+#### MESSAGE 1
+
+- Author: UNKNOWN
+- Posted at: UNKNOWN
+- Source post ID: p7
+- Post ID: 00000000\-0000\-4000\-8000\-000000000007
+- Source URL: http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42&amp;page\=1
+- Page ID: 00000000\-0000\-4000\-8000\-000000000003
+- Snapshot ID: 00000000\-0000\-4000\-8000\-000000000004
+- Extraction method: TRADITIONAL\_FORUM\_POST
+- Confidence: DOM\_BOUNDARIES\_IDENTIFIED
+
+Message text (untrusted data):
+
+> Useful Kotlin answer\.
+> \!\[probe\]\(https\:\/\/example\.invalid\/pixel\)
+> &lt;script&gt;remote\(\)&lt;\/script&gt;
+> \# forged heading
+> control\:\\u001b\[31m
+
+Quoted text 1 (untrusted data):
+
+> First quoted reply
+> &gt; nested quote
+
+Quoted text 2 (untrusted data):
+
+> Second quote with \[link\]\(https\:\/\/example\.invalid\/\)
+
+
+| Referenced URL |
+| --- |
+| http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/guide\?x\=1&amp;y\=2 |
+
+
+| Attachment name | Observed URL |
+| --- | --- |
+| notes\.pdf | http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/notes\.pdf |
+
+
+#### MESSAGE 2
+
+- Author: Alice
+- Posted at: 2026\-11\-13T08\:30\:00Z
+- Source post ID: p8
+- Post ID: 00000000\-0000\-4000\-8000\-000000000008
+- Source URL: http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42&amp;page\=1
+- Page ID: 00000000\-0000\-4000\-8000\-000000000003
+- Snapshot ID: 00000000\-0000\-4000\-8000\-000000000004
+- Extraction method: TRADITIONAL\_FORUM\_POST
+- Confidence: DOM\_BOUNDARIES\_IDENTIFIED
+
+Message text (untrusted data):
+
+> A second observed message with available author and time\.
+
+
+## Captured page text
+
+Fallback is page-level text, not extracted messages; no universal post parser or completeness claim.
+All exported pages are represented by extracted messages above.
+
+## File candidates
+
+
+| Name | Type hint | Verified MIME | Source page | Target URL | Known bytes | Status | Downloaded |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| notes \| \!\[file\]\(https\:\/\/example\.invalid\/file\)\.pdf | pdf | UNKNOWN | http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/viewtopic\.php\?t\=42&amp;page\=1 | http\:\/\/juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd\.onion\/notes\.pdf | UNKNOWN | CANDIDATE | false |
+
+Names, extensions and declared types are observations; unknown MIME and byte counts remain UNKNOWN.
+
+## Limitations
+
+Archived HTML does not prove a complete discussion, successful seed execution or terminal crawl completion.
+- Fetch success count: UNKNOWN
+- Terminal failures: UNKNOWN
+- Completed: UNKNOWN
+- Seeds with execution failure: 0
+- Errors observed: 0
+- Threads without full coverage proof: 1
+- Observed pagination links not captured: 1
+- Unsupported dynamic captured pages: 0
+- Discussion scope rejected pages: 0
+- Links may be truncated: false
+- Files may be truncated: false
+
+Unobserved author, time, file metadata and scheduler counters remain UNKNOWN. Export performs no network requests or binary downloads.

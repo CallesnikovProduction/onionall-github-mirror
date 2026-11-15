@@ -65,7 +65,7 @@ public abstract class DistributedFrontierService extends AbstractFrontierService
     protected boolean clusterMode = false;
 
     private final CacheLoader<String, ManagedChannel> channelLoader =
-            new CacheLoader<String, ManagedChannel>() {
+            new CacheLoader<>() {
                 @Override
                 public ManagedChannel load(String target) {
                     return ManagedChannelBuilder.forTarget(target).usePlaintext().build();
@@ -440,10 +440,7 @@ public abstract class DistributedFrontierService extends AbstractFrontierService
         putURLs_calls.inc();
 
         ((ServerCallStreamObserver<AckMessage>) responseObserver)
-                .setOnCancelHandler(
-                        () -> {
-                            LOG.error("Client cancelled");
-                        });
+                .setOnCancelHandler(() -> LOG.error("Client cancelled"));
 
         // wrap the response observer as a synchronized one
         StreamObserver<AckMessage> sso = SynchronizedStreamObserver.wrapping(responseObserver, -1);

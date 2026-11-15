@@ -11,5 +11,5 @@ public interface HeartbeatListener {
     String getAddress();
 
     /** Report back to the assigner with the list of nodes in the cluster * */
-    public void setNodes(List<String> n);
+    void setNodes(List<String> n);
 }

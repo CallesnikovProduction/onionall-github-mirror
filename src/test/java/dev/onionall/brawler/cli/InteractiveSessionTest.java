@@ -12,7 +12,7 @@ public class InteractiveSessionTest {
     private static String plain(String value) {return value.replaceAll("\u001b\\[[0-9;?]*[A-Za-z]","");}
     private static int count(String text,String value){return text.split(Pattern.quote(value),-1).length-1;}
     @Test public void geometryIsSingleColumnAndFitsAllThreeLayoutsAndSmallScreens() {
-        for(int width:List.of(8,40,69,70,80,100,120)) for(int rows:List.of(8,24,40)) {
+        for(int width:List.of(2,7,8,9,10,11,40,69,70,80,100,120)) for(int rows:List.of(8,24,40)) {
             var header=Brand.header(width,rows,ENV,true);
             assertTrue(header.size()<=Math.max(1,rows-6));
             for(String line:header) {String p=plain(line);assertTrue(p.length()<width);assertTrue(p.chars().allMatch(c->c>=32&&c<127));}
