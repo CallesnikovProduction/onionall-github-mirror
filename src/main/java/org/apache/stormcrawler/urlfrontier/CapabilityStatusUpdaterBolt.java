@@ -124,7 +124,7 @@ public class CapabilityStatusUpdaterBolt extends AbstractStatusUpdaterBolt
      * отправку сообщений,
      * обработку callback-ов и завершение соединения.
      * */
-    private transient final Object streamLock;
+    private transient Object streamLock;
 
     private boolean closed, authorizationFailed;
 
@@ -200,6 +200,7 @@ public class CapabilityStatusUpdaterBolt extends AbstractStatusUpdaterBolt
             java.io.ObjectInputStream input
     ) throws java.io.IOException, ClassNotFoundException {
         input.defaultReadObject();
+        streamLock = new Object();
     }
 
 
