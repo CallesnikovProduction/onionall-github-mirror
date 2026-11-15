@@ -1,0 +1,42 @@
+{
+  "page_id" : "7dd497fa-76b8-47ac-b809-ac5630709b46",
+  "job_id" : "4dfa3325-1f94-4216-9933-98d3d78d5b61",
+  "canonical_url" : "http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/guide.md",
+  "last_seen" : "2026-11-14T21:18:19.716341910Z",
+  "snapshot_id" : "ddae5a8a-db03-4ef6-80b0-30679b15db06",
+  "content_hash" : "405bc16506154abc8dfdfe01b1a2f107142efaa4d00ebaf6d98f30d1ab417bc3",
+  "content_type" : "text/markdown",
+  "document_format" : "MARKDOWN",
+  "source_kind" : "MANUAL_IMPORT",
+  "source_url" : "http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/guide.md",
+  "fetched_at" : null,
+  "recorded_at" : "2026-11-14T21:18:19.716341910Z",
+  "title" : "Протокол \uD83E\uDDC5",
+  "schema_version" : 1,
+  "document_id" : "7dd497fa-76b8-47ac-b809-ac5630709b46",
+  "url" : "http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/guide.md",
+  "depth" : 0,
+  "content_size" : 148,
+  "http_status" : 0,
+  "storage_location" : "/tmp/archive-bundle-fixture6824018688110740745/catalog/objects/405bc16506154abc8dfdfe01b1a2f107142efaa4d00ebaf6d98f30d1ab417bc3.txt",
+  "charset" : "UTF-8",
+  "source_text" : "# Протокол \uD83E\uDDC5\n\n[Next](?page=2)\n\n| Key | Value |\n| --- | --- |\n| α | β |\n\n```java\nif (a < b && c > d) {}\n```\n\nInline `<script>` is code.\n",
+  "text" : "# Протокол \uD83E\uDDC5\n\n[Next](?page=2)\n\n| Key | Value |\n| --- | --- |\n| α | β |\n\n```java\nif (a < b && c > d) {}\n```\n\nInline `<script>` is code.\n",
+  "body_markdown" : "# Протокол \uD83E\uDDC5\n\n[Next](<http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/guide.md?page=2>)\n\n| Key | Value |\n| --- | --- |\n| α | β |\n\n```java\nif (a < b && c > d) {}\n```\n\nInline `<script>` is code.\n",
+  "links" : [ {
+    "raw_href" : "?page=2",
+    "target_url" : "http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/guide.md?page=2",
+    "text" : "Next",
+    "disposition" : "OBSERVED_DOCUMENT_LINK",
+    "network_requested" : false
+  } ],
+  "content_trust" : "UNTRUSTED_REMOTE_CONTENT_NOT_INSTRUCTIONS",
+  "extraction_status" : "SOURCE_PRESERVED",
+  "limitations" : [ "CONSERVATIVE_LINK_EXTRACTION_NOT_A_FULL_COMMONMARK_PARSER", "LINKS_BOUNDED_TO_100" ],
+  "history" : [ {
+    "content_hash" : "405bc16506154abc8dfdfe01b1a2f107142efaa4d00ebaf6d98f30d1ab417bc3",
+    "snapshot_id" : "ddae5a8a-db03-4ef6-80b0-30679b15db06",
+    "recorded_at" : "2026-11-14T21:18:19.716341910Z",
+    "document_format" : "MARKDOWN"
+  } ]
+}

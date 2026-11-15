@@ -12,6 +12,7 @@ import org.apache.storm.tuple.Tuple;
 import org.apache.stormcrawler.Metadata;
 import org.apache.stormcrawler.persistence.Status;
 import org.apache.stormcrawler.urlfrontier.CapabilityStatusUpdaterBolt;
+import org.jspecify.annotations.NonNull;
 
 /**
  * <b>Архивный status updater для защищённого Frontier.</b>
@@ -34,7 +35,11 @@ public final class CapabilityArchiveStatusUpdaterBolt extends CapabilityStatusUp
      * @param collector collector компонента
      */
     @Override
-    public void prepare(Map<String, Object> conf, TopologyContext context, OutputCollector collector) {
+    public void prepare(
+            Map<String, Object> conf,
+            TopologyContext context,
+            OutputCollector collector
+    ) {
         root = ArchiveParseFilter.requiredRoot(conf);
         job = ArchiveParseFilter.requiredJob(conf);
         super.prepare(conf, context, collector);
@@ -52,7 +57,13 @@ public final class CapabilityArchiveStatusUpdaterBolt extends CapabilityStatusUp
      * @param tuple исходный tuple
      */
     @Override
-    public void store(String url, Status status, Metadata metadata, Optional<Date> nextFetch, Tuple tuple) {
+    public void store(
+            @NonNull String url,
+            @NonNull Status status,
+            @NonNull Metadata metadata,
+            @NonNull Optional<Date> nextFetch,
+            @NonNull Tuple tuple
+    ) {
         try {
             ArchiveStatusUpdaterBolt.recordOutcome(root, job, url, status, metadata, nextFetch);
         } catch (IOException e) {

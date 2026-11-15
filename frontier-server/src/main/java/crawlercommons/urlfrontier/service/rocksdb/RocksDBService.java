@@ -50,7 +50,8 @@ import org.slf4j.LoggerFactory;
 
 public class RocksDBService extends AbstractFrontierService {
 
-    private static final org.slf4j.Logger LOG = LoggerFactory.getLogger(RocksDBService.class);
+    private static final org.slf4j.Logger LOG =
+            LoggerFactory.getLogger(RocksDBService.class);
 
     private static final DecimalFormat DF = new DecimalFormat("0000000000");
 
@@ -72,13 +73,17 @@ public class RocksDBService extends AbstractFrontierService {
 
     // no explicit config
     public RocksDBService(String host, int port) {
-        this(new HashMap<String, String>(), host, port);
+        this(new HashMap<>(), host, port);
     }
 
     private final ConcurrentHashMap<QueueWithinCrawl, QueueWithinCrawl> queuesBeingDeleted =
             new ConcurrentHashMap<>();
 
-    public RocksDBService(final Map<String, String> configuration, String host, int port) {
+    public RocksDBService(
+            final Map<String, String> configuration,
+            String host,
+            int port
+    ) {
 
         // configure the number of threads for puts
         super(configuration, host, port);

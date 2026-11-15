@@ -13,6 +13,7 @@ import org.apache.stormcrawler.Metadata;
 import org.apache.stormcrawler.parse.ParseFilter;
 import org.apache.stormcrawler.parse.ParseResult;
 import org.jsoup.Jsoup;
+import org.jspecify.annotations.NonNull;
 import org.w3c.dom.DocumentFragment;
 
 /**
@@ -24,29 +25,33 @@ import org.w3c.dom.DocumentFragment;
  */
 public final class DurableDiscoveryFilter extends ParseFilter {
 
+    /** Адрес Frontier RPC-сервера и идентификатор текущей admission-сессии. */
     private String host, session;
 
+    /** Путь к файлу capability-токена для авторизации RPC-запросов. */
     private Path tokenFile;
 
+    /** Порт Frontier RPC-сервера. */
     private int port;
 
+    /** Максимальный бюджет времени на discovery одной страницы, в миллисекундах. */
     private int pageBudgetMillis;
 
+    /** Seed исследуемой ветки форума; null отключает thread-specific фильтрацию. */
     private String threadSeed;
 
+    /** Монотонный источник времени для контроля deadline и тестирования. */
     private final LongSupplier nanoTime;
 
-    public DurableDiscoveryFilter() {
-        this(System::nanoTime);
-    }
-
-    DurableDiscoveryFilter(LongSupplier nanoTime) {
-        this.nanoTime = Objects.requireNonNull(nanoTime);
-    }
-
+    /** Политика нормализации и проверки допустимости Tor URL. */
     private dev.onionall.brawler.tor.TorPolicy policy;
 
-    private final ObjectMapper json = new ObjectMapper();
+    /** JSON-сериализатор метаданных обнаруженных ссылок. */
+    private final ObjectMapper DURABLE_DISCOVERY_JSON_SERIALIZER = new ObjectMapper();
+
+    public DurableDiscoveryFilter() { this(System::nanoTime); }
+
+    DurableDiscoveryFilter(LongSupplier nanoTime) { this.nanoTime = Objects.requireNonNull(nanoTime); }
 
     /**
      * <b>Проверяет конфигурацию durable discovery.</b>
@@ -59,9 +64,9 @@ public final class DurableDiscoveryFilter extends ParseFilter {
      */
     @Override
     public void configure(
-            Map<String, Object> conf,
-            JsonNode params,
-            String name
+            @NonNull Map<String, Object> conf,
+            @NonNull JsonNode params,
+            @NonNull String name
     ) {
         super.configure(conf, params, name);
         if (!"durable-v1".equals(conf.get("discovery.budget.mode"))) {
@@ -133,11 +138,6 @@ public final class DurableDiscoveryFilter extends ParseFilter {
             parsed.getRawPath() + (parsed.getRawQuery() == null ? "" : "?" + parsed.getRawQuery());
     }
 
-    @Override
-    public boolean needsDOM() {
-        return false;
-    }
-
     /**
      * <b>Резервирует допустимые outlinks перед эмиссией.</b>
      *
@@ -151,7 +151,12 @@ public final class DurableDiscoveryFilter extends ParseFilter {
      * @param result результат разбора и список outlinks
      */
     @Override
-    public void filter(String url, byte[] content, DocumentFragment fragment, ParseResult result) {
+    public void filter(
+            String url,
+            byte[] content,
+            DocumentFragment fragment,
+            ParseResult result
+    ) {
         if (host == null) {
             throw new IllegalStateException("Admission filter not configured");
         }
@@ -165,24 +170,40 @@ public final class DurableDiscoveryFilter extends ParseFilter {
         md.remove("discovery.links.truncated");
         md.setValue("discovery.processing.complete", "false");
         long deadline = nanoTime.getAsLong() + TimeUnit.MILLISECONDS.toNanos(pageBudgetMillis);
-        try (AdmissionClient client = AdmissionClient.fromCapabilityFile(host, port, tokenFile)) {
+        try (AdmissionClient client =
+                     AdmissionClient.fromCapabilityFile(host, port, tokenFile)) {
             if (!url.equals(canonicalTarget(url))) {
                 throw new IOException("Noncanonical discovery parent");
             }
-            var parent = verified(request(client,
-                Map.of("action", "reservation", "session_id", session, "url", url), deadline), url);
+            var parent = verified(
+                    request(
+                            client,
+                            Map.of(
+                                    "action", "reservation",
+                                    "session_id", session,
+                                    "url", url
+                            ),
+                            deadline
+                    ),
+                    url
+            );
             if (!"RESERVED".equals(parent.outcome())) {
                 throw new IOException("Source has no authoritative reservation");
             }
             md.setValue("discovery.depth", Integer.toString(parent.depth()));
             md.setValue("discovery.source", parent.sourceUrl().isEmpty() ? url : parent.sourceUrl());
+
             var document = Jsoup.parse(new String(content, java.nio.charset.StandardCharsets.UTF_8), url);
             document.select("base").remove();
             List<String> edges = new ArrayList<>();
             Set<String> seen = new HashSet<>();
             URI origin = URI.create(url);
             int examined = 0;
-            for (var anchor : document.select(threadSeed == null ? "a[href]" : "a[href],link[rel=next][href]")) {
+            for (var anchor : document.select(
+                    threadSeed == null
+                            ? "a[href]"
+                            : "a[href],link[rel=next][href]"
+            )) {
                 remaining(deadline);
                 if (++examined > 100) {
                     break;
@@ -198,8 +219,14 @@ public final class DurableDiscoveryFilter extends ParseFilter {
                     edges.add(edge(url, "", "INVALID_URL"));
                     continue;
                 }
-                if (!Set.of("http", "https").contains(Objects.toString(resolved.getScheme(), "")) ||
-                    resolved.getHost() == null || resolved.getRawUserInfo() != null) {
+
+                if (
+                        !Set.of("http", "https").contains(
+                                Objects.toString(resolved.getScheme(), "")
+                        ) ||
+                        resolved.getHost() == null ||
+                        resolved.getRawUserInfo() != null
+                ) {
                     String rejected = resolved.toString().split("#", 2)[0];
                     edges.add(edge(url, rejected.length() <= 2048 ? rejected : "", "UNSUPPORTED_OR_INVALID_URL"));
                     continue;
@@ -208,9 +235,12 @@ public final class DurableDiscoveryFilter extends ParseFilter {
                 if (target.length() > 2048 || !seen.add(target)) {
                     continue;
                 }
+
                 String disposition;
-                if (!Objects.equals(resolved.getHost(), origin.getHost()) ||
-                    !Objects.equals(resolved.getScheme(), origin.getScheme())) {
+                if (
+                        !Objects.equals(resolved.getHost(), origin.getHost()) ||
+                        !Objects.equals(resolved.getScheme(), origin.getScheme())
+                ) {
                     disposition = "SCOPE_REJECTED";
                 } else {
                     String canonical = null;
@@ -224,9 +254,21 @@ public final class DurableDiscoveryFilter extends ParseFilter {
                     } else {
                         if (!target.equals(canonical) && !seen.add(canonical)) continue;
                         target = canonical;
-                        if (threadSeed != null && dev.onionall.brawler.research.ForumPagination.eligible(threadSeed,
-                            url, target) == null) disposition = "THREAD_REJECTED";
-                        else disposition = reserve(client, url, parent.depth() + 1, target, deadline);
+                        if (
+                                threadSeed != null &&
+                                dev.onionall.brawler.research.ForumPagination.eligible(
+                                    threadSeed,
+                                    url,
+                                    target
+                                ) == null
+                        ) disposition = "THREAD_REJECTED";
+                        else disposition = reserve(
+                                client,
+                                url,
+                                parent.depth() + 1,
+                                target,
+                                deadline
+                        );
                     }
                 }
                 edges.add(edge(url, target, disposition));
@@ -249,18 +291,34 @@ public final class DurableDiscoveryFilter extends ParseFilter {
         }
     }
 
-    private String edge(String source, String target, String disposition) throws IOException {
-        return json.writeValueAsString(Map.of("source_url", source, "target_url", target,
-            "disposition", disposition, "discovered_at", Instant.now().toString(), "job_id", session));
+    private String edge(
+            String source,
+            String target,
+            String disposition
+    ) throws IOException {
+        return DURABLE_DISCOVERY_JSON_SERIALIZER.writeValueAsString(
+                Map.of(
+                        "source_url", source,
+                        "target_url", target,
+                        "disposition", disposition,
+                        "discovered_at", Instant.now().toString(),
+                        "job_id", session
+                )
+        );
     }
 
-    private FrontierReadback.Reservation verified(Map<String, Object> reply, String url) throws IOException {
+    private FrontierReadback.Reservation verified(
+            Map<String, Object> reply,
+            String url
+    ) throws IOException {
         var reservation = FrontierReadback.reservation(reply, session, url);
-        if (!url.equals(canonicalTarget(url)) || (!reservation.sourceUrl().isEmpty() &&
-            (!reservation.sourceUrl().equals(canonicalTarget(reservation.sourceUrl())) ||
-             !origin(url).equals(origin(reservation.sourceUrl()))))) {
-            throw new IOException("Invalid authoritative reservation provenance");
-        }
+        if (
+                !url.equals(canonicalTarget(url)) ||
+                        (!reservation.sourceUrl().isEmpty() &&
+                                (!reservation.sourceUrl().equals(canonicalTarget(reservation.sourceUrl())) ||
+                                        !origin(url).equals(origin(reservation.sourceUrl()))))
+        ) throw new IOException("Invalid authoritative reservation provenance");
+
         return reservation;
     }
 
@@ -269,18 +327,43 @@ public final class DurableDiscoveryFilter extends ParseFilter {
         return parsed.getScheme() + "://" + parsed.getHost();
     }
 
-    private String reserve(AdmissionClient client, String source, int depth, String url, long deadline)
-        throws IOException {
+    private String reserve(
+            AdmissionClient client,
+            String source,
+            int depth,
+            String url,
+            long deadline
+    ) throws IOException {
         Map<String, Object> reply;
         try {
-            reply = request(client, Map.of("action", "reserve", "session_id", session, "url", url,
-                "source_url", source, "depth", depth), deadline);
+            reply = request(
+                    client,
+                    Map.of(
+                            "action", "reserve",
+                            "session_id", session,
+                            "url", url,
+                            "source_url", source,
+                            "depth", depth
+                    ),
+                    deadline
+            );
         } catch (AdmissionClient.RpcFailure ambiguous) {
             if (ambiguous.kind() != AdmissionClient.FailureKind.TRANSPORT) throw ambiguous;
             // A positive immutable read resolves commit. Negative/unavailable never retries.
             try {
-                var observed = verified(request(client,
-                    Map.of("action", "reservation", "session_id", session, "url", url), deadline), url);
+                var observed = verified(
+                        request(
+                                client,
+                                Map.of(
+                                        "action", "reservation",
+                                        "session_id", session,
+                                        "url", url
+                                ),
+                                deadline
+                        ),
+                        url
+                );
+
                 if (!"RESERVED".equals(observed.outcome())) {
                     throw new IOException("Discovery reservation outcome UNKNOWN");
                 }
@@ -296,7 +379,14 @@ public final class DurableDiscoveryFilter extends ParseFilter {
             }
         }
         String outcome = (String) reply.get("outcome");
-        if (Set.of("SCOPE_REJECTED", "DEPTH_REJECTED", "LIMIT_REJECTED", "METADATA_ONLY").contains(outcome)) {
+        if (
+                Set.of(
+                        "SCOPE_REJECTED",
+                        "DEPTH_REJECTED",
+                        "LIMIT_REJECTED",
+                        "METADATA_ONLY"
+                ).contains(outcome)
+        ) {
             return outcome; // Rejection envelope has no reservation; never replace target from it.
         }
         var offered = verified(reply, url);
@@ -304,8 +394,20 @@ public final class DurableDiscoveryFilter extends ParseFilter {
             (!source.equals(offered.sourceUrl()) || depth != offered.depth())) {
             throw new IOException("New reservation differs from requested provenance");
         }
-        var observed = verified(request(client,
-            Map.of("action", "reservation", "session_id", session, "url", url), deadline), url);
+
+        var observed = verified(
+                request(
+                        client,
+                        Map.of(
+                                "action", "reservation",
+                                "session_id", session,
+                                "url", url
+                        ),
+                        deadline
+                ),
+                url
+        );
+
         if (!"RESERVED".equals(observed.outcome()) ||
             !offered.reservationId().equals(observed.reservationId()) ||
             !offered.sourceUrl().equals(observed.sourceUrl()) || offered.depth() != observed.depth()) {
@@ -315,15 +417,18 @@ public final class DurableDiscoveryFilter extends ParseFilter {
         return offered.outcome();
     }
 
-    private Map<String, Object> request(AdmissionClient client, Map<String, Object> command, long deadline)
-        throws IOException {
+    private Map<String, Object> request(
+            AdmissionClient client,
+            Map<String, Object> command,
+            long deadline
+    ) throws IOException {
         return client.command(command, remaining(deadline));
     }
 
     private long remaining(long deadline) throws BudgetExceeded {
         long remaining = deadline - nanoTime.getAsLong();
         if (remaining <= 0) throw new BudgetExceeded();
-        return Math.min(10000, Math.max(1, TimeUnit.NANOSECONDS.toMillis(remaining)));
+        return Math.clamp(TimeUnit.NANOSECONDS.toMillis(remaining), 1, 10000);
     }
 
     private static final class BudgetExceeded extends IOException {

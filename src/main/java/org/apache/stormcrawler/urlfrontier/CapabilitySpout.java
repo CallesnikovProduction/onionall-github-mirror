@@ -48,37 +48,88 @@ import org.apache.stormcrawler.util.ConfUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Source-pinned StormCrawler 3.7.0 Spout adapter.
- * Upstream source SHA256: 031aa003910552f9327785cf378beb327f213f691dc40b688187c3d1864ecd91.
- * Onionall deviations include capability credentials and lifecycle hardening; see package AGENTS.md.
+/**
+ * <b>Получает URL из защищённого URLFrontier для StormCrawler.</b>
+ *
+ * <p>Клиентский Spout-адаптер, обеспечивающий интеграцию StormCrawler
+ * с сервером URLFrontier через асинхронный gRPC server-streaming RPC.
+ *
+ * <p>При инициализации создаёт аутентифицированный gRPC-клиент,
+ * загружает параметры получения URL и настраивает подключение
+ * к соответствующему экземпляру Frontier.
+ *
+ * <p>Метод {@code populateBuffer()} запрашивает доступные URL
+ * посредством {@code GetURLs}, преобразует полученные метаданные
+ * в формат StormCrawler и помещает результаты во внутренний буфер
+ * родительского {@link AbstractQueryingSpout}.
+ *
+ * <p>Планирование обхода, reservations и управление leases
+ * остаются ответственностью серверной части URLFrontier.
+ * Сам класс не выполняет HTTP-запросы и не занимается
+ * архивированием полученного содержимого.
+ *
+ * <p>Основан на StormCrawler 3.7.0 с изменениями Onionall:
+ * обязательная capability-аутентификация и дополнительная
+ * обработка жизненного цикла gRPC-ресурсов.
+ *
+ * <p>Upstream source SHA256:
+ * {@code 031aa003910552f9327785cf378beb327f213f691dc40b688187c3d1864ecd91}.
+ *
+ * @Reviewer: Stephan Kolesnikov
+ * @author GPT-6.1 Sol Max
  */
+
 public class CapabilitySpout extends AbstractQueryingSpout {
 
     private static final Logger LOG = LoggerFactory.getLogger(CapabilitySpout.class);
 
+    /** gRPC-соединение с Frontier Server */
     private ManagedChannel channel;
+
     private boolean closed, opened;
+
+    /** Учётные данные для аутентификации (не сериализуются стандартным Java-образом) */
     private transient FrontierCapability capability;
 
+    /** gRPC-клиент для обращения к серверу */
     private URLFrontierStub frontier;
 
+    /** Максимум URL на очередь при запросе */
     private int maxURLsPerBucket;
 
+    /** Максимальное число запрашиваемых очередей */
     private int maxBucketNum;
 
+    /** Параметр доступности URL для выдачи */
     private int delayRequestable;
 
-    /** Globally set crawlID * */
+    /** Идентификатор конкретного crawl, если задан */
     private String globalCrawlID = null;
 
     /**
-     * <b>Открывает spout и authenticated GetURLs stub.</b>
+     * <b>Инициализирует Spout и подключение к URLFrontier.</b>
      *
-     * <p>Сериализовано с close; при partial initialization собственный канал закрывается.
+     * <p>Загружает FrontierCapability и параметры конфигурации,
+     * инициализирует родительский компонент, выбирает адрес Frontier
+     * и создаёт аутентифицированный gRPC stub.
+     *
+     * <p>При нескольких адресах выполняет детерминированное
+     * сопоставление Storm tasks с экземплярами Frontier.
+     * При ошибке инициализации запускает очистку уже созданных ресурсов.
+     *
+     * @param stormConf конфигурация Storm и параметры подключения к Frontier
+     * @param context контекст текущей задачи Storm
+     * @param collector получатель исходящих tuples
+     * @throws IllegalStateException если экземпляр уже закрыт
+     * @throws RuntimeException если инициализация завершилась ошибкой
+     * @Reviewer: Stephan Kolesnikov
+     * @author GPT-6.1 Sol Max
      */
-    @Override
-    public synchronized void open(Map<String, Object> stormConf, TopologyContext context,
-        SpoutOutputCollector collector) {
+    @Override public synchronized void open(
+            Map<String, Object> stormConf,
+            TopologyContext context,
+            SpoutOutputCollector collector
+    ) {
         if (closed) {
             throw new IllegalStateException("Frontier spout closed");
         }
@@ -86,25 +137,45 @@ public class CapabilitySpout extends AbstractQueryingSpout {
             capability = FrontierCapability.from(stormConf);
             opened = true;
             super.open(stormConf, context, collector);
-            maxURLsPerBucket = ConfUtils.getInt(stormConf, URLFRONTIER_MAX_URLS_PER_BUCKET_KEY,
-                URLFRONTIER_MAX_URLS_PER_BUCKET_DEFAULT);
-            maxBucketNum = ConfUtils.getInt(stormConf, URLFRONTIER_MAX_BUCKETS_KEY, 10);
-            // initialise the delay requestable with the timeout for messages
-            delayRequestable = ConfUtils.getInt(stormConf, Config.TOPOLOGY_MESSAGE_TIMEOUT_SECS, delayRequestable);
-            // then override with any user specified config
-            delayRequestable = ConfUtils.getInt(stormConf, URLFRONTIER_DELAY_REQUESTABLE_KEY, delayRequestable);
-            // host and port of URL Frontier(s)
-            List<String> addresses = ConfUtils.loadListFromConf(URLFRONTIER_ADDRESS_KEY, stormConf);
-            // Selected address
+
+            maxURLsPerBucket = ConfUtils.getInt(
+                    stormConf,
+                    URLFRONTIER_MAX_URLS_PER_BUCKET_KEY,
+                    URLFRONTIER_MAX_URLS_PER_BUCKET_DEFAULT
+            );
+
+            maxBucketNum = ConfUtils.getInt(
+                    stormConf,
+                    URLFRONTIER_MAX_BUCKETS_KEY,
+                    10
+            );
+
+            delayRequestable = ConfUtils.getInt(
+                    stormConf,
+                    Config.TOPOLOGY_MESSAGE_TIMEOUT_SECS,
+                    delayRequestable
+            );
+
+            delayRequestable = ConfUtils.getInt(
+                    stormConf,
+                    URLFRONTIER_DELAY_REQUESTABLE_KEY,
+                    delayRequestable
+            );
+
+            List<String> addresses = ConfUtils.loadListFromConf(
+                    URLFRONTIER_ADDRESS_KEY,
+                    stormConf
+            );
+
             String address;
-            switch(addresses.size()) {
+            switch (addresses.size()) {
                 case 0:
                     LOG.debug("{} has no addresses.", URLFRONTIER_ADDRESS_KEY);
                     address = null;
                     break;
                 case 1:
                     LOG.debug("{} with a size of {} is used.", URLFRONTIER_ADDRESS_KEY, addresses.size());
-                    address = addresses.get(0);
+                    address = addresses.getFirst();
                     break;
                 default:
                     int totalTasks = context.getComponentTasks(context.getThisComponentId()).size();
@@ -117,16 +188,38 @@ public class CapabilitySpout extends AbstractQueryingSpout {
                     Collections.sort(addresses);
                     address = addresses.get(nodeIndex);
             }
+
             if (address == null) {
-                channel = ManagedChannelUtil.createChannel(ConfUtils.getString(stormConf, URLFRONTIER_HOST_KEY,
-                    URLFRONTIER_DEFAULT_HOST), ConfUtils.getInt(stormConf, URLFRONTIER_PORT_KEY,
-                    URLFRONTIER_DEFAULT_PORT));
+                channel = ManagedChannelUtil.createChannel(
+                        ConfUtils.getString(
+                                stormConf,
+                                URLFRONTIER_HOST_KEY,
+                                URLFRONTIER_DEFAULT_HOST
+                        ),
+                        ConfUtils.getInt(
+                                stormConf,
+                                URLFRONTIER_PORT_KEY,
+                                URLFRONTIER_DEFAULT_PORT
+                        )
+                );
             } else {
                 channel = ManagedChannelUtil.createChannel(address);
             }
-            frontier = URLFrontierGrpc.newStub(channel).withCallCredentials(capability).withWaitForReady();
+
+            // Создаётся асинхронный gRPC-клиент,
+            // затем подключается аутентификация,
+            // и потом разрешается RPC ожидать готовность канала, вместо немедленного отказа
+            frontier = URLFrontierGrpc
+                    .newStub(channel)
+                    .withCallCredentials(capability)
+                    .withWaitForReady();
+
             LOG.debug("State of Channel: {}", channel.getState(false));
-            globalCrawlID = ConfUtils.getString(stormConf, URLFRONTIER_CRAWL_ID_KEY);
+            globalCrawlID = ConfUtils.getString(
+                    stormConf,
+                    URLFRONTIER_CRAWL_ID_KEY
+            );
+
             if (globalCrawlID != null) {
                 LOG.info("Initialized URLFrontier CapabilitySpout for crawlId {}", globalCrawlID);
             } else {
@@ -142,9 +235,24 @@ public class CapabilitySpout extends AbstractQueryingSpout {
         }
     }
 
-    @Override
-    protected void populateBuffer() {
 
+    /**
+     * <b>Запрашивает URL из Frontier и заполняет внутренний буфер.</b>
+     *
+     * <p>Формирует GetParams с ограничениями количества очередей,
+     * URL на очередь и параметрами доступности заданий.
+     *
+     * <p>Выполняет асинхронный server-streaming RPC GetURLs.
+     * Полученные URLInfo преобразуются в URL и Metadata StormCrawler,
+     * после чего помещаются во внутренний буфер родительского класса.
+     *
+     * <p>Завершение запроса и ошибки транспорта передаются
+     * механизму управления запросами AbstractQueryingSpout.
+     *
+     * @Reviewer: Stephan Kolesnikov
+     * @author GPT-6.1 Sol Max
+     */
+    @Override protected void populateBuffer() {
         LOG.debug(
                 "Populating buffer - max queues {} - max URLs per queues {}",
                 maxBucketNum,
@@ -187,9 +295,7 @@ public class CapabilitySpout extends AbstractQueryingSpout {
                     @Override
                     public void onError(Throwable t) {
 
-                        if (t instanceof io.grpc.StatusRuntimeException) {
-                            io.grpc.StatusRuntimeException e = (io.grpc.StatusRuntimeException) t;
-
+                        if (t instanceof io.grpc.StatusRuntimeException e) {
                             StringBuilder sb =
                                     new StringBuilder("StatusRuntimeException: ")
                                             .append(e.getStatus().toString());
@@ -223,12 +329,32 @@ public class CapabilitySpout extends AbstractQueryingSpout {
         frontier.getURLs(request, responseObserver);
     }
 
-    @Override
-    public void ack(Object msgId) {
+
+    /**
+     * <b>Подтверждает успешную обработку tuple.</b>
+     *
+     * <p>Записывает событие подтверждения в лог и делегирует
+     * обработку родительскому AbstractQueryingSpout.
+     *
+     * @param msgId идентификатор обработанного Storm tuple
+     * @Reviewer:  Stephan Kolesnikov
+     * @author GPT-6.1 Sol Max
+     */
+    @Override public void ack(Object msgId) {
         LOG.debug("Ack for {}", msgId);
         super.ack(msgId);
     }
 
+    /**
+     * <b>Сообщает о неуспешной обработке tuple.</b>
+     *
+     * <p>Записывает событие ошибки в лог и делегирует
+     * обработку родительскому AbstractQueryingSpout.
+     *
+     * @param msgId идентификатор tuple, обработка которого завершилась ошибкой
+     * @Reviewer:  Stephan Kolesnikov
+     * @author GPT-6.1 Sol Max
+     */
     @Override
     public void fail(Object msgId) {
         LOG.info("Fail for {}", msgId);
@@ -236,12 +362,19 @@ public class CapabilitySpout extends AbstractQueryingSpout {
     }
 
     /**
-     * <b>Идемпотентно завершает spout и принадлежащий канал.</b>
+     * <b>Завершает работу Spout и освобождает gRPC-ресурсы.</b>
      *
-     * <p>Закрытие канала выполняется в finally, в том числе после ошибки superclass cleanup.
+     * <p>Выполняет идемпотентное закрытие родительского компонента
+     * и принадлежащего экземпляру ManagedChannel.
+     *
+     * <p>Закрытие канала выполняется в блоке finally,
+     * поэтому освобождение транспортного ресурса предпринимается
+     * даже при исключении во время очистки родительского компонента.
+     *
+     * @Reviewer:  Stephan Kolesnikov
+     * @author GPT-6.1 Sol Max
      */
-    @Override
-    public synchronized void close() {
+    @Override public synchronized void close() {
         if (closed) {
             return;
         }

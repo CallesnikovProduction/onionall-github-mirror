@@ -23,6 +23,8 @@ import java.util.UUID
  * @author GPT-6.1 Sol
  */
 class ResearchCatalog @Throws(IOException::class) constructor(private val connection: Connection) {
+    /** После неоднозначного commit/cleanup caller должен восстановить connection и создать новый adapter. */
+    private var usable = true
     companion object {
         const val MAX_DOCUMENT_BYTES: Int = 4 * 1024 * 1024
         const val MAX_SESSIONS: Int = 100
@@ -57,6 +59,7 @@ class ResearchCatalog @Throws(IOException::class) constructor(private val connec
     /** Создаёт документ revision=0; неизвестные JSON-поля сохраняются без интерпретации. */
     @Throws(IOException::class)
     fun create(document: Map<String, Any?>): Map<String, Any?> = synchronized(connection) {
+        ensureUsable()
         val id = identifier(document["session_id"] as? String)
         validateVersion(document)
         if (document.containsKey("revision") && revision(document["revision"]) != 0L) {
@@ -93,12 +96,13 @@ class ResearchCatalog @Throws(IOException::class) constructor(private val connec
     /** Читает сохранённый документ и проверяет envelope против SQL revision/id. */
     @Throws(IOException::class)
     fun get(id: String): Map<String, Any?> = synchronized(connection) {
+        ensureUsable()
         try {
             read(identifier(id))
         } catch (error: IOException) {
             throw error
         } catch (_: Exception) {
-            throw IOException("Research catalog read unavailable")
+            throw IOException("Research catalog serializableRead unavailable")
         }
     }
 
@@ -109,6 +113,7 @@ class ResearchCatalog @Throws(IOException::class) constructor(private val connec
     @Throws(IOException::class)
     fun update(id: String, expectedRevision: Long, document: Map<String, Any?>): Map<String, Any?> =
         synchronized(connection) {
+            ensureUsable()
             val checkedId = identifier(id)
             if (expectedRevision < 0 || expectedRevision == Long.MAX_VALUE) {
                 throw IOException("Invalid research revision")
@@ -151,6 +156,7 @@ class ResearchCatalog @Throws(IOException::class) constructor(private val connec
     /** Проверяет наличие session без изменения его revision или timestamps. */
     @Throws(IOException::class)
     fun exists(id: String): Boolean = synchronized(connection) {
+        ensureUsable()
         val checked = identifier(id)
         try {
             connection.prepareStatement("SELECT 1 FROM research_sessions_v1 WHERE session_id=?").use { query ->
@@ -158,7 +164,7 @@ class ResearchCatalog @Throws(IOException::class) constructor(private val connec
                 query.executeQuery().use { it.next() }
             }
         } catch (_: Exception) {
-            throw IOException("Research catalog read unavailable")
+            throw IOException("Research catalog serializableRead unavailable")
         }
     }
 
@@ -192,43 +198,99 @@ class ResearchCatalog @Throws(IOException::class) constructor(private val connec
         }
     }
 
+    /**
+     * Выполняет standalone transaction либо savepoint внешнего владельца.
+     * Не закрывает borrowed connection. Failed rollback/commit/restoration запрещает
+     * reuse адаптера; autocommit не включается после неудачного rollback или unknown commit.
+     * SQL diagnostics намеренно не включаются в cause/suppressed: документ может содержать private data.
+     */
     private fun <T> mutate(action: () -> T): T {
-        val original = try { connection.autoCommit } catch (_: Exception) {
-            throw IOException("Research catalog transaction unavailable")
+        ensureUsable()
+        val original = try { connection.autoCommit } catch (error: Throwable) {
+            usable = false
+            throw mutationFailure(error)
         }
         var savepoint: Savepoint? = null
+        var began = false
+        var commitAttempted = false
+        var committed = false
+        var restoreAllowed = true
+        var primary: Throwable? = null
         try {
             if (original) connection.autoCommit = false else savepoint = connection.setSavepoint()
+            began = true
             connection.prepareStatement("SELECT id FROM catalog_guard WHERE id=1 FOR UPDATE").use { lock ->
                 lock.executeQuery().use { rows ->
                     if (!rows.next()) throw IOException("Research catalog guard unavailable")
                 }
             }
             val result = action()
-            if (original) connection.commit() else connection.releaseSavepoint(savepoint)
+            if (original) {
+                commitAttempted = true
+                connection.commit()
+                committed = true
+            } else {
+                connection.releaseSavepoint(savepoint)
+            }
             return result
         } catch (error: Throwable) {
-            try {
-                if (original) {
-                    connection.rollback()
-                } else if (savepoint != null) {
-                    connection.rollback(savepoint)
-                    connection.releaseSavepoint(savepoint)
+            val failure = if (commitAttempted && !committed) {
+                usable = false
+                restoreAllowed = false
+                val unknown = IOException("Research catalog commit outcome is unknown; caller must recover connection")
+                if (error is Error || error is IOException) {
+                    error.addSuppressed(unknown)
+                    error
+                } else unknown
+            } else mutationFailure(error)
+            primary = failure
+            if (began) {
+                try {
+                    if (original) {
+                        connection.rollback()
+                    } else if (savepoint != null) {
+                        connection.rollback(savepoint)
+                        connection.releaseSavepoint(savepoint)
+                    }
+                } catch (_: Throwable) {
+                    usable = false
+                    restoreAllowed = false
+                    failure.addSuppressed(IOException("Research catalog rollback unavailable; caller must recover connection"))
                 }
-            } catch (_: Exception) {
-                if (error is Error) throw error
-                throw IOException("Research catalog rollback unavailable")
+            } else {
+                usable = false
+                restoreAllowed = false
             }
-            if (error is Error) throw error
-            if (error is IOException) throw error
-            throw IOException("Research catalog transaction unavailable")
+            throw failure
         } finally {
-            if (original) {
-                try { connection.autoCommit = true } catch (_: Exception) {
-                    throw IOException("Research catalog transaction restoration unavailable")
+            if (original && began && restoreAllowed) {
+                try { connection.autoCommit = true } catch (cleanup: Throwable) {
+                    usable = false
+                    val restoration = IOException(if (committed)
+                        "Research catalog transaction committed; connection restoration unavailable"
+                    else "Research catalog transaction restoration unavailable; caller must recover connection")
+                    if (primary != null) {
+                        primary.addSuppressed(restoration)
+                    } else if (cleanup is Error) {
+                        cleanup.addSuppressed(restoration)
+                        throw cleanup
+                    } else {
+                        throw restoration
+                    }
                 }
             }
         }
+    }
+
+    /** Сохраняет доменную IOException/Error; SQL и прочие diagnostics остаются закрытыми. */
+    private fun mutationFailure(error: Throwable): Throwable = when (error) {
+        is IOException, is Error -> error
+        else -> IOException("Research catalog transaction unavailable")
+    }
+
+    /** Требует новый adapter после восстановления connection его внешним владельцем. */
+    private fun ensureUsable() {
+        if (!usable) throw IOException("Research catalog requires connection recovery and a new adapter")
     }
 
     private fun encode(value: Map<String, Any?>): String {
