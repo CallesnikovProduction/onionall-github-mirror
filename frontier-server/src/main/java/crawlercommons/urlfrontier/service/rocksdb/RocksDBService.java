@@ -18,9 +18,7 @@ import crawlercommons.urlfrontier.service.SynchronizedStreamObserver;
 import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.text.DecimalFormat;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -48,47 +46,84 @@ import org.rocksdb.WriteBatch;
 import org.rocksdb.WriteOptions;
 import org.slf4j.LoggerFactory;
 
+/**
+ * <b>Служба Frontier с постоянным хранением в RocksDB и допуском Admission.</b>
+ *
+ * <p>Сохраняет внешний контракт исходной реализации Crawler-commons и
+ * координирует запись расписания, выдачу URL, удаление очередей и остановку.
+ * Восстановление счётчиков передаётся QueueRecovery, кодирование ключей и
+ * чтение состояния расписания — UrlIndex.</p>
+ *
+ * <p>Границы ответственности: служба остаётся владельцем базы, дескрипторов,
+ * блокировок и жизненного цикла. AdmissionLedger владеет проверками допуска
+ * и общей пакетной записью резервирования; вспомогательные компоненты
+ * заимствуют ресурсы и не образуют отдельный планировщик.</p>
+ *
+ * @author GPT-6.1 Sol
+ * @Reviewer Stephan Kolesnikov
+ */
 public class RocksDBService extends AbstractFrontierService {
 
     private static final org.slf4j.Logger LOG =
             LoggerFactory.getLogger(RocksDBService.class);
 
-    private static final DecimalFormat DF = new DecimalFormat("0000000000");
 
     static {
         RocksDB.loadLibrary();
     }
 
+    /** Открытая база; принадлежит службе и закрывается после остановки Admission. */
     private RocksDB rocksDB;
+    /** Восстановление и сохранение очередей; нативные дескрипторы остаются у службы. */
+    private final QueueRecovery queueRecovery;
+    /** Ключи и чтение расписания; не владеет нативными ресурсами или блокировками. */
+    private final UrlIndex urlIndex;
+    /** Общий монитор Admission, записи статусов и закрытия; берётся до монитора URL. */
     final Object admissionLock = new Object();
+    /** Запрещает новые операции Admission до ожидания унаследованных пулов. */
     private volatile boolean admissionStopping;
-    private boolean admissionClosed; // admissionLock
+    /** Флаг завершённого освобождения ресурсов; доступ только под admissionLock. */
+    private boolean admissionClosed; // Доступ только под admissionLock.
+    /** Проверки допуска и постоянное состояние; все вызовы защищены admissionLock. */
     AdmissionLedger admission;
 
-    // a list which will hold the handles for the column families once the db is
-    // opened
+    // Дескрипторы семейств столбцов в порядке открытия:
+    // default, queues, queueInfos, onionallAdmissionV1.
     private final List<ColumnFamilyHandle> columnFamilyHandleList = new ArrayList<>();
 
+    /** Необязательная нативная статистика; открывается и закрывается вместе со службой. */
     private Statistics statistics;
 
-    // no explicit config
+    // Использует конфигурацию по умолчанию.
     public RocksDBService(String host, int port) {
         this(new HashMap<>(), host, port);
     }
 
+    /** Временные отметки удаления; запись URL проверяет их перед изменением очереди. */
     private final ConcurrentHashMap<QueueWithinCrawl, QueueWithinCrawl> queuesBeingDeleted =
             new ConcurrentHashMap<>();
 
+    /**
+     * <b>Открывает базу и восстанавливает очереди до публикации службы.</b>
+     *
+     * <p>Сохраняет порядок семейств столбцов и запрет неявной миграции.
+     * Вспомогательные компоненты получают уже открытые дескрипторы.</p>
+     *
+     * @param configuration параметры хранилища, Admission и унаследованных пулов
+     * @param host адрес службы в существующем контракте Frontier
+     * @param port порт службы
+     * @throws IllegalArgumentException при запрещённой очистке или миграции
+     */
     public RocksDBService(
             final Map<String, String> configuration,
             String host,
             int port
     ) {
 
-        // configure the number of threads for puts
+        // Настройка унаследованных пулов чтения и записи остаётся в базовом классе.
         super(configuration, host, port);
 
-        // where to store it?
+        // Каталог существующей либо создаваемой базы.
         String path = configuration.getOrDefault("rocksdb.path", "./rocksdb");
 
         LOG.info("RocksDB data stored in {} ", path);
@@ -115,8 +150,8 @@ public class RocksDBService extends AbstractFrontierService {
 
             cfOpts.optimizeUniversalStyleCompaction();
 
-            // list of column family descriptors, first entry must always be default column
-            // family
+            // Порядок семейств определяет соответствие дескрипторов; первым всегда
+            // должно оставаться семейство default.
             final List<ColumnFamilyDescriptor> cfDescriptors =
                     Arrays.asList(
                             new ColumnFamilyDescriptor(RocksDB.DEFAULT_COLUMN_FAMILY, cfOpts),
@@ -148,7 +183,7 @@ public class RocksDBService extends AbstractFrontierService {
                     options.setMaxBackgroundJobs(Integer.parseInt(smaxBackgroundJobs));
                 }
 
-                // Options.max_subcompactions: 1
+                // Значение Options.max_subcompactions по умолчанию — 1.
                 String smax_subcompactions = configuration.get("rocksdb.max_subcompactions");
                 if (smax_subcompactions != null) {
                     options.setMaxSubcompactions(Integer.parseInt(smax_subcompactions));
@@ -169,115 +204,27 @@ public class RocksDBService extends AbstractFrontierService {
 
             LOG.info("RocksDB loaded in {} msec", end - start);
 
+            // TODO(INIT-001): При исключении после RocksDB.open освободить уже открытые
+            // DB/CF/Statistics и унаследованные пулы; проверить частичную инициализацию
+            // на изолированной базе, не меняя текущий порядок штатного закрытия.
+            urlIndex = new UrlIndex(rocksDB, columnFamilyHandleList.get(0), columnFamilyHandleList.get(1));
+            queueRecovery = new QueueRecovery(rocksDB, columnFamilyHandleList.get(0),
+                columnFamilyHandleList.get(1), columnFamilyHandleList.get(2), getQueues());
             admission = new AdmissionLedger(this, rocksDB, columnFamilyHandleList.get(3));
             admission.readOnly = "true".equals(configuration.get("admission.readonly"));
-            // Always rebuild candidate indexes from authoritative rows, including after crash.
+            // Всегда восстанавливаем индексы кандидата из постоянных строк, в том числе после аварии.
             checkOnRecovery = true;
-            // full re-check
+            // Полная проверка соответствия указателей и запланированных записей.
             if (checkOnRecovery) {
                 LOG.info("Scanning tables to rebuild queues... (can take a long time)");
-                recoveryQscan(true);
+                queueRecovery.scan(true);
             } else {
-                recovery();
+                queueRecovery.recover();
             }
 
             long end2 = System.currentTimeMillis();
 
             LOG.info("{} queues discovered in {} msec", getQueues().size(), (end2 - end));
-        }
-    }
-
-    private void recovery() {
-        // if a table containing the queues info exists use it,
-        // otherwise just rebuild from the content of the tables
-        int read = 0;
-        try {
-            read = readQueueInfos();
-        } catch (RocksDBException e) {
-            LOG.error("readQueueInfos", e);
-        }
-        // nothing found? rebuild
-        if (read == 0) {
-            recoveryQscan(false);
-        }
-    }
-
-    /** Resurrects the queues from the URL tables and optionally does sanity checks * */
-    private void recoveryQscan(boolean check) {
-
-        LOG.info("Recovering queues from existing RocksDB");
-
-        if (check) {
-            try (final RocksIterator rocksIterator =
-                    rocksDB.newIterator(columnFamilyHandleList.get(1))) {
-                for (rocksIterator.seekToFirst(); rocksIterator.isValid(); rocksIterator.next()) {
-                    final String currentKey =
-                            new String(rocksIterator.key(), StandardCharsets.UTF_8);
-                    final QueueWithinCrawl qk = QueueWithinCrawl.parseAndDeNormalise(currentKey);
-                    QueueMetadata queueMD =
-                            (QueueMetadata)
-                                    getQueues().computeIfAbsent(qk, s -> new QueueMetadata());
-                    queueMD.incrementActive();
-                }
-            }
-            LOG.info("Found {} queues from scheduled table", getQueues().size());
-        }
-
-        QueueWithinCrawl previousQueueID = null;
-        long numScheduled = 0;
-
-        // now get the counts of URLs already finished
-        try (final RocksIterator rocksIterator =
-                rocksDB.newIterator(columnFamilyHandleList.get(0))) {
-            for (rocksIterator.seekToFirst(); rocksIterator.isValid(); rocksIterator.next()) {
-                final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
-                final QueueWithinCrawl Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
-
-                // changed ID? check that the previous one had the correct values
-                if (previousQueueID == null) {
-                    previousQueueID = Qkey;
-                } else if (check && !previousQueueID.equals(Qkey)) {
-                    int activeinQueues = getQueues().get(previousQueueID).countActive();
-                    if (activeinQueues != numScheduled) {
-                        LOG.error(
-                                "Incorrect number of active URLs for queue: {}. {} vs {}",
-                                previousQueueID,
-                                activeinQueues,
-                                numScheduled);
-                        throw new RuntimeException(
-                                "Incorrect number of active URLs for queue: " + previousQueueID);
-                    }
-                    previousQueueID = Qkey;
-                    numScheduled = 0;
-                }
-
-                // queue might not exist if it had nothing scheduled for it
-                // i.e. all done
-                QueueMetadata queueMD =
-                        (QueueMetadata) getQueues().computeIfAbsent(Qkey, s -> new QueueMetadata());
-
-                // check the value - if it is an empty byte array it means that the URL has been
-                // processed and is not scheduled
-                // otherwise it is scheduled
-                boolean done = rocksIterator.value().length == 0;
-                if (done) {
-                    queueMD.incrementCompleted();
-                } else {
-                    // if no checks have been done increment active
-                    if (!check) {
-    
-                    }
-                    // double check the number of scheduled later on
-                    numScheduled++;
-                }
-            }
-        }
-        // check the last key
-        if (check
-                && previousQueueID != null
-                && getQueues().get(previousQueueID).countActive() != numScheduled) {
-            throw new RuntimeException(
-                    "Incorrect number of active URLs for queue " + previousQueueID);
         }
     }
 
@@ -290,14 +237,14 @@ public class RocksDBService extends AbstractFrontierService {
             long now,
             SynchronizedStreamObserver<URLInfo> responseObserver) {
 
-        // stop sending if we are closing
+        // После начала остановки новые URL не выдаются.
         if (isClosing()) {
             return 0;
         }
 
         int alreadySent = 0;
         final byte[] prefixKey = (queueID.toString() + "_").getBytes(StandardCharsets.UTF_8);
-        // scan the scheduling table
+        // Обход таблицы запланированных URL.
         try (final RocksIterator rocksIterator =
                 rocksDB.newIterator(columnFamilyHandleList.get(1))) {
             for (rocksIterator.seek(prefixKey);
@@ -306,7 +253,7 @@ public class RocksDBService extends AbstractFrontierService {
 
                 final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
 
-                // don't want to split the whole string _ as the URL part is left as is
+                // Разбираем только служебные разделители: URL может содержать подчёркивания.
                 final int pos = currentKey.indexOf('_');
                 final int pos2 = currentKey.indexOf('_', pos + 1);
                 final int pos3 = currentKey.indexOf('_', pos2 + 1);
@@ -315,33 +262,33 @@ public class RocksDBService extends AbstractFrontierService {
                 final String queuePart = currentKey.substring(pos + 1, pos2);
                 final String urlPart = currentKey.substring(pos3 + 1);
 
-                // not for this queue anymore?
+                // Выход из непрерывного диапазона текущей очереди.
                 if (!queueID.equals(crawlPart, queuePart)) {
                     return alreadySent;
                 }
 
-                // too early for it?
+                // Будущая дата ещё не допускает выдачу URL.
                 long scheduled = Long.parseLong(currentKey.substring(pos2 + 1, pos3));
                 if (scheduled > now) {
-                    // they are sorted by date no need to go further
+                    // Последующие записи упорядочены по дате; продолжать обход не требуется.
                     return alreadySent;
                 }
 
-                // check that the URL is not already being processed
+                // Действующее резервирование исключает повторную выдачу URL.
                 if (((QueueMetadata) queue).isHeld(urlPart, now)) {
                     continue;
                 }
 
-                // this one is good to go
+                // URL доступен для выдачи в рамках текущего запроса.
                 try {
-                    // check that we haven't already reached the number of queues
+                    // Первая выдача из очереди требует свободного места в лимите очередей ответа.
                     if (alreadySent == 0 && !responseObserver.tryTakingToken()) {
                         return 0;
                     }
 
                     responseObserver.onNext(URLInfo.parseFrom(rocksIterator.value()));
 
-                    // mark it as not processable for N secs
+                    // Временное резервирование запрещает следующую выдачу до указанного срока.
                     ((QueueMetadata) queue).holdUntil(urlPart, now + secsUntilRequestable);
 
                     alreadySent++;
@@ -392,7 +339,7 @@ public class RocksDBService extends AbstractFrontierService {
         final String url = info.getUrl();
         final String crawlID = CrawlID.normaliseCrawlID(info.getCrawlID());
 
-        // has a queue key been defined? if not use the hostname
+        // Если ключ очереди не задан, используем имя хоста URL.
         if (Qkey.equals("")) {
             LOG.debug("key missing for {}", url);
             Qkey = provideMissingKey(url);
@@ -400,13 +347,13 @@ public class RocksDBService extends AbstractFrontierService {
                 LOG.error("Malformed URL {}", url);
                 return Status.SKIPPED;
             }
-            // make a new info object ready to return
+            // Сохраняем вычисленный ключ и нормализованный идентификатор обхода в URLInfo.
             info = URLInfo.newBuilder(info).setKey(Qkey).setCrawlID(crawlID).build();
         }
 
         LOG.debug("putURLItem -> {} with key {} in crawl {}", url, Qkey, crawlID);
 
-        // check that the key is not too long
+        // Ограничение длины ключа является частью существующего контракта.
         if (Qkey.length() > 255) {
             LOG.error("Key too long: {}", Qkey);
             return Status.SKIPPED;
@@ -414,22 +361,22 @@ public class RocksDBService extends AbstractFrontierService {
 
         final QueueWithinCrawl qk = QueueWithinCrawl.get(Qkey, crawlID);
 
-        // ignore this url if the queue is being deleted
+        // Начатое удаление очереди запрещает добавление в неё URL.
         if (queuesBeingDeleted.containsKey(qk)) {
             LOG.info("Not adding {} as its queue {} is being deleted", url, Qkey);
             return Status.SKIPPED;
         }
 
-        // make it intern so that all threads accessing this method
-        // share the same instance of the String, this way we can synchronize
-        // on it and make sure that 2 threads working on the same URL won't
-        // both be considered non-existant
+        // Интернирование сохраняет один монитор для одинакового ключа URL.
+        // Все потоки синхронизируются на том же экземпляре String, чтобы
+        // одновременные операции не считали один и тот же URL новым.
+        // Этот монитор берётся после admissionLock; порядок блокировок сохраняется.
         final String existenceKeyString = (qk.toString() + "_" + url).intern();
         final byte[] existenceKey = existenceKeyString.getBytes(StandardCharsets.UTF_8);
 
         synchronized (existenceKeyString) {
 
-            // is this URL already known?
+            // Проверяем существующий указатель внутри границы пакетной записи.
             try (WriteBatch writeBatch = new WriteBatch();
                     WriteOptions writeOps = new WriteOptions()) {
 
@@ -439,40 +386,39 @@ public class RocksDBService extends AbstractFrontierService {
                 byte[] schedulingKey = rocksDB.get(existenceKey);
                 final byte[] oldSchedulingKey = schedulingKey;
 
-                // already known? ignore if discovered
+                // Повторное обнаружение известного URL не меняет расписание.
                 if (schedulingKey != null && discovered) {
                     putURLs_alreadyknown_count.inc();
                     return Status.SKIPPED;
                 }
 
-                // get the priority queue or create one
+                // Метаданные очереди публикуются после успешной пакетной записи.
 
 
-                // known - remove from queues
-                // its key in the queues was stored in the default cf
+                // Обновление известного URL удаляет прежнюю запись расписания.
+                // Её ключ хранится значением в семействе default.
                 if (schedulingKey != null) {
                     if (isClosing()) {
                         return Status.FAIL;
                     }
                     writeBatch.delete(columnFamilyHandleList.get(1), schedulingKey);
-                    // remove from queue metadata
+                    // Счётчики изменяются только после успешного rocksDB.write.
 
                 }
 
-                // add the new item
-                // unless it is an update and it's nextFetchDate is 0 == NEVER
+                // Обновление с nextFetchDate == 0 означает отсутствие новой даты выдачи.
+                // Для остальных записей сохраняется прежний формат ключа расписания.
                 if (!discovered && nextFetchDate == 0) {
-                    // does not need scheduling
-                    // remove any scheduling key from its value
+                    // URL больше не запланирован; пустой указатель сохраняет факт существования.
+                    // Пустое значение не является доказательством успешного завершения.
                     schedulingKey = new byte[] {};
 
                 } else {
-                    // it is either brand new or already known
-                    // create a scheduling key for it
+                    // Новый либо повторно запланированный URL получает ключ с датой.
+                    // Кодирование ключа делегировано без изменения постоянного формата.
                     schedulingKey =
-                            (qk.toString() + "_" + DF.format(nextFetchDate) + "_" + url)
-                                    .getBytes(StandardCharsets.UTF_8);
-                    // add to the scheduling
+                            urlIndex.schedulingKey(qk, nextFetchDate, url);
+                    // Новая запись расписания входит в тот же WriteBatch, что и указатель.
                     if (isClosing()) {
                         return Status.FAIL;
                     }
@@ -485,11 +431,11 @@ public class RocksDBService extends AbstractFrontierService {
                     return Status.FAIL;
                 }
 
-                // update the link to its queue
+                // Указатель URL обновляется в том же пакете.
                 writeBatch.put(columnFamilyHandleList.get(0), existenceKey, schedulingKey);
 
-                // batch the updates - this way the scheduling and main tables will always be in
-                // sync
+                // Общий WriteBatch сохраняет атомарное соответствие таблицы расписания
+                // и указателя URL в семействе default.
                 rocksDB.write(writeOps, writeBatch);
                 QueueMetadata queueMD=(QueueMetadata)getQueues().computeIfAbsent(qk, k -> new QueueMetadata());
                 if (oldSchedulingKey != null && oldSchedulingKey.length != 0) {
@@ -507,14 +453,25 @@ public class RocksDBService extends AbstractFrontierService {
         return Status.OK;
     }
 
+    /**
+     * Добавляет URL и его расписание в пакет Admission без самостоятельного commit.
+     *
+     * <p>Вызывающий AdmissionLedger удерживает admissionLock и включает в тот же
+     * WriteBatch резервирование и квоту. Счётчики публикуются только после commit.</p>
+     *
+     * @param info разрешённый URL с неизменяемой областью обхода
+     * @param batch пакет, принадлежащий вызывающей операции Admission
+     * @throws RocksDBException при ошибке чтения или подготовки пакетной записи
+     */
     void stageAdmission(URLInfo info, WriteBatch batch) throws RocksDBException {
         QueueWithinCrawl q = QueueWithinCrawl.get(info.getKey(), info.getCrawlID());
         byte[] existence = (q.toString()+"_"+info.getUrl()).getBytes(StandardCharsets.UTF_8);
         if (rocksDB.get(existence) != null) throw new IllegalStateException("Legacy URL already exists");
-        byte[] scheduling = (q.toString()+"_"+DF.format(Instant.now().getEpochSecond())+"_"+info.getUrl()).getBytes(StandardCharsets.UTF_8);
+        byte[] scheduling = urlIndex.schedulingKey(q, Instant.now().getEpochSecond(), info.getUrl());
         batch.put(columnFamilyHandleList.get(0), existence, scheduling);
         batch.put(columnFamilyHandleList.get(1), scheduling, info.toByteArray());
     }
+    /** Публикует счётчик после успешного commit Admission под admissionLock. */
     void publishAdmission(URLInfo info) {
         QueueWithinCrawl q=QueueWithinCrawl.get(info.getKey(),info.getCrawlID());
         ((QueueMetadata)getQueues().computeIfAbsent(q,k->new QueueMetadata())).incrementActive();
@@ -530,39 +487,32 @@ public class RocksDBService extends AbstractFrontierService {
         }
     }
 
-    // Called only by admission readback while admissionLock and the session queue
-    // monitor are held. Never invokes GetURLs or the expiring/mutating lease APIs.
+    /**
+     * Читает существующее расписание без выдачи либо изменения резервирования.
+     *
+     * <p>Вызывающий удерживает admissionLock и монитор очереди; UrlIndex не
+     * приобретает новые блокировки и не выводит успешность из UNSCHEDULED.</p>
+     *
+     * @param id идентификатор сессии Admission
+     * @param url разрешённый URL сессии
+     * @param now время наблюдения в секундах эпохи
+     * @param held снимок действующих временных резервирований
+     * @return наблюдаемое состояние и известные даты
+     * @throws RocksDBException при ошибке чтения базы
+     */
     com.google.gson.JsonObject schedulingObservation(String id, String url, long now,
                                                      java.util.Map<String, Long> held) throws RocksDBException {
-        QueueWithinCrawl q = QueueWithinCrawl.get(java.net.URI.create(url).getHost(), id);
-        String prefix = q.toString() + "_";
-        byte[] pointer = rocksDB.get(columnFamilyHandleList.get(0),
-            (prefix + url).getBytes(StandardCharsets.UTF_8));
-        com.google.gson.JsonObject result = new com.google.gson.JsonObject();
-        String state = "UNKNOWN";
-        result.add("next_due_epoch", com.google.gson.JsonNull.INSTANCE);
-        result.add("lease_until_epoch", com.google.gson.JsonNull.INSTANCE);
-        if (pointer != null && pointer.length == 0) state = "UNSCHEDULED";
-        else if (pointer != null && rocksDB.get(columnFamilyHandleList.get(1), pointer) != null) {
-            String key = new String(pointer, StandardCharsets.UTF_8);
-            int separator = key.indexOf('_', prefix.length());
-            if (!key.startsWith(prefix) || separator < 0 || !key.substring(separator + 1).equals(url))
-                throw new IllegalStateException("Invalid scheduling pointer");
-            long due = Long.parseLong(key.substring(prefix.length(), separator));
-            result.addProperty("next_due_epoch", due);
-            state = held.containsKey(url) ? "HELD" : due > now ? "SCHEDULED_WAIT" : "PENDING";
-            if (held.containsKey(url)) result.addProperty("lease_until_epoch", held.get(url));
-        }
-        result.addProperty("state", state);
-        return result;
+        return urlIndex.observe(id, url, now, held);
     }
 
     /**
+     * Удаляет указанную очередь через существующий локальный алгоритм.
      *
+     * <p>RPC-проверка полномочий остаётся в AdmissionRpc; данный метод
+     * сохраняется для совместимости с базовым контрактом Frontier.</p>
      *
-     * <pre>
-     * * Delete  the queue based on the key in parameter *
-     * </pre>
+     * @param request ключ очереди и идентификатор обхода
+     * @param responseObserver получатель числа удалённых URL
      */
     @Override
     public void deleteQueue(
@@ -577,6 +527,12 @@ public class RocksDBService extends AbstractFrontierService {
         responseObserver.onCompleted();
     }
 
+    /**
+     * Удаляет диапазон очереди и её метаданные, сохраняя прежние границы блокировок.
+     *
+     * @param qc идентификатор очереди
+     * @return прежняя сумма активных и незапланированных URL
+     */
     protected int deleteLocalQueue(QueueWithinCrawl qc) {
         int sizeQueue = 0;
 
@@ -584,22 +540,25 @@ public class RocksDBService extends AbstractFrontierService {
             return 0;
         }
 
-        // don't have that queue?
+        // Отсутствующая очередь не требует удаления.
         if (!getQueues().containsKey(qc)) {
             return sizeQueue;
         }
 
-        // is this queue already being deleted?
-        // no need to do it again
+        // Проверяем существующую отметку удаления очереди.
+        // Повторный вызов не должен повторно учитывать её размер.
         if (queuesBeingDeleted.contains(qc)) {
             return sizeQueue;
         }
 
+        // TODO(DELETE-001): Проверка отметки и её установка неатомарны; конкурентное
+        // удаление может обнулить getQueues().remove(qc). Нужен отдельный тест
+        // удаления/выдачи с повторным открытием базы до изменения синхронизации.
         queuesBeingDeleted.put(qc, qc);
 
         String prefixed_queue = qc.toString() + "_";
 
-        // find the next key by alphabetical order, taking the separator into account
+        // Верхняя граница определяется следующей очередью с учётом разделителя.
         QueueWithinCrawl[] array = getQueues().keySet().toArray(new QueueWithinCrawl[0]);
         String[] prefixed_queues = new String[array.length];
         for (int i = 0; i < array.length; i++) {
@@ -645,22 +604,31 @@ public class RocksDBService extends AbstractFrontierService {
         super.getStats(request, responseObserver);
     }
 
+    /**
+     * Запрещает новые Admission-операции и освобождает принадлежащие службе ресурсы.
+     *
+     * <p>Сначала останавливает унаследованные пулы без admissionLock, затем под
+     * этим монитором сохраняет счётчики и закрывает дескрипторы, статистику и базу.
+     * Вспомогательные компоненты не выполняют самостоятельное закрытие.</p>
+     *
+     * @throws IOException согласно контракту базовой службы
+     */
     @Override
     public void close() throws IOException {
 
         LOG.info("Closing RocksDB");
-        // Direct admission RPC callbacks are not members of the legacy executors.
-        // Reject newcomers before draining those executors, without holding their lock.
+        // Прямые вызовы Admission не выполняются в унаследованных пулах.
+        // Запрещаем новые вызовы до ожидания пулов, не удерживая admissionLock.
         admissionStopping = true;
         super.close();
         synchronized (admissionLock) {
             if (admissionClosed) return;
-            // Any admission already past its stopping check has committed/published
-            // before this point. No late command can touch native handles afterward.
+            // Ранее допущенные операции Admission завершили запись и публикацию
+            // до этой точки; последующие Admission-команды к дескрипторам не обращаются.
 
-            // persisting the counts for the queues
+            // Сохраняем вспомогательные счётчики перед освобождением дескрипторов.
             try {
-                writeQueueInfos();
+                queueRecovery.writeQueueInfos();
             } catch (Exception e) {
                 LOG.error("writeQueueInfos ", e);
                 rocksDB.destroyColumnFamilyHandle(columnFamilyHandleList.get(2));
@@ -684,76 +652,6 @@ public class RocksDBService extends AbstractFrontierService {
             }
             admissionClosed = true;
         }
-    }
-
-    /**
-     * When shutting down an instance - write the stats about the queues into a table for faster
-     * reloading later
-     *
-     * @throws RocksDBException
-     */
-    private void writeQueueInfos() throws RocksDBException {
-        long start = System.currentTimeMillis();
-        int queuesWritten = 0;
-        if (!getQueues().isEmpty()) {
-            ByteBuffer bb = ByteBuffer.allocate(8);
-            synchronized (getQueues()) {
-                for (Entry<QueueWithinCrawl, QueueInterface> entry : getQueues().entrySet()) {
-                    queuesWritten++;
-                    int active = entry.getValue().countActive();
-                    int completed = entry.getValue().getCountCompleted();
-                    bb.putInt(active);
-                    bb.putInt(completed);
-                    rocksDB.put(
-                            columnFamilyHandleList.get(2),
-                            entry.getKey().toString().getBytes(),
-                            bb.array());
-                    bb.clear();
-                }
-            }
-        }
-        long end = System.currentTimeMillis();
-        LOG.info(
-                "writeQueueInfos stored stats for {} queues in {} msec",
-                queuesWritten,
-                (end - start));
-    }
-
-    private int readQueueInfos() throws RocksDBException {
-        long start = System.currentTimeMillis();
-        int queuesRead = 0;
-        byte[] firstKey = null;
-        byte[] lastKey = null;
-        ByteBuffer bb = ByteBuffer.allocate(8);
-        try (final RocksIterator rocksIterator =
-                rocksDB.newIterator(columnFamilyHandleList.get(2))) {
-            for (rocksIterator.seekToFirst(); rocksIterator.isValid(); rocksIterator.next()) {
-                if (firstKey == null) firstKey = rocksIterator.key();
-                lastKey = rocksIterator.key();
-                queuesRead++;
-                final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
-                final QueueWithinCrawl qk = QueueWithinCrawl.parseAndDeNormalise(currentKey);
-                QueueMetadata queueMD =
-                        (QueueMetadata) getQueues().computeIfAbsent(qk, s -> new QueueMetadata());
-                rocksIterator.value(bb);
-                int active = bb.getInt();
-                int completed = bb.getInt();
-                bb.clear();
-                queueMD.setActiveCount(active);
-                queueMD.setCompletedCount(completed);
-            }
-        }
-
-        if (queuesRead != 0) {
-            // empty the table so that we don't read it again
-            // if there has been a nasty crash
-            rocksDB.deleteRange(columnFamilyHandleList.get(2), firstKey, lastKey);
-        }
-
-        long end = System.currentTimeMillis();
-        LOG.info("readQueueInfos read stats for {} queues in {} msec", queuesRead, (end - start));
-
-        return queuesRead;
     }
 
     @Override
@@ -780,7 +678,7 @@ public class RocksDBService extends AbstractFrontierService {
 
         synchronized (getQueues()) {
 
-            // find the crawlIDs
+            // Выбираем непрерывный диапазон очередей заданного обхода.
             QueueWithinCrawl[] array = getQueues().keySet().toArray(new QueueWithinCrawl[0]);
             Arrays.sort(array);
 
@@ -803,7 +701,7 @@ public class RocksDBService extends AbstractFrontierService {
                 }
             }
 
-            // no queues found - nothing to delete
+            // Для отсутствующего обхода постоянное хранилище не изменяется.
             if (startKey == null) {
                 return 0;
             }
@@ -840,27 +738,30 @@ public class RocksDBService extends AbstractFrontierService {
             return;
         }
 
-        // if endKey is null it means that there is no other crawlID after this one
+        // Отсутствие endKey означает, что за этим обходом нет следующего диапазона.
         boolean includeEndKey = false;
 
         if (endKey == null) {
             try (RocksIterator iter = rocksDB.newIterator(columnFamilyHandleList.get(0))) {
                 iter.seekToLast();
                 if (iter.isValid()) {
-                    // this is the last known URL
+                    // Последний ключ URL определяет включительную границу хвостового диапазона.
                     endKey = iter.key();
                     includeEndKey = true;
                 }
             }
         }
 
-        // no end key found?
+        // Без конечного ключа границу диапазона определить не удалось.
         if (endKey == null) {
             throw new RuntimeException("No endkey found");
         }
 
-        // delete the ranges in the queues table as well as the URLs already
-        // processed
+        // Удаляем записи расписания и указатели URL, включая уже не запланированные.
+        // Текущий алгоритм и границы удаления сохраняются.
+        // TODO(DELETE-002): Эти удаления разных CF не входят в один WriteBatch.
+        // Проверить отказ между операциями и согласованность последующего
+        // восстановления; не менять атомарность в структурном рефакторинге.
         rocksDB.deleteRange(columnFamilyHandleList.get(1), prefix, endKey);
         rocksDB.deleteRange(columnFamilyHandleList.get(0), prefix, endKey);
 
@@ -877,7 +778,7 @@ public class RocksDBService extends AbstractFrontierService {
         String key = request.getKey();
         String url = request.getUrl();
 
-        // has a queue key been defined? if not use the hostname
+        // Если ключ очереди не задан, используем имя хоста URL.
         if (key == null || key.equals("")) {
             LOG.debug("key missing for {}", url);
             key = provideMissingKey(url);
@@ -923,6 +824,9 @@ public class RocksDBService extends AbstractFrontierService {
                                         rocksDB.get(columnFamilyHandleList.get(1), schedulingKey));
                     } catch (InvalidProtocolBufferException e) {
                         LOG.error(e.getMessage(), e);
+                        // TODO(STATUS-001): После onError выполнение продолжается до
+                        // found=true/onNext с info=null. Отдельно проверить повреждённый
+                        // protobuf и единственное терминальное событие RPC, затем добавить return.
                         responseObserver.onError(
                                 io.grpc.Status.fromThrowable(e).asRuntimeException());
                     }
@@ -930,7 +834,7 @@ public class RocksDBService extends AbstractFrontierService {
                     found = true;
                 }
             } else {
-                // Key is unknown
+                // Указатель URL отсутствует в постоянном хранилище.
                 found = false;
             }
 
@@ -953,6 +857,12 @@ public class RocksDBService extends AbstractFrontierService {
         return new RocksDBURLItemIterator(qentry, start, maxURLs);
     }
 
+    /**
+     * <b>Последовательный просмотр URL одной очереди в существующем формате.</b>
+     *
+     * <p>Заимствует базу службы; позиционирование и порядок записей сохраняются.
+     * Публичный контракт Iterator не предоставляет операции закрытия.</p>
+     */
     class RocksDBURLItemIterator implements Iterator<URLItem> {
 
         private final org.slf4j.Logger LOG = LoggerFactory.getLogger(RocksDBURLItemIterator.class);
@@ -965,6 +875,9 @@ public class RocksDBService extends AbstractFrontierService {
 
         private final QueueWithinCrawl queueID;
         private final byte[] prefixKey;
+        // TODO(ITERATOR-001): RocksIterator создаётся здесь, но не закрывается.
+        // listURLs может прервать обход по лимиту до исчерпания; закрытия только
+        // в hasNext недостаточно. Согласовать явного владельца без изменения RPC API.
         private final RocksIterator rocksIterator;
         private boolean hasNext = true;
 
@@ -981,7 +894,7 @@ public class RocksDBService extends AbstractFrontierService {
             this.rocksIterator.seek(prefixKey);
 
             if (rocksIterator.isValid() && start == 0L) {
-                // Check if we're not past the seeked queue
+                // Проверяем, что позиционирование осталось в диапазоне нужной очереди.
                 final String currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
                 final QueueWithinCrawl Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
 
@@ -990,7 +903,7 @@ public class RocksDBService extends AbstractFrontierService {
                     return;
                 }
             } else {
-                // advance to the start position
+                // Пропускаем start записей, не выходя за диапазон очереди.
                 while (rocksIterator.isValid() && pos < start) {
                     final String currentKey =
                             new String(rocksIterator.key(), StandardCharsets.UTF_8);
@@ -1076,6 +989,9 @@ public class RocksDBService extends AbstractFrontierService {
                 sent++;
                 rocksIterator.next();
 
+                // TODO(ITERATOR-002): После next() сначала требуется проверить isValid().
+                // Сейчас key() читается и после последней записи; воспроизвести EOF
+                // на изолированной базе и сохранить порядок обхода при отдельном исправлении.
                 currentKey = new String(rocksIterator.key(), StandardCharsets.UTF_8);
                 Qkey = QueueWithinCrawl.parseAndDeNormalise(currentKey);
 
@@ -1088,7 +1004,7 @@ public class RocksDBService extends AbstractFrontierService {
                 return buildURLItem(builder, knownBuilder, info, fromEpoch);
             }
 
-            return null; // Shouldn't happen
+            return null; // Недостижимость этой ветки зависит от сохранённых проверок итератора.
         }
     }
 }

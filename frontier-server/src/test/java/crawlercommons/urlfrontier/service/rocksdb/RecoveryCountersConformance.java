@@ -111,6 +111,12 @@ public final class RecoveryCountersConformance {
     public static void main(String[] args) throws Exception {
         base = "http://" + AdmissionConformance.host();
         AdmissionConformance.base = base;
+        if (args.length == 2 && args[0].equals("compatibility")) {
+            // Читаем только отдельную копию базы, созданной прежним бинарным файлом.
+            try (RocksDBService s = service(Path.of(args[1]))) { verifyDueAndReplay(s); }
+            System.out.println("PASS compatibility: pre-refactor database readback and quota replay");
+            return;
+        }
         if (args.length == 2 && args[0].equals("crash")) {
             RocksDBService s = service(Path.of(args[1]));
             populate(s);
@@ -143,6 +149,7 @@ public final class RecoveryCountersConformance {
             check(crashExpected.equals(inspect(s)), "Crash recovery changed due dates or reservations");
             verifyDueAndReplay(s);
         }
+        RocksDbDecompositionConformance.run(root.resolve("decomposition"));
         System.out.println("PASS RecoveryCountersConformance: three queues, two clean restarts, process crash, due membership and quota replay");
     }
 }
