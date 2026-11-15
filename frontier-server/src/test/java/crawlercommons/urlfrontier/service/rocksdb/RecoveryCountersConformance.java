@@ -149,7 +149,7 @@ public final class RecoveryCountersConformance {
             check(crashExpected.equals(inspect(s)), "Crash recovery changed due dates or reservations");
             verifyDueAndReplay(s);
         }
-        RocksDbDecompositionConformance.run(root.resolve("decomposition"));
+        RocksDbDecompositionChecks.run(root.resolve("decomposition"));
         System.out.println("PASS RecoveryCountersConformance: three queues, two clean restarts, process crash, due membership and quota replay");
     }
 }

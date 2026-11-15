@@ -24,7 +24,7 @@ import org.rocksdb.RocksDB;
  * @author GPT-6.1 Sol
  * @Reviewer Stephan Kolesnikov
  */
-final class RocksDbDecompositionConformance {
+final class RocksDbDecompositionChecks {
     private static byte[] utf8(String text) { return text.getBytes(StandardCharsets.UTF_8); }
     private static void check(boolean value, String message) {
         if (!value) throw new AssertionError(message);
@@ -77,6 +77,6 @@ final class RocksDbDecompositionConformance {
                 }
             }
         }
-        System.out.println("PASS RocksDbDecompositionConformance: raw legacy bytes, metadata, counters, consistency guard");
+        System.out.println("PASS RocksDbDecompositionChecks: raw legacy bytes, metadata, counters, consistency guard");
     }
 }

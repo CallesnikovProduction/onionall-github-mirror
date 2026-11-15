@@ -106,7 +106,7 @@ pipeline с его прежними предупреждениями о пере
 Первый baseline запуск остановился на запрете локального socket; после разрешения
 loopback повтор прошёл. Это ограничение среды, а не подавленный assertion.
 
-RocksDbDecompositionConformance подключён к существующему RecoveryCountersConformance,
+RocksDbDecompositionChecks подключён к существующему RecoveryCountersConformance,
 поэтому выполняется и из Maven, и из build.sh без отдельного test runner.
 Проверяет независимые исходные bytes ключей (включая подчёркивания и будущую дату),
 metadata bytes, чтение сохранённых счётчиков, смешанные scheduled/unscheduled rows,
