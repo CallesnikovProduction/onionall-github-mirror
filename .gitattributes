@@ -1,2 +1,5 @@
 *.sh text eol=lf
 *.ps1 text eol=lf
+# Golden exports are compared byte-for-byte with the LF output contract.
+/src/test/resources/research/export/*.md text eol=lf
+/src/test/resources/research/export/*.txt text eol=lf
