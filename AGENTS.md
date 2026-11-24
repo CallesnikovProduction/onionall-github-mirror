@@ -58,7 +58,7 @@ paused run and unavailable live scheduler counters are separate observations.
 Continuation/evidence: [M6.1 checkpoint](docs/engineering/m61-checkpoint.md).
 
 Canonical local operation uses root `./onionall` ->
-`scripts/runners/runtime.py` -> `compose.runtime.yaml`; see
+[`onionall-tooling runtime`](scripts/tooling/src/runtime.rs) -> `compose.runtime.yaml`; see
 [local runtime](docs/local-runtime.md). `./onionall build`, `test` and `build --images` use the containerized JDK 25
 workflow in `docker/toolchain/`; prefer it when host Java is unavailable. It
 verifies root/crawler POMs and builds the independent Frontier Maven project

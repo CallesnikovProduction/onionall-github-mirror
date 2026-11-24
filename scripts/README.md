@@ -112,10 +112,13 @@ require its separate [pinned-JAR preparation](../frontier-server/README.md#maven
 | `runners/run-controlled-crawl-container.sh` | Linux container/Bash | No arguments; `M1_RUN_REL`, Storm/JAR | Compose-owned bounded 45s crawl; run-specific evidence |
 | `runners/run-tor-crawl-container.sh` | Linux container/Bash | No arguments; `M2_RUN_REL`, optional `M2_VERIFY_BEFORE_CRAWL`, `M2_SERIES_OUTPUT`, `M2_TOPOLOGY`, `M2_CRAWL_TTL`; Java/Storm | Compose-owned; optional verification before bounded crawl |
 | `runners/frontier-volume-init.sh` | Linux container/POSIX sh | No arguments; image account `urlfrontier`, mounted `/crawldir` | Idempotent directory creation/ownership; never removes DB files |
-| `recovery/recover_tor_gateway.py` | Python/Linux or Windows | `project run_dir`; existing scoped stack, private bridges; optional `M2_TOR_DIAGNOSTICS=1`; imports M2 harness | One recovery journal, not replayable; scoped gateway restart/quarantine; volumes retained |
-| `recovery/supervise_local_crawl.py` | Python/Linux or Windows | `project run_dir`; existing stack/JAR; calls `recovery/recover_tor_gateway.py` and M2 readiness helpers | One supervision journal, not replayable; at most two batches and one recovery |
-| `security/verify_tor_candidate.py` | Python + GnuPG | `bundle destination`; local artifact/signature/hash-chain verification, no environment settings | New destination only; offline evidence, no installation/update |
+| `./onionall recover` | Rust in the shared toolchain image | `project run_dir`; existing M2 stack and private bridges; optional `--detection <filename>` and `--diagnostics` | One recovery journal; one restart of the pinned gateway; quarantine retained on failure |
+| `./onionall supervise` | Rust in the shared toolchain image | `project run_dir`; existing M2 stack and probe JAR | One supervision journal; at most two batches and one recovery |
+| `./onionall verify-tor-candidate` | Rust + GnuPG in the shared Docker toolchain | `bundle destination`; see the [offline APT chain](../docs/m2-hardening.md#manual-transfer-without-changing-this-hosts-network-policy) | Verifies local files and stages a new ignored build context |
 | `patches/build-storm-lifecycle.sh` | Linux/Bash | No arguments; JDK25, Docker, Python, patch/hash/tar tools, curl if source absent | Sequential build only; writes `.runtime/storm-lifecycle-build-cleanup<N>`, builds local image; no user volumes |
+
+See the [M2 recovery commands](../docs/local-runtime.md#m2-recovery) for
+supported hosts and setup.
 
 Container helpers deliberately use Compose's `/workspace` working directory:
 they are copied into `/tmp`, so deriving checkout location from their own path

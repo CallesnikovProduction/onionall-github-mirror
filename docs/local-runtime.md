@@ -6,7 +6,7 @@ Compose deployments and their volumes remain separate.
 
 ## Build
 
-Requires Bash and Docker Engine/Compose; no host JVM, Maven or Python.
+Requires Bash and Docker Engine/Compose. All build toolchains run in Docker.
 Use the [portable development workflow](../README.md#development-without-installing-java).
 
 ```sh
@@ -16,6 +16,8 @@ Use the [portable development workflow](../README.md#development-without-install
 
 The launcher builds the JDK 25 toolchain image, verifies root and crawler POMs,
 packages the CLI and prepares/builds the independent Frontier Maven project.
+The same image ships the Rust operational CLI. It owns Compose lifecycle and
+forwards JVM commands with the existing deployment defaults.
 The exact pinned base is extracted automatically; no manual JAR download needed.
 Maven/Wrapper caches persist under `.runtime/`, outputs use the caller UID/GID.
 `--clean` affects generated Maven outputs, never runtime storage. Legacy native
@@ -31,6 +33,35 @@ java frontier-server/build-support/FrontierBuild.java prepare "$URLFRONTIER_BASE
 Use standard `src/main/java` and `src/test/java`. Never mark the whole server
 directory as Sources Root. Its bytecode remains release 11 on JDK 25. This is
 independent Maven import; the root POM does not aggregate these projects.
+
+## M2 recovery
+
+The local M2 controllers share the application's toolchain image.
+`./onionall build` builds the Rust binary with the pinned Docker toolchain,
+and `./onionall test` runs formatting, lint, Rust tests and CLI replays.
+For recovery on Windows, build the image from the checkout in PowerShell or
+Git Bash, then run the commands in Git Bash with Docker Desktop in the
+`desktop-linux` context.
+
+```sh
+docker build --platform linux/amd64 -f docker/toolchain/Dockerfile -t onionall-toolchain:jdk25 .
+```
+
+Use an existing isolated M2 project and its matching evidence directory under
+`.runtime/m2/`. The existing M2 bridge file and probe JAR are required.
+`M2_BRIDGES_FILE` and `M2_STORM_IMAGE` select the same inputs as the M2 harness.
+The full M2 scenario runner uses the same image for assisted recovery.
+
+```sh
+./onionall recover "$project" ".runtime/m2/$project"
+./onionall supervise "$project" ".runtime/m2/$project"
+```
+
+Both commands return JSON. Exit 0 means the operation passed, 1 means it was
+blocked, and 2 means the usage was invalid. Recovery accepts
+`--detection <filename>` to read a specific observation and `--diagnostics`
+to enable protocol diagnostics. Each command reserves its existing journal
+and refuses to repeat it. See the [M2 recovery contract](m2-hardening.md#single-cycle-recovery-contract).
 
 ## Start, health and safe stop
 

@@ -13,6 +13,8 @@ Keep reproducible pinned inputs, least-privilege workflow permissions and clear 
 ## IMPLEMENTED ARCHITECTURE
 
 workflows/verify.yml sets Java 25/Python, recovers a digest/hash-pinned Frontier base, builds the app/thin CLI/candidate server and runs verify.py. Internal-only product end-to-end requires explicit workflow dispatch input.
+The workflow builds and tests `onionall-tooling` via the pinned Docker build
+before running verification suites. The artifact verifier runs without networking.
 
 ## KEY COMPONENTS
 

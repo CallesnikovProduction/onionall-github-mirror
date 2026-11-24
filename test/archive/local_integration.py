@@ -4,7 +4,6 @@ Run after scripts/cli/build-cli.sh with JDK25 and M2_STORM_IMAGE=...cleanup2.
 Uses actual CLI approval, StormCrawler/TorProtocol/Frontier and an internal SOCKS
 fixture. Only local-test discovery is enabled; no external Tor or host ports.
 """
-import base64
 from collections import Counter
 import hashlib
 import json
@@ -18,6 +17,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
 from runners.tor_acceptance_runner import Runner
+from socks_fixture import fixture_host
 from restart_recovery import host_state
 from deterministic_recovery import cleanup_project
 
@@ -25,12 +25,6 @@ from deterministic_recovery import cleanup_project
 def require(condition,message):
     if not condition:
         raise RuntimeError(message)
-
-
-def onion(number):
-    key=bytes([number])*32
-    payload=key+hashlib.sha3_256(b'.onion checksum'+key+b'\3').digest()[:2]+b'\3'
-    return base64.b32encode(payload).decode().lower()+'.onion'
 
 
 def main():
@@ -58,7 +52,7 @@ def main():
     signal.signal(signal.SIGTERM,interrupted);signal.signal(signal.SIGINT,interrupted)
     try:
         r.validate_toolchain()
-        host=onion(1);foreign=onion(2);seed='http://'+host+'/a'
+        host=fixture_host(1);foreign=fixture_host(2);seed='http://'+host+'/a'
         (p/'onion-hostname.txt').write_text(host)
         (p/'foreign-hostname.txt').write_text(foreign)
         plan=cli(['crawl','plan','--seed',seed,'--scope','same-host','--depth','2','--max-pages','4','--provider','controlled-fixture'],'plan')

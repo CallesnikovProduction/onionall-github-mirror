@@ -5,6 +5,7 @@ ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT/'scripts'))
 from runners.tor_acceptance_runner import Runner
 from restart_recovery import host_state
+from recovery_cli import connect_failure
 
 def cold_gateway_override(path, project):
     """Diagnostic-only new generation; never delete old state or onion identity."""
@@ -102,7 +103,6 @@ r['network_namespace']=str(Path('/proc/self/ns/net').readlink());(p/sys.argv[1])
             if recovered:
                 result['retained_cold']={'status':'NOT_REPRODUCED','m2_verified':False,'pair_attempts':0,'interpretation':'Ordinary restart restored control; no observer or extra restart attempted'}
             else:
-                from recovery.recover_tor_gateway import connect_failure
                 control=result['comparisons'][-1]['results']['python']
                 if not connect_failure(control):
                     result['retained_cold']={'status':'INCONCLUSIVE','m2_verified':False,'pair_attempts':0,'interpretation':'Control did not fail at SOCKS CONNECT; cold observer not started'}

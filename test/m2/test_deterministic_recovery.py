@@ -1,13 +1,27 @@
 """Failure injection for diagnostic teardown and pre-pair evidence gates."""
+import json
+from pathlib import Path
+import tempfile
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import subprocess
 import unittest
 from deterministic_recovery import cleanup_project
+import outage_pipeline
 from retained_cold import publication_observed
 
 
 class CleanupTest(unittest.TestCase):
+    def test_outage_pipeline_cannot_bypass_active_quarantine(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            (path / 'gateway-recovery.json').write_text('{"passed":false,"state":"blocked"}')
+            with patch.object(outage_pipeline.subprocess, 'run') as command:
+                self.assertFalse(outage_pipeline.run('isolated-m2', path))
+                command.assert_not_called()
+            document = json.loads((path / 'outage-pipeline.json').read_text())
+            self.assertIn('quarantine is active', document['blocker'])
+
     def test_failed_stop_and_logs_cannot_skip_owned_project_down(self):
         runner = Mock(project='onionall-brawler-m2-123456abcdef', started=True)
         def command(args, *a, **kw):

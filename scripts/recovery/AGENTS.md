@@ -12,11 +12,15 @@ Qualify transport failure, quarantine consumers, restart only the identified gat
 
 ## IMPLEMENTED ARCHITECTURE
 
-recover_tor_gateway.py creates an exclusive recovery journal and permits one qualified SOCKS-connect recovery cycle. supervise_local_crawl.py owns bounded crawler batches and at most one recovery; neither is a distributed Storm scheduler.
+The shared Docker toolchain builds `onionall-recovery`. The root launcher
+dispatches `./onionall recover` and `./onionall supervise` to that binary.
+Recovery permits one qualified SOCKS CONNECT cycle. Supervision permits at most
+two finite crawler batches and one in-process recovery. Both share an OS file
+lock and retain exclusive journals. Frontier remains the scheduler.
 
 ## KEY COMPONENTS
 
-`recover_tor_gateway.py`, `supervise_local_crawl.py`.
+`src/recover.rs`, `src/supervise.rs`, `src/docker.rs` and `src/evidence.rs`.
 
 ## DATA FLOW
 
@@ -24,7 +28,9 @@ Owned project/evidence identity -> qualifying detection -> consumer quarantine -
 
 ## DEPENDENCIES
 
-Compose M2 service names, Docker ownership labels, structured probes under test/m2 and prebuilt runtime artifacts.
+Pinned Rust in `../../docker/toolchain/Dockerfile`, Compose M2 service names,
+Docker ownership labels, structured probes under `test/m2` and prebuilt runtime
+artifacts.
 
 ## INVARIANTS
 

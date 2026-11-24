@@ -8,7 +8,9 @@ Operational build/install entrypoints, verification orchestration, recovery and 
 
 ## RESPONSIBILITIES
 
-Group by responsibility, not language: cli/, runners/, recovery/, security/, patches/. Search for an existing owner before adding tools/categories; do not recreate removed root wrappers or milestone aliases.
+Group scripts by responsibility: cli/, runners/, recovery/, security/, patches/.
+The shared Rust operational binary lives in tooling/. Search for an existing
+owner before adding tools or recreating removed root wrappers.
 
 ## IMPLEMENTED ARCHITECTURE
 
@@ -24,7 +26,9 @@ Explicit arguments/environment -> root-relative paths -> bounded operation -> ty
 
 ## DEPENDENCIES
 
-JDK/Maven, Python, supported shells and Docker only where required. Runners reuse fixture helpers; do not introduce test-module dependencies as primary operational implementation, hidden cwd state or circular imports.
+JDK/Maven, Rust, Python, supported shells and Docker only where required.
+Runners reuse fixture helpers; do not introduce test-module dependencies as
+primary operational implementation, hidden cwd state or circular imports.
 
 ## INVARIANTS
 

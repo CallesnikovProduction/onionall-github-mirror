@@ -2,7 +2,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 spec = importlib.util.spec_from_file_location('restart_attribution', Path(__file__).with_name('restart_recovery.py'))
 restart = importlib.util.module_from_spec(spec)
@@ -12,12 +12,18 @@ spec.loader.exec_module(restart)
 class RestartAttributionTest(unittest.TestCase):
     def setUp(self):
         self.recover = Mock()
+        classifier = patch.object(restart, 'connect_failure')
+        self.classify = classifier.start()
+        self.addCleanup(classifier.stop)
         self.health = dict(passed=True, health=dict(http_status=200, health_body='ready',
                           socks_atyp=3, remote_hostname_sent=True))
         self.failure = dict(passed=False, phase='socks_connect_reply', error_type='TimeoutError')
 
     def restore(self, code, observation):
-        return restart.restore_transport('owned-project', Path('/unused'), code, observation, self.recover)
+        result = restart.restore_transport('owned-project', Path('/unused'), code, observation, self.recover)
+        if result['recovery_exercised']:
+            self.classify.assert_called_once_with(observation)
+        return result
 
     def test_unassisted_http_proof_passes_transport_without_claiming_assisted_or_application(self):
         result = self.restore(0, self.health)
@@ -46,6 +52,7 @@ class RestartAttributionTest(unittest.TestCase):
         self.recover.assert_not_called()
 
     def test_qualifying_failure_exercises_exactly_one_assisted_cycle(self):
+        self.classify.return_value = True
         self.recover.return_value = dict(passed=True, state='recovered')
         result = self.restore(1, self.failure)
         self.assertEqual('PASS', result['transport_recovery'])
@@ -54,6 +61,7 @@ class RestartAttributionTest(unittest.TestCase):
         self.recover.assert_called_once_with('owned-project', Path('/unused'), diagnostics=True)
 
     def test_failed_assisted_cycle_is_dependency_unavailable_not_application_failure_or_pass(self):
+        self.classify.return_value = True
         self.recover.return_value = dict(passed=False, state='blocked')
         result = self.restore(1, self.failure)
         self.assertEqual('DEPENDENCY_UNAVAILABLE', result['transport_recovery'])
@@ -61,7 +69,8 @@ class RestartAttributionTest(unittest.TestCase):
         self.assertNotIn('application_recovery', result)
         self.recover.assert_called_once()
 
-    def test_http_policy_greeting_and_success_reply_failures_never_trigger_gateway_reset(self):
+    def test_rejected_detection_never_triggers_gateway_reset(self):
+        self.classify.return_value = False
         for phase in ('socks_greeting', 'http_response', 'policy'):
             with self.subTest(phase=phase), self.assertRaises(ValueError):
                 self.restore(1, {**self.failure, 'phase': phase})

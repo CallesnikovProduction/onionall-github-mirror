@@ -110,9 +110,17 @@ def run(path, seconds=180):
                                              capture_output=True, timeout=min(45,max(1,deadline-time.monotonic())))
                     if checked.returncode == 0:
                         check = json.loads(checked.stdout)
-                        result.update(check)
-                        result.update(ready=all(check.get(k) is True for k in
-                                     ('socks_usable','remote_hostname_sent','is_tor','transport_running','current_bootstrap_complete')), blocker=None)
+                        proof = ('socks_usable','remote_hostname_sent','is_tor','transport_running','current_bootstrap_complete')
+                        if isinstance(check, dict):
+                            for key in proof:
+                                if type(check.get(key)) is bool:
+                                    result[key] = check[key]
+                            for key in ('socks_atyp', 'http_status'):
+                                if type(check.get(key)) is int:
+                                    result[key] = check[key]
+                        result['ready'] = (all(result.get(key) is True for key in proof)
+                                           and result.get('socks_atyp') == 3 and result.get('http_status') == 200)
+                        result['blocker'] = None if result['ready'] else 'Incomplete SOCKS/Tor HTTP/transport evidence'
                     else:
                         result['blocker'] = 'Bootstrap completed but SOCKS/Tor HTTP/transport check failed'
                     break

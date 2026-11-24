@@ -58,6 +58,32 @@ class RunnerContractTest(unittest.TestCase):
             self.assertFalse(cleanup['volume_retained'])
             self.assertFalse(cleanup['retained_volumes']['onion-state'])
 
+    def test_log_timeout_does_not_skip_owned_cleanup_or_replace_original_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            runner = self.runner(path)
+            commands = []
+
+            def compose(args, *unused, **kwargs):
+                commands.append((args, kwargs.get('timeout')))
+                if args[0] == 'logs':
+                    raise subprocess.TimeoutExpired(args, 45)
+                return subprocess.CompletedProcess(args, 0, stdout='', stderr='')
+
+            def command(args, *unused, **kwargs):
+                volumes = [{'Name': name} for name in args[3:]] if args[:3] == ['docker', 'volume', 'inspect'] else []
+                return subprocess.CompletedProcess(args, 0, stdout=json.dumps(volumes) if volumes else '', stderr='')
+
+            runner.dc = compose
+            runner.command = command
+            runner.cleanup()
+            self.assertEqual([(['logs', '--no-color'], 45), (['down', '--timeout', '60'], 80), (['ps', '-aq'], 20)],
+                             commands)
+            cleanup = json.loads((path / 'cleanup.json').read_text())
+            self.assertTrue(cleanup['containers_removed'])
+            self.assertEqual('TimeoutExpired', cleanup['logs_failure'])
+            self.assertEqual('startup.log', json.loads((path / 'runner-state.json').read_text())['failed_line'])
+
     def test_jdk25_selected_consistently(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory);runner=self.runner(path)

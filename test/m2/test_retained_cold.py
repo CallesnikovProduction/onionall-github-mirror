@@ -76,8 +76,10 @@ class RetainedColdFlowTest(unittest.TestCase):
     def test_failed_control_delegates_once_and_never_launches_crawler(self):
         from unittest.mock import patch
         from test_socks_incident import NamespaceComparisonTest
-        with patch('retained_cold.run',return_value={'status':'INCONCLUSIVE','pair_attempts':0,'m2_verified':False}) as pair:
+        with (patch('socks_incident.connect_failure', return_value=True) as classify,
+              patch('retained_cold.run',return_value={'status':'INCONCLUSIVE','pair_attempts':0,'m2_verified':False}) as pair):
             code,result,operations=NamespaceComparisonTest().run_case(gateway=False,flag='--compare-retained-cold')
+        classify.assert_called_once_with(result['comparisons'][-1]['results']['python'])
         pair.assert_called_once()
         self.assertEqual(1,code);self.assertFalse(result['m2_verified'])
         self.assertEqual('INCONCLUSIVE',result['retained_cold']['status'])

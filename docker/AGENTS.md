@@ -13,6 +13,8 @@ Keep image provenance, service ownership and network/state boundaries explicit a
 ## IMPLEMENTED ARCHITECTURE
 
 m2/ contains official packaged Tor/obfs4 launch and health/state helpers; storm-lifecycle/ contains the pinned Nimbus shutdown patch image. Root Compose recipes select distinct startup, legacy HTTP, Tor and archive contours.
+The shared toolchain image builds the Rust operational tooling and M2 controller
+in pinned build stages and carries the executables used by the root launcher.
 
 ## KEY COMPONENTS
 

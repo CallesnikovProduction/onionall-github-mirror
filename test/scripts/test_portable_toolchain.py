@@ -19,8 +19,11 @@ class PortableToolchainTest(unittest.TestCase):
         shutil.copy2(ROOT / 'onionall', root / 'onionall')
         tools = root / 'tools'
         tools.mkdir()
-        for tool in ('bash', 'dirname', 'id', 'mkdir', 'cat', 'stat'):
+        for tool in ('bash', 'dirname', 'id', 'mkdir', 'cat', 'realpath', 'stat'):
             (tools / tool).symlink_to(shutil.which(tool))
+        (root / 'bundle dir').mkdir()
+        (root / 'docker/m2').mkdir(parents=True)
+        (root / 'docker/m2/Dockerfile.security-candidate').touch()
         for tool in ('java', 'javac', 'mvn', 'python3'):
             path = tools / tool
             path.write_text('#!/bin/sh\nexit 98\n')
@@ -78,7 +81,7 @@ if os.environ.get('FAIL') == sys.argv[1]:
         result, calls, root = self.launch(['--fixture', 'down'], runtime_socket=True)
         self.assertEqual(0, result.returncode, result.stderr)
         run = next(call for call in calls if call[0] == 'run')
-        self.assertEqual(['python3', '-B', 'scripts/runners/runtime.py', '--fixture', 'down'], run[-5:])
+        self.assertEqual(['onionall-tooling', 'runtime', '--fixture', 'down'], run[-4:])
         self.assertIn(f'type=bind,src={root},dst={root}', run)
         self.assertIn('--group-add', run)
         self.assertNotIn('--volumes', run)
@@ -88,6 +91,29 @@ if os.environ.get('FAIL') == sys.argv[1]:
         result, calls, _ = self.launch(['--help'])
         self.assertEqual(0, result.returncode)
         self.assertEqual([], calls)
+
+    def test_candidate_launcher_has_no_network_or_docker_socket(self):
+        result, calls, _ = self.launch(['verify-tor-candidate', 'bundle dir', '.runtime/candidate'])
+        self.assertEqual(0, result.returncode, result.stderr)
+        run = next(call for call in calls if call[0] == 'run')
+        self.assertEqual(['onionall-tooling', 'verify-tor-candidate', '/bundle', '.runtime/candidate'],
+                         run[-4:])
+        self.assertEqual('none', run[run.index('--network') + 1])
+        self.assertIn('--read-only', run)
+        self.assertIn('--cap-drop', run)
+        self.assertFalse(any('docker.sock' in arg or 'DOCKER_HOST' in arg for arg in run))
+        mounts = [run[index + 1] for index, arg in enumerate(run) if arg == '--mount']
+        self.assertTrue(any('dst=/bundle,readonly' in mount for mount in mounts))
+        self.assertEqual(3, len(mounts))
+
+    def test_candidate_help_and_outside_destination_do_not_start_a_container(self):
+        help_result, help_calls, _ = self.launch(['verify-tor-candidate', '--help'])
+        self.assertEqual(0, help_result.returncode, help_result.stderr)
+        self.assertEqual([], help_calls)
+        invalid, calls, root = self.launch(['verify-tor-candidate', 'bundle dir', 'outside'])
+        self.assertEqual(1, invalid.returncode)
+        self.assertFalse(any(call[0] == 'run' for call in calls))
+        self.assertFalse((root / '.runtime').exists())
 
 
 if __name__ == '__main__':

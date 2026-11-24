@@ -22,10 +22,8 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'scripts/runners'))
 sys.path.insert(0, str(ROOT / 'test/archive'))
-from runtime import fixture_host
-from socks_fixture import Fixture
+from socks_fixture import Fixture, fixture_host
 
 
 def require(value, message):

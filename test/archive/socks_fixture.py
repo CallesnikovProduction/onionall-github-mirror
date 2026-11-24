@@ -5,12 +5,22 @@ robots refusal, extension-only metadata link, scope escape and one HTTP503 retry
 Optional branching mode serves six HTML pages at depths 0/1/2.
 """
 import argparse
+import base64
 from collections import Counter
+import hashlib
 import json
 from pathlib import Path
 import socketserver
 import threading
 import time
+
+
+def fixture_host(number):
+    """Derive a deterministic v3 onion name for a synthetic local origin."""
+    key = bytes([number]) * 32
+    version = b'\x03'
+    checksum = hashlib.sha3_256(b'.onion checksum' + key + version).digest()[:2]
+    return base64.b32encode(key + checksum + version).decode('ascii').lower() + '.onion'
 
 
 def receive(sock, count):

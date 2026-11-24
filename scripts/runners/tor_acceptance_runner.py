@@ -242,19 +242,28 @@ class Runner:
     def cleanup(self):
         failure_stage = self.failed_stage
         if self.started:
-            self.dc(['logs','--no-color'], 'services.log', allow_failure=True)
-            down = self.dc(['down','--timeout','60'], 'cleanup.log', allow_failure=True)
-            remaining = self.dc(['ps','-aq'], capture=True, allow_failure=True)
-            networks = self.command(['docker','network','ls','--filter','label=com.docker.compose.project='+self.project,'--format','{{.ID}}'],capture=True,allow_failure=True)
+            logs_failure = None
+            try:
+                logs = self.dc(['logs','--no-color'], 'services.log', allow_failure=True, timeout=45)
+                if logs.returncode:
+                    logs_failure = 'NonZeroExit'
+            except (OSError, subprocess.SubprocessError) as error:
+                logs_failure = type(error).__name__
+            down = self.dc(['down','--timeout','60'], 'cleanup.log', allow_failure=True, timeout=80)
+            remaining = self.dc(['ps','-aq'], capture=True, allow_failure=True, timeout=20)
+            networks = self.command(['docker','network','ls','--filter','label=com.docker.compose.project='+self.project,'--format','{{.ID}}'],
+                                    capture=True,allow_failure=True,timeout=20)
             expected = {key: self.project + '_' + key for key in ('frontier-data','tor-state','onion-state')}
-            retained = self.command(['docker','volume','inspect'] + list(expected.values()),capture=True,allow_failure=True)
+            retained = self.command(['docker','volume','inspect'] + list(expected.values()),
+                                    capture=True,allow_failure=True,timeout=20)
             inspection = json.loads(retained.stdout) if retained.stdout.strip() else []
             self.save('retained-volumes.json', inspection)
             found = {volume['Name'] for volume in inspection}
             retained_volumes = {key: name in found for key,name in expected.items()}
             self.save('cleanup.json',dict(containers_removed=down.returncode==0 and remaining.returncode==0 and not remaining.stdout.strip(),
                 network_removed=networks.returncode==0 and not networks.stdout.strip(),
-                volume_retained=all(retained_volumes.values()), retained_volumes=retained_volumes))
+                volume_retained=all(retained_volumes.values()), retained_volumes=retained_volumes,
+                logs_failure=logs_failure))
         self.save('runner-state.json',dict(exit_code=self.exit_code,failed_line=failure_stage if self.exit_code else None))
         self.command([sys.executable,'-B','test/m2/bootstrap_evidence.py',self.path], 'bootstrap-summary.log',allow_failure=True)
         verification = self.command([sys.executable,'-B','test/m2/verify.py',self.path], 'verification.log',allow_failure=True)

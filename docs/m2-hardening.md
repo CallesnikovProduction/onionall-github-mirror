@@ -439,7 +439,7 @@ confirms version0.4.9.15-1~d12.bookworm+1 and SHA256
 The [official repository instructions](https://support.torproject.org/little-t-tor/getting-started/installing/)
 publish repository key fingerprint `A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89`.
 Previous checksum-only remote ADD did not authenticate the APT metadata chain.
-It is superseded by `scripts/security/verify_tor_candidate.py` and a local COPY candidate
+It is superseded by `./onionall verify-tor-candidate` and a local COPY candidate
 Dockerfile. Production Compose/default version remains unchanged.
 
 ### Manual transfer, without changing this host's network policy
@@ -464,7 +464,7 @@ Transfer exactly these four files via an approved file-transfer channel into
 bridges or Tor state. From the repository root:
 
 ```sh
-python3 -B scripts/security/verify_tor_candidate.py .runtime/m2/tor-security/incoming .runtime/m2/tor-security/verified-build
+./onionall verify-tor-candidate .runtime/m2/tor-security/incoming .runtime/m2/tor-security/verified-build
 docker build --network=none --pull=false -t onionall-brawler-tor:0.4.9.15-compat .runtime/m2/tor-security/verified-build
 docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --read-only --entrypoint /usr/bin/tor onionall-brawler-tor:0.4.9.15-compat --version
 ```
@@ -473,7 +473,9 @@ Stop on **any** failure. The verifier accepts only a new ignored destination,
 an isolated temporary GPG home and the expected primary fingerprint. It requires
 a valid signed InRelease for bookworm, Date within7days (and honors Valid-Until),
 the exact signed hash/size of Packages, and the pinned package/version/path/size/
-SHA256. No keyserver or network access is used by the verifier. A stale index or
+SHA256. It verifies read-only snapshots in the shared toolchain container with
+networking disabled. The Dockerfile is published after the staged bytes.
+A stale index or
 retired package requires a fresh approved bundle/review, not disabling checks.
 Debian .deb authentication here is through signed APT metadata, not a claimed
 embedded per-package signature. Signature verification has **not** executed
@@ -526,24 +528,24 @@ required by the verifier; missing/extra/malformed traffic fails. Recovery-agent
 traffic is checked separately from the unchanged main-crawl counts and security
 scenario requests. Raw failed detection is never rewritten as success.
 
-`scripts/recovery/supervise_local_crawl.py` is an opt-in actual local Compose process owner, not
-just a test result generator: one bounded crawler batch; detect persisted log
-categories REQUEST_TIMEOUT/SOCKS_FAILURE/ONION_UNREACHABLE/ROBOTS_UNAVAILABLE;
-one recovery and one new JVM at most. It refuses existing quarantine, never
-reseeds or rewrites frontier scheduling, and stops its named consumer on
-SIGTERM/timeout/failure. Unit tests prove no second batch after failed recovery
+`./onionall supervise` runs the Rust controller in the shared toolchain image.
+It owns one bounded crawler batch, with at most one recovery and one new JVM
+after a qualifying SOCKS CONNECT observation. Transport exceptions invite the
+probe. Application, robots and policy failures block the batch. It refuses
+existing quarantine, preserves Frontier scheduling, and stops only its owned
+consumer on interruption, timeout or failure. Unit tests cover the batch bound
 and no restart loop after recurring failure. A normal process completion does
 not prove content fetched. Prerequisites are an already prepared isolated M2
 project, evidence JAR containing the probes, and the owned canary fixture:
 
 ```sh
-python3 -B scripts/recovery/supervise_local_crawl.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+./onionall supervise "$project" ".runtime/m2/$project"
 ```
 
 This is **not yet independently deployable general production runtime**: it
 still depends on M2 fixture/probes and its live recovery integration has not
-passed. No Docker socket is mounted into crawler; controller authority remains
-on the operator host and is restricted in code to the exact named M2 project.
+passed. The controller uses the operator's local Docker socket and scopes
+its operations to the exact named M2 project. The crawler has no socket mount.
 Do not enable another concurrent crawler launcher. Distributed Storm recovery
 and continuous monitoring remain outside this bounded local mechanism.
 
@@ -622,13 +624,12 @@ bridge bootstrap, controlled onion/recovery and full M2/M1; none is claimed for
 
 ### Single-cycle recovery contract
 
-`scripts/recovery/recover_tor_gateway.py` is a local Compose operator/controller, not a production
-watchdog or a fix to Tor's internal cache. It accepts only an isolated M2 project
+`./onionall recover` runs a single local M2 recovery cycle. It accepts only an isolated M2 project
 and its exact local evidence directory. Run it only while the owning harness
 or operator has exclusive control of crawler launches for that project:
 
 ```sh
-python3 -B scripts/recovery/recover_tor_gateway.py onionall-brawler-m2-<12-hex-id> .runtime/m2/onionall-brawler-m2-<12-hex-id>
+./onionall recover "$project" ".runtime/m2/$project"
 ```
 
 1. Detect a failed own-fixture SOCKS CONNECT after successful greeting. A fresh
@@ -637,12 +638,13 @@ python3 -B scripts/recovery/recover_tor_gateway.py onionall-brawler-m2-<12-hex-i
 2. Pause all running crawler containers selected by this exact Compose project's
    labels, including one-off consumers. Frontier remains running and unchanged.
    The journal is created exclusively; another recovery in this run is refused.
-3. Stop the configured Tor gateway and recreate it once, retaining tor-state,
+3. Stop and restart the same Tor gateway container once, retaining tor-state,
    the same service endpoint/networks/config/private bridges and all onion keys.
    No image pull/build, arbitrary proxy, controller HSFETCH or circuit reset.
    Bootstrap is bounded90s; it only gates the next real-health probe.
-4. Make one30s `/health` request to the owned fixture via fixed `tor:9050`,
-   requiring ATYP3, HTTP200 and body `ready`. Only then unpause the same consumers.
+4. Make one 30s `/health` request to the owned fixture via fixed `tor:9050`,
+   requiring ATYP3, HTTP 200 and body `ready`. Verify the JVM protocol series
+   and gateway identity before unpausing the same consumers.
 5. After quarantine, on any failure leave consumers paused and stop the gateway. Record failures
    closing it as well; never claim successful quarantine if cleanup is unknown.
    Manual diagnosis is required; no restart loop or timeout escalation.

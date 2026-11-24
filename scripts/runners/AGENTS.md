@@ -13,6 +13,8 @@ Dispatch checks, retain unique evidence and preserve each contour's acceptance r
 ## IMPLEMENTED ARCHITECTURE
 
 verify.py aggregates JVM, Python, Frontier and local-link checks; product end-to-end is explicit opt-in. Startup/controlled-crawl/Tor runners own separate scenario lifecycles and use corresponding test helpers.
+The canonical Compose lifecycle and JVM CLI forwarding live in
+[`tooling/src/runtime.rs`](../tooling/src/runtime.rs), reached through `./onionall`.
 
 ## KEY COMPONENTS
 

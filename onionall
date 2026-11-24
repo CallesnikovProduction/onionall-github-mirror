@@ -9,9 +9,16 @@ if [[ ${1:-} == --help || $# == 0 ]]; then
 Usage: ./onionall build [--clean] [--images]
        ./onionall test [--clean]
        ./onionall [--fixture] up|status|down|cli [CLI arguments...]
-Requires Docker Engine, Compose and Bash; no host Java, Maven or Python.
+       ./onionall verify-tor-candidate <bundle> <destination>
+       ./onionall recover <project> <run-dir> [--detection <filename>] [--diagnostics]
+       ./onionall supervise <project> <run-dir>
+Requires Docker Engine, Compose and Bash; no host Java, Maven, Rust or Python.
 Builds retain Maven caches. Shutdown retains all runtime data and volumes.
 HELP
+    exit 0
+fi
+if [[ $1 == verify-tor-candidate && $# -eq 2 && ( $2 == --help || $2 == -h ) ]]; then
+    echo 'Usage: ./onionall verify-tor-candidate <bundle> <destination>'
     exit 0
 fi
 command -v docker >/dev/null || { echo 'Docker is required.' >&2; exit 69; }
@@ -29,6 +36,10 @@ case ${1:-} in
                 *) echo "Unknown argument: $arg" >&2; exit 2 ;;
             esac
         done
+        if [[ $mode == test ]]; then
+            docker build --platform "$platform" -f docker/toolchain/Dockerfile --target tooling-test .
+            docker build --platform "$platform" -f docker/toolchain/Dockerfile --target recovery-test .
+        fi
         docker build --platform "$platform" -f docker/toolchain/Dockerfile -t "$image" .
         mkdir -p .runtime/toolchain-home .runtime/maven-linux-repository
         docker run --rm --init --platform "$platform" --user "$(id -u):$(id -g)" \
@@ -44,31 +55,111 @@ case ${1:-} in
             docker pull --platform "$platform" python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
         fi
         ;;
+    verify-tor-candidate)
+        [[ $# -eq 3 ]] || { echo 'Usage: ./onionall verify-tor-candidate <bundle> <destination>' >&2; exit 2; }
+        docker image inspect "$image" >/dev/null 2>&1 || {
+            echo 'Toolchain image missing; run ./onionall build first.' >&2; exit 69;
+        }
+        bundle=$(cd -- "$2" && pwd -P)
+        destination=$3
+        if [[ ${OSTYPE:-} == msys* || ${OSTYPE:-} == cygwin* ]]; then
+            destination=$(cygpath -au -- "$destination")
+        fi
+        destination=$(realpath -ms -- "$destination")
+        state="$root/.runtime"
+        [[ $destination == "$state/"* && ! -L $state ]] || {
+            echo 'Use a new ignored .runtime/ build directory.' >&2; exit 1;
+        }
+        destination=${destination#"$state/"}
+        recipe="$root/docker/m2/Dockerfile.security-candidate"
+        operator="$(id -u):$(id -g)"
+        mkdir -p -- "$state"
+        if [[ ${OSTYPE:-} == msys* || ${OSTYPE:-} == cygwin* ]]; then
+            export MSYS2_ARG_CONV_EXCL='*'
+            bundle=$(cygpath -am -- "$bundle")
+            state=$(cygpath -am -- "$state")
+            recipe=$(cygpath -am -- "$recipe")
+            operator=1000:1000
+        fi
+        # Docker parses --mount as CSV. Quote source fields to preserve names.
+        exec docker run --rm --platform "$platform" --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges --user "$operator" \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777 \
+            --mount "type=bind,\"src=${bundle//\"/\"\"}\",dst=/bundle,readonly" \
+            --mount "type=bind,\"src=${state//\"/\"\"}\",dst=/checkout/.runtime" \
+            --mount "type=bind,\"src=${recipe//\"/\"\"}\",dst=/checkout/docker/m2/Dockerfile.security-candidate,readonly" \
+            -w /checkout "$image" onionall-tooling verify-tor-candidate /bundle ".runtime/$destination"
+        ;;
     *)
-        # Python and Compose run in the toolchain; bind the same absolute path so
+        # The commands run in the toolchain; bind the same absolute path so
         # daemon-side Compose bind mounts resolve to the host checkout correctly.
         docker image inspect "$image" >/dev/null 2>&1 || {
             echo 'Toolchain image missing; run ./onionall build first.' >&2; exit 69;
         }
+        if [[ $1 == check-connect-failure ]]; then
+            exec docker run --rm -i --platform "$platform" --network none \
+                "$image" onionall-recovery "$@"
+        fi
+        command=(onionall-tooling runtime)
+        bridge_var=ONIONALL_BRIDGES_FILE
+        extra_env=(-e ONIONALL_STORM_IMAGE)
+        runtime_root=$root
+        runtime_user="$(id -u):$(id -g)"
+        socket_group=
+        recovery_network=()
+        desktop_path() {
+            local path
+            path=$(cygpath -am -- "$1")
+            [[ $path =~ ^([A-Za-z]):(/.*)$ ]] || return 2
+            local drive=${BASH_REMATCH[1]}
+            printf '/run/desktop/mnt/host/%s%s\n' "${drive,,}" "${BASH_REMATCH[2]}"
+        }
+        if [[ $1 == recover || $1 == supervise ]]; then
+            command=(onionall-recovery)
+            bridge_var=M2_BRIDGES_FILE
+            extra_env=(-e M2_STORM_IMAGE -e M2_TOR_DIAGNOSTICS)
+            recovery_network=(--network none)
+            # Git Bash uses the Desktop API on Windows. Docker's Linux VM
+            # resolves nested Compose bind mounts via its host-drive paths.
+            if [[ ${OSTYPE:-} == msys* || ${OSTYPE:-} == cygwin* ]]; then
+                [[ $(docker context show) == desktop-linux && -z ${DOCKER_HOST:-} ]] || {
+                    echo 'Windows recovery requires the Docker Desktop Linux context.' >&2; exit 69;
+                }
+                export MSYS2_ARG_CONV_EXCL='*'
+                runtime_root=$(desktop_path "$root")
+                runtime_user=1000:1000
+                socket_group=0
+                if [[ $# -ge 3 ]]; then
+                    run_dir=$(desktop_path "$3")
+                    args=("$1" "$2" "$run_dir" "${@:4}")
+                    set -- "${args[@]}"
+                fi
+            fi
+        fi
         socket=${DOCKER_HOST:-unix:///var/run/docker.sock}
         [[ $socket == unix://* ]] || { echo 'Runtime requires a local Unix Docker socket.' >&2; exit 69; }
         socket=${socket#unix://}
-        [[ -S $socket ]] || { echo "Docker socket missing: $socket" >&2; exit 69; }
+        if [[ -z $socket_group ]]; then
+            [[ -S $socket ]] || { echo "Docker socket missing: $socket" >&2; exit 69; }
+            socket_group=$(stat -c %g "$socket")
+        fi
         bridge_args=()
-        if [[ -n ${ONIONALL_BRIDGES_FILE:-} ]]; then
-            ONIONALL_BRIDGES_FILE=$(realpath -- "$ONIONALL_BRIDGES_FILE")
-            export ONIONALL_BRIDGES_FILE
-            [[ -f $ONIONALL_BRIDGES_FILE ]] || { echo 'Private bridge file missing.' >&2; exit 69; }
-            bridge_args=(--mount "type=bind,src=$ONIONALL_BRIDGES_FILE,dst=$ONIONALL_BRIDGES_FILE,readonly")
+        if [[ -n ${!bridge_var:-} ]]; then
+            bridge_path=$(realpath -- "${!bridge_var}")
+            [[ -f $bridge_path ]] || { echo 'Private bridge file missing.' >&2; exit 69; }
+            if [[ $runtime_root != "$root" ]]; then
+                bridge_path=$(desktop_path "$bridge_path")
+            fi
+            bridge_args=(--mount "type=bind,src=$bridge_path,dst=$bridge_path,readonly" -e "$bridge_var=$bridge_path")
         fi
         mkdir -p .runtime/toolchain-home
-        exec docker run --rm --init --platform "$platform" --user "$(id -u):$(id -g)" \
-            --group-add "$(stat -c %g "$socket")" \
+        exec docker run --rm --init --platform "$platform" --user "$runtime_user" \
+            --group-add "$socket_group" "${recovery_network[@]}" \
             --mount "type=bind,src=$socket,dst=/var/run/docker.sock" \
-            --mount "type=bind,src=$root,dst=$root" -w "$root" \
+            --mount "type=bind,src=$runtime_root,dst=$runtime_root" -w "$runtime_root" \
             -e DOCKER_HOST=unix:///var/run/docker.sock \
-            -e HOME="$root/.runtime/toolchain-home" \
-            "${bridge_args[@]}" -e ONIONALL_BRIDGES_FILE -e ONIONALL_STORM_IMAGE \
-            "$image" python3 -B scripts/runners/runtime.py "$@"
+            -e HOME="$runtime_root/.runtime/toolchain-home" \
+            "${bridge_args[@]}" "${extra_env[@]}" \
+            "$image" "${command[@]}" "$@"
         ;;
 esac

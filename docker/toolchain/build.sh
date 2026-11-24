@@ -20,6 +20,9 @@ java frontier-server/build-support/FrontierBuild.java prepare "$URLFRONTIER_BASE
 "${maven[@]}" -f frontier-server/pom.xml verify
 # The established shell path includes all seven conformance drivers.
 if [[ $mode == test ]]; then
+    python3 -B -m unittest discover -s test/security -v
+    python3 -B test/scripts/check_runtime_cli.py /usr/local/bin/onionall-tooling
+    python3 -B test/m2/diff_onionall_runtime.py /usr/local/bin/onionall-recovery
     bash frontier-server/build.sh --test
     python3 -B -m unittest discover -s test/scripts -v
 fi

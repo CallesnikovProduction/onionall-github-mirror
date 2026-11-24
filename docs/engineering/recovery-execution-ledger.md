@@ -1,5 +1,72 @@
 # Recovery execution ledger
 
+## 2026-11-23: Rust cutover through the shared Docker toolchain
+
+Windows with Docker Desktop 29.6.2, Linux/amd64 toolchain, `main` at
+`0f66d5901e4b68e8b43aa1b0ee5a4a3daaedd39d`. The pre-existing Kotlin research
+edits were preserved. The candidate entry below describes the previous state.
+
+- The official Rustup installer was SHA-256 checked. Windows user PATH exposes
+  Rust and Cargo 1.100.0 (GNU). `cargo run` compiled and ran a standalone smoke
+  program. A native Windows build of the recovery dependencies encountered a
+  GNU import-library tool error. The app builds with pinned Rust 1.93.0 in Docker.
+- `rust-anything analyze scripts/recovery --lang python` identified both units.
+  `rust-anything app record` and `app replay` matched 13/13 normalized CLI cases
+  against the original using fake Docker. The paired run also confirmed that an
+  unrelated process exit 2 now leaves `transport_failed=false` and performs no
+  restart. The permanent replay covers all 14 cases, including Linux SIGTERM.
+- The shared `onionall-toolchain:jdk25` image built successfully. Its
+  `recovery-test` stage passed `cargo fmt --check`, Clippy with warnings as
+  errors, and 12/12 Rust tests, including journal publication failure.
+  The Linux-container unittest suites passed 96 M2 and 53 tooling tests.
+- Invocations via Git Bash and `./onionall` used the rebuilt image against a
+  disposable Compose project with networking disabled. Recovery restarted the
+  same gateway container, resumed the same paused crawler, published the
+  journal, and refused a repeat. Supervision completed one batch. Scoped
+  cleanup verified that all fixture containers were removed.
+- `git diff --check`, Bash syntax and a high-confidence secret pattern scan of
+  the migration passed. No live Tor recovery or performance comparison ran.
+  Existing M2 evidence, identities and volumes were not used.
+- Full `./onionall test` built the toolchain and passed the Rust gates, then
+  Maven Surefire stopped with 416 tests, one failure and one skip.
+  `ResearchExporterTest.readableExportsMatchReviewedStableGoldenFilesWithoutMetadataDumps`
+  found the newline missing after `No file candidates observed.`. The
+  pre-existing worktree version of `ResearchExporter.kt` lacks the newline
+  present at HEAD. The Rust CLI replay and script suites passed independently.
+
+## 2026-11-23: Rust controller candidate, cutover blocked
+
+Windows, `main`, source reference
+`0f66d5901e4b68e8b43aa1b0ee5a4a3daaedd39d`. Ten pre-existing Kotlin research
+modifications were left in place. Candidate changes are isolated from legacy
+controllers and callers. No runtime volumes, journals or Tor traffic were touched.
+
+- `rust-anything analyze scripts/recovery --lang python` identified two Python
+  units and suggested PyO3. It did not recognize the external test directory
+  or the exact supervisor-to-recovery import. Direct Rust implementation avoids
+  retaining Python as the host controller. `rust-anything doctor --json` reported
+  a working MCP server and missing Cargo.
+- `python -m unittest test_gateway_recovery test_runtime_supervision
+  test_restart_attribution test_socks_incident` with `PYTHONPATH=test/m2` passed
+  30 tests. Both legacy controllers also ran against 14 synthetic Docker cases
+  with Python subprocess mocks. An unrelated exit 2 set `transport_failed=true`
+  and restarted the gateway once when the synthetic detection qualified.
+- Full `test/m2` discovery ran 113 tests before migration, with two failures,
+  seven errors, and two skips. Observed environment issues included POSIX mode
+  assertions on Windows, unavailable `/bin/bash`, and blocked local socket opens.
+- Compose v5.3.1 accepted `compose.m2.yaml` for a synthetic isolated project
+  with the `tools` profile. The Docker Desktop Linux engine named pipe was absent.
+  No daemon-backed checks ran.
+- The Rust installer endpoint and GitHub returned curl 6 (DNS could not resolve).
+  Windows Package Manager could not launch in the session, and WSL returned
+  access denied. Rust, Cargo and the generated Cargo.lock are unavailable.
+  Rust builds, lint/format, candidate tests, Linux process signal comparison and
+  paired CLI equivalence remain unverified.
+- Source rollback requires setting aside only the candidate crate, candidate CI,
+  test additions and associated documentation edits. The original Python
+  entry points and existing callers remain in place. Any future runtime rollback
+  must preserve evidence and stop if ownership or container state is uncertain.
+
 ## 2026-11-02: baseline39257ef
 
 Working tree initially clean. Numeric proxy endpoint bug fixed, independently

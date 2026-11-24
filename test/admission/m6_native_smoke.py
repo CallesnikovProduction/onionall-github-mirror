@@ -22,8 +22,8 @@ import time
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'scripts/runners'))
-from runtime import fixture_host
+sys.path.insert(0, str(ROOT / 'test/archive'))
+from socks_fixture import fixture_host
 from m6_socks_fixture import Fixture
 
 

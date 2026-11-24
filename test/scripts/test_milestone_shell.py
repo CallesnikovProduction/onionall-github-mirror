@@ -86,8 +86,7 @@ if 'down' in a: sys.exit(43)
 
 class DirectEntrypointTest(unittest.TestCase):
     def test_python_help_from_other_directory(self):
-        for name in ('runners/tor_acceptance_runner.py', 'recovery/recover_tor_gateway.py',
-                     'recovery/supervise_local_crawl.py', 'security/verify_tor_candidate.py'):
-            result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts' / name), '--help'], cwd='/',
-                                    capture_output=True, text=True, timeout=5)
-            self.assertEqual(0, result.returncode, result.stderr)
+        runner = ROOT / 'scripts/runners/tor_acceptance_runner.py'
+        result = subprocess.run([sys.executable, '-B', str(runner), '--help'], cwd='/',
+                                capture_output=True, text=True, timeout=5)
+        self.assertEqual(0, result.returncode, result.stderr)

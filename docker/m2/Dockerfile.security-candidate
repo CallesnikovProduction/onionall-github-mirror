@@ -2,7 +2,7 @@
 # Package URL/version/SHA256 verified in Tor Project's Bookworm amd64 Packages.
 FROM onionall-brawler-tor@sha256:88f3dce6e6b581317bce2ee3c5614297a0757b9d374b874c34f1bfdd97bba11e
 USER 0:0
-# Stage only after scripts/verify_tor_candidate.py verifies signed APT metadata.
+# Stage only after ./onionall verify-tor-candidate verifies signed APT metadata.
 COPY tor-update.deb /tmp/tor-update.deb
 RUN echo 'eca04d5ab2c6285601526419b3d9ca1a25bec477abb25360f4c97da92d79c88e  /tmp/tor-update.deb' | sha256sum -c - \
     && test "$(dpkg --print-architecture)" = amd64 \

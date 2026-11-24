@@ -15,7 +15,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from runners.tor_acceptance_runner import Runner
-from recovery.recover_tor_gateway import recover
+from recovery_cli import connect_failure, recover
 
 
 def host_state():
@@ -43,7 +43,6 @@ def restore_transport(project, path, code, observation, recover_gateway=None):
                     assisted_recovery='NOT_EXERCISED', recovery_exercised=False)
     if code == 0 or observation.get('passed') is not False:
         raise ValueError('Contradictory or incomplete controlled health evidence')
-    from recovery.recover_tor_gateway import connect_failure
     if not connect_failure(observation):
         raise ValueError('No qualifying SOCKS CONNECT failure; no replacement attempted')
     recovery = (recover_gateway or recover)(project, path, diagnostics=True)
@@ -130,7 +129,10 @@ def main():
         check(result['identity_unchanged'], 'Onion identity changed')
         code, detected = health('recovery-detection')
         result['post_restart'] = detected
-        result.update(restore_transport(runner.project, path, code, detected))
+        def recover_owned(project, directory, *, diagnostics):
+            return recover(project, directory, diagnostics=diagnostics, environment=runner.environment)
+
+        result.update(restore_transport(runner.project, path, code, detected, recover_owned))
         check(result['transport_recovery'] == 'PASS', 'Bounded gateway replacement failed')
         state = runner.command(['docker', 'inspect', '--format', '{{json .State}}', subject], capture=True)
         consumer_state = json.loads(state.stdout)

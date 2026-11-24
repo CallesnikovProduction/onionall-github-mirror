@@ -12,11 +12,16 @@ Verify provenance and expose bounded diagnostics without altering routing or tre
 
 ## IMPLEMENTED ARCHITECTURE
 
-check-tor-connectivity shell/PowerShell tools check the configured Tor path. verify_tor_candidate.py validates the selected Tor artifact against its expected security/provenance contract.
+The shell and PowerShell connectivity entrypoints launch the shared M2
+preflight. `./onionall verify-tor-candidate` runs the Rust verifier from
+the shared toolchain image with networking disabled and no Docker socket.
+GnuPG checks the pinned signing key and signed index. The verifier stages
+the exact validated package and metadata bytes.
 
 ## KEY COMPONENTS
 
-`check-tor-connectivity.sh`, `check-tor-connectivity.ps1`, `verify_tor_candidate.py`.
+`check-tor-connectivity.sh`, `check-tor-connectivity.ps1` and
+[`candidate.rs`](../tooling/src/candidate.rs).
 
 ## DATA FLOW
 

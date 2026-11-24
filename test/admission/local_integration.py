@@ -6,7 +6,6 @@ Fresh uniquely named Frontier volume is retained. No acceptance flag is inferred
 from worker exit0: quota/readback, traffic, archive and restart are checked below.
 """
 import argparse
-import base64
 from collections import Counter
 import hashlib
 import json
@@ -22,7 +21,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0, str(ROOT / 'test/archive'))
 from runners.tor_acceptance_runner import Runner
+from socks_fixture import fixture_host
 from restart_recovery import host_state
 from deterministic_recovery import cleanup_project
 
@@ -30,12 +31,6 @@ from deterministic_recovery import cleanup_project
 def require(condition, message):
     if not condition:
         raise RuntimeError(message)
-
-
-def onion(number):
-    key = bytes([number]) * 32
-    payload = key + hashlib.sha3_256(b'.onion checksum' + key + b'\3').digest()[:2] + b'\3'
-    return base64.b32encode(payload).decode().lower() + '.onion'
 
 
 def frontier_initializer(image, runtime_user):
@@ -231,7 +226,7 @@ def main(argv=None):
     signal.signal(signal.SIGINT, interrupted)
     try:
         r.validate_toolchain()
-        host, foreign = onion(1), onion(2)
+        host, foreign = fixture_host(1), fixture_host(2)
         seed = 'http://' + host + '/a'
         (p / 'onion-hostname.txt').write_text(host)
         (p / 'foreign-hostname.txt').write_text(foreign)
