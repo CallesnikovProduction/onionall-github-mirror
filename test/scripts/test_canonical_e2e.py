@@ -62,6 +62,21 @@ class CanonicalAcceptanceTest(unittest.TestCase):
                     server.shutdown()
                     thread.join(timeout=5)
 
+    def test_research_graph_contains_a02_version_and_obsolete_reference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'onion-hostname.txt').write_text(socks.fixture_host(1), encoding='utf-8')
+            (root / 'foreign-hostname.txt').write_text(socks.fixture_host(2), encoding='utf-8')
+            with socks.Fixture(('127.0.0.1', 0), root, research=True) as server:
+                self.assertEqual(503, server.response('/b')[0])
+                legacy = server.response('/b')[2]
+                current = server.response('/c')[2]
+                self.assertIn(b'<title>Java 21 virtual threads guide</title>', legacy)
+                self.assertIn(b'See Java 25 virtual threads documentation elsewhere.', legacy)
+                self.assertIn(b'<title>Java 25 virtual threads documentation</title>', current)
+                self.assertIn(b'Version 25 evidence marker', current)
+                self.assertIn(b'href="/c"', legacy)
+
     def test_optional_branching_graph_serves_relative_links_redirect_and_retry(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
