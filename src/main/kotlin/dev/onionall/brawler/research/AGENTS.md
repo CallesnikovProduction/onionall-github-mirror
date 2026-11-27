@@ -33,6 +33,10 @@ ArchiveCommands/ArchiveStore supply only Java compilation-boundary forwarding.
 - StoredResearchRoute reads a bounded same-job archive graph and preserves
   exact edge snapshots. Capped, mixed and historical observations stay explicit;
   a shortest route in loaded data does not grant approval or prove traversal.
+- Batch validation checks local JSON shape and bounded intent budgets. It never
+  grants source approval, creates archive state or starts a session.
+- Extracted message and quote code stays separate, bounded and tied to the
+  original post evidence. Keep literal whitespace and mark truncation visibly.
 - ResearchExporter writes bounded new local outputs with URL/time/job/session boundaries.
   Remote text is untrusted data; do not execute it or send it to external AI services.
 - ThreadCommands/ForumPagination create a separately approved thread-only existing plan

@@ -139,6 +139,8 @@ static List<String> render(int width, int rows, Map<String, String> env, boolean
   JSONL discover/export metadata публикуются только по явному запросу.
 - MANUAL_IMPORT ограничен 128 KiB, требует approved-план и не доказывает Tor/robots.
   Локальный поиск обращается к H2; crawl status может писать reconciliation observations.
+- Перенаправленные stdout и stderr кодируются в UTF-8 независимо от code page.
+  Интерактивный терминал сохраняет системную кодировку.
 - JSON, non-TTY, NO_COLOR и --no-color сохраняют plain output. Brand.safe заменяет Cc/Cf;
   InteractiveSession.clip дополнительно кодирует wide/combining символы перед cell accounting.
 - writer() возвращает внутренний PrintWriter; close его Writer не закрывает сессию.
