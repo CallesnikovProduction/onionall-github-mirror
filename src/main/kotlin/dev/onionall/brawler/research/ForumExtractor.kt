@@ -5,6 +5,8 @@ import dev.onionall.brawler.archive.NativeContentException
 
 import java.io.ByteArrayInputStream
 import java.net.URI
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 import dev.onionall.brawler.tor.UriReferences
 import java.util.Locale
 import org.jsoup.Jsoup
@@ -65,6 +67,10 @@ object ForumExtractor {
 
     /** Максимальное количество цитат в одном сообщении. */
     private const val MAX_QUOTES = 100
+
+    /** Бюджет кода общий для основного сообщения и его цитат. */
+    private const val MAX_CODE_BLOCKS = 32
+    private const val CODE_SELECTOR = "pre > code"
 
     /** Поддерживаемый schema.org тип форумного сообщения. */
     private const val SCHEMA =
@@ -384,6 +390,7 @@ object ForumExtractor {
      * @property authorSelector описание расположения автора.
      * @property timeNodes кандидаты на дату публикации.
      * @property timeSelector описание расположения даты.
+     * @property modifiedNodes кандидаты на указанный в заголовке момент изменения сообщения.
      */
     private data class Layout(
         val method: String,
@@ -392,7 +399,8 @@ object ForumExtractor {
         val authorNodes: List<Element>,
         val authorSelector: String,
         val timeNodes: List<Element>,
-        val timeSelector: String
+        val timeSelector: String,
+        val modifiedNodes: List<Element> = emptyList()
     )
 
     private data class PendingPost(
@@ -524,7 +532,12 @@ object ForumExtractor {
                                 node.hasAttr("datetime")
                     }
                 },
-                ":scope > header > time[itemprop=datePublished][datetime]"
+                ":scope > header > time[itemprop=datePublished][datetime]",
+                headers.flatMap {
+                    it.children().filter { node ->
+                        node.tagName() == "time" && item(node, "dateModified") && node.hasAttr("datetime")
+                    }
+                }
             )
         }
 
@@ -558,6 +571,7 @@ object ForumExtractor {
     ): Map<String, Any?>? {
         val (container, layout, ordinal, bodyIndex, quoteNodes, quotesTruncated, authorCount) = candidate
         val text = normalized[bodyIndex]
+        val code = codeObservations(layout.body, quoteNodes)
         val quotes = quoteNodes.mapIndexed { index, quote ->
             val value = normalized[bodyIndex + 1 + index]
 
@@ -569,6 +583,7 @@ object ForumExtractor {
 
                 "text" to value.text,
                 "text_truncated" to value.truncated,
+                "code_blocks" to code.byContainer[quote].orEmpty(),
 
                 // Citation берём только из явного cite.
                 "citation_text" to quote.children()
@@ -634,14 +649,30 @@ object ForumExtractor {
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
+        // Schema.org dateModified describes the current captured version. Keep
+        // the declared offset and never infer an edit from body or quote text.
+        val modifiedNodes = layout.modifiedNodes.filterNot(::hidden)
+        val modified = modifiedNodes.singleOrNull()?.attr("datetime")?.trim()
+            ?.takeIf { it.length in 1..128 }
+            ?.takeIf {
+                try {
+                    OffsetDateTime.parse(it)
+                    true
+                } catch (_: DateTimeParseException) {
+                    false
+                }
+            }
+
         // Частичность отражает усечение или неоднозначность.
         val partial =
             text.truncated ||
                     quotes.any { it["text_truncated"] == true } ||
                     quotesTruncated ||
+                    code.truncated ||
                     links.truncated ||
                     authorCount > 1 ||
                     timeNodes.size > 1 ||
+                    (modifiedNodes.isNotEmpty() && modified == null) ||
                     author?.truncated == true ||
                     (rawTime?.length ?: 0) > 128
 
@@ -654,7 +685,9 @@ object ForumExtractor {
             "source_page_url" to source,
             "author" to rawAuthor?.take(256),
             "posted_at" to rawTime?.take(128),
+            "modified_at" to modified,
             "text" to text.text,
+            "code_blocks" to code.byContainer[layout.body].orEmpty(),
 
             // Сохраняем и упрощённый список цитат,
             // и полные структурированные quotes.
@@ -699,6 +732,7 @@ object ForumExtractor {
                             null
                         },
 
+                "modified_at_basis" to "RAW_TIME_DATETIME_ATTRIBUTE".takeIf { modified != null },
                 "ambiguous_author" to (authorCount > 1),
                 "ambiguous_datetime" to (timeNodes.size > 1),
 
@@ -715,11 +749,62 @@ object ForumExtractor {
                 "duplicate_dom_id" to duplicate,
                 "text_truncated" to text.truncated,
                 "quotes_truncated" to quotesTruncated,
+                "code_block_selector" to CODE_SELECTOR,
+                "code_blocks_truncated" to code.truncated,
 
                 "links_truncated" to links.truncated,
                 "partial" to partial
             )
         )
+    }
+
+    /** Наблюдения кода в основном сообщении и распознанных цитатах. */
+    private data class CodeObservations(
+        val byContainer: Map<Element, List<Map<String, Any?>>>,
+        val truncated: Boolean
+    )
+
+    /**
+     * Сохраняет исходный текст видимых pre/code после разбора HTML.
+     * Код относится к body сообщения или ближайшей распознанной цитате.
+     * Пробелы и переносы не проходят через нормализатор. Источник
+     * определяется содержащим сообщением и его архивным snapshot.
+     *
+     * @author Стефан Колесников
+     * @author GPT-6.2 Sol
+     */
+    private fun codeObservations(body: Element, quotes: List<Element>): CodeObservations {
+        val byContainer = mutableMapOf<Element, MutableList<Map<String, Any?>>>()
+        val recognizedQuotes = quotes.toHashSet()
+        var remaining = MAX_POST_TEXT
+        var count = 0
+        var truncated = false
+
+        for (element in body.select(CODE_SELECTOR)) {
+            val path = element.parents().takeWhile { it !== body }
+            if (hidden(element) || path.any { it.tagName() in removed || it.tagName() == "code" }) {
+                continue
+            }
+            val quote = path.firstOrNull { it.tagName() == "blockquote" }
+            if (quote != null && quote !in recognizedQuotes) continue
+            if (count == MAX_CODE_BLOCKS || remaining == 0 || path.size > 256) {
+                truncated = true
+                break
+            }
+            val code = readable(element, remaining, skipQuotes = true, preserveLiteral = true)
+            if (code.text.isNotEmpty()) {
+                count++
+                byContainer.getOrPut(quote ?: body) { mutableListOf() }.add(
+                    mapOf("ordinal" to count, "text" to code.text, "text_truncated" to code.truncated)
+                )
+                remaining -= code.text.length
+            }
+            if (code.truncated) {
+                truncated = true
+                break
+            }
+        }
+        return CodeObservations(byContainer, truncated)
     }
 
     /**
@@ -962,7 +1047,8 @@ object ForumExtractor {
         root: Element,
         limit: Int,
         skipQuotes: Boolean = false,
-        skipChrome: Boolean = false
+        skipChrome: Boolean = false,
+        preserveLiteral: Boolean = false
     ): Text {
 
         val result = StringBuilder()
@@ -1007,13 +1093,12 @@ object ForumExtractor {
 
                 // После блочного элемента добавляем перенос.
                 if (
-                    node.isBlock ||
-                    node.tagName() == "br"
+                    !preserveLiteral && (node.isBlock || node.tagName() == "br")
                 ) {
                     result.append('\n')
                 }
 
-                if (node.tagName() in setOf("td", "th")) {
+                if (!preserveLiteral && node.tagName() in setOf("td", "th")) {
                     result.append('\t')
                 }
 
@@ -1022,7 +1107,7 @@ object ForumExtractor {
                 // Перед блочным элементом сохраняем
                 // читаемую границу текста.
                 if (
-                    node.isBlock &&
+                    !preserveLiteral && node.isBlock &&
                     result.isNotEmpty() &&
                     result.last() != '\n'
                 ) {

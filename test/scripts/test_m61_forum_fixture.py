@@ -6,7 +6,6 @@
 import concurrent.futures
 import importlib.util
 import json
-import os
 from pathlib import Path
 import signal
 import socket
@@ -46,7 +45,8 @@ class ForumFixtureTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             pause = native.PauseControl(Path(directory))
             previous = signal.signal(signal.SIGINT, pause.request)
-            timer = threading.Timer(.05, os.kill, args=(os.getpid(), signal.SIGINT))
+            # Windows os.kill(pid, SIGINT) terminates the process outright.
+            timer = threading.Timer(.05, signal.raise_signal, args=(signal.SIGINT,))
             try:
                 timer.start()
                 result = subprocess.run([sys.executable, '-c',

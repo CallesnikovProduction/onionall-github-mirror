@@ -5,3 +5,6 @@
 # Golden exports are compared byte-for-byte with the LF output contract.
 /src/test/resources/research/export/*.md text eol=lf
 /src/test/resources/research/export/*.txt text eol=lf
+
+# These HTML fixtures pin the exact archived code examples.
+/src/test/resources/research/r100/topic-evidence/*.html text eol=lf

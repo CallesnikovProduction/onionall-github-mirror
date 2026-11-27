@@ -34,7 +34,10 @@ schema.org DiscussionForumPosting articles. These are controlled DOM contracts,
 not an assertion of universal engine compatibility. Author, raw datetime and DOM
 post ID stay null when missing/ambiguous. Main text, nested quotes, link targets
 and observed attachment hints remain distinct. Internal observation IDs are
-labelled separately from actual source_post_id.
+labelled separately from actual source_post_id. For semantic posts, a single
+visible header `dateModified` time with an explicit offset is exposed as
+`modified_at` with its DOM evidence. The value describes the captured version.
+Edit history remains unknown. [Schema.org dateModified](https://schema.org/dateModified)
 
 Unknown layouts return readable page text with zero invented posts. Static
 JavaScript shells can be labelled UNSUPPORTED_DYNAMIC_CONTENT by an explicit
@@ -107,3 +110,17 @@ forums require separate owner approval of exact URLs/origins and budgets before
 any real crawl. Previous M6 seed approval does not cover new forums. Real smoke
 uses at most1–2 approved origins, total20 HTML per origin including independently
 allocated thread work, max5 per thread, per-host1, robots and no binaries.
+
+## Literal code in public posts
+
+Structured post evidence keeps a separate `code_blocks` array for visible
+`pre > code` elements. Quotes keep their own code blocks. Each record contains
+the ordinal in its post, decoded text and `text_truncated`. The code inherits
+the post's archived source URL, page and snapshot IDs. Extraction retains
+indentation and line breaks up to 32 blocks and 16,384 UTF-16 units per post
+across its message and quotes. A code budget cut marks extraction partial.
+Distinct formatting does not establish duplicate identity.
+
+JSON keeps the captured text. In Markdown the notebook emits code in an inert
+fence separately from normalized prose and quoted text. The readable export
+normalizes CRLF and makes control characters visible.

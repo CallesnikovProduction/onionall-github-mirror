@@ -6,9 +6,12 @@ import subprocess
 import tempfile
 import unittest
 
+from shell_fixture import BASH, bash_directory
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@unittest.skipUnless(BASH, 'Bash required for actual install-entrypoint contract')
 class InstallShellTest(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='onionall scripts ')
@@ -19,20 +22,29 @@ class InstallShellTest(unittest.TestCase):
         (scripts / 'cli').mkdir()
         self.script = scripts / 'cli/install-cli.sh'
         shutil.copy2(ROOT / 'scripts/cli/install-cli.sh', self.script)
-        (scripts / 'cli/build-cli.sh').write_text('printf invoked > "$(dirname "$0")/build-called"\n')
+        (scripts / 'cli/build-cli.sh').write_text('printf invoked > "$(dirname "$0")/build-called"\n', encoding='utf-8', newline='\n')
         bundle = self.root / 'target/onionall'
         (bundle / 'bin').mkdir(parents=True)
         (bundle / 'lib').mkdir()
-        (bundle / '.onionall-cli').write_text('onionall-cli-v1\n')
-        (bundle / '.files').write_text('bin/onionall\nlib/example-1.jar\n')
-        (bundle / 'bin/onionall').write_text('#!/bin/sh\nexit 0\n')
+        (bundle / '.onionall-cli').write_text('onionall-cli-v1\n', encoding='utf-8', newline='\n')
+        (bundle / '.files').write_text('bin/onionall\nlib/example-1.jar\n', encoding='utf-8', newline='\n')
+        (bundle / 'bin/onionall').write_text('#!/bin/sh\nexit 0\n', encoding='utf-8', newline='\n')
         (bundle / 'lib/example-1.jar').write_bytes(b'fixture')
         self.environment = dict(os.environ, XDG_DATA_HOME=str(Path(self.temp.name) / 'data with spaces'),
                                 XDG_BIN_HOME=str(Path(self.temp.name) / 'bin with spaces'))
 
-    def run_script(self, *args):
-        return subprocess.run(['bash', str(self.script), *args], cwd='/', env=self.environment,
-                              capture_output=True, text=True, timeout=10)
+    def run_script(self, *args, tools=''):
+        env = self.environment.copy()
+        if os.name == 'nt':
+            # Preserve the symbolic link contract under Git Bash.
+            env['MSYS'] = 'winsymlinks:sys'
+            shell_root = bash_directory(self.temp.name)
+            for name in ('XDG_DATA_HOME', 'XDG_BIN_HOME'):
+                env[name] = shell_root + '/' + Path(env[name]).name
+        launch = ('if [[ -n $1 ]]; then dir=$(cd -- "$1" && pwd -P) || exit; '
+                  'export PATH="$dir:$PATH"; fi; shift; exec "$BASH" "$@"')
+        return subprocess.run([BASH, '-c', launch, 'install-fixture', str(tools), str(self.script), *args],
+                              cwd='/', env=env, capture_output=True, text=True, timeout=10)
 
     def test_invalid_arguments_rejected_before_build(self):
         for args in [('',), ('', 'extra'), ('--unknown',), ('--no-build', 'extra')]:
@@ -50,17 +62,22 @@ class InstallShellTest(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stderr)
         app = Path(self.environment['XDG_DATA_HOME']) / 'onionall/cli'
         self.assertEqual(b'fixture', (app / 'lib/example-1.jar').read_bytes())
-        self.assertEqual(str(app / 'bin/onionall'), os.readlink(Path(self.environment['XDG_BIN_HOME']) / 'onionall'))
+        link = Path(self.environment['XDG_BIN_HOME']) / 'onionall'
+        target = subprocess.check_output(
+            [BASH, '-c', 'test -L "$1" && readlink -- "$1"', 'install-fixture', str(link)],
+            text=True, timeout=5,
+        ).rstrip('\r\n')
+        expected = bash_directory(app) + '/bin/onionall' if os.name == 'nt' else str(app / 'bin/onionall')
+        self.assertEqual(expected, target)
 
     def test_cleanup_failure_preserves_original_command_status(self):
         tools = Path(self.temp.name) / 'fake tools'
         tools.mkdir()
         for name, status in [('cp', 37), ('rm', 41)]:
             command = tools / name
-            command.write_text('#!/bin/sh\nexit ' + str(status) + '\n')
+            command.write_text('#!/bin/sh\nexit ' + str(status) + '\n', encoding='utf-8', newline='\n')
             command.chmod(0o755)
-        self.environment['PATH'] = str(tools) + os.pathsep + os.environ['PATH']
-        result = self.run_script('--no-build')
+        result = self.run_script('--no-build', tools=tools)
         self.assertEqual(37, result.returncode, result.stderr)
         self.assertIn('Installation cleanup failed (exit 41)', result.stderr)
 
@@ -78,14 +95,16 @@ class InstallShellTest(unittest.TestCase):
                    'rm': '#!/bin/sh\nexit 41\n'}
         for name, body in scripts.items():
             command = tools / name
-            command.write_text(body)
+            command.write_text(body, encoding='utf-8', newline='\n')
             command.chmod(0o755)
         self.environment.pop('JAVA_HOME', None)
-        self.environment['PATH'] = str(tools) + os.pathsep + os.environ['PATH']
+        # Packaging calls install before jar, so provide a managed native artifact.
+        (self.root / 'target/test-content.lib').write_bytes(b'fixture')
+        self.environment['ONIONALL_CONTENT_LIBRARY'] = 'target/test-content.lib'
         # Resolve the fixture tool directory inside Bash before prepending PATH;
         # Git Bash may otherwise prepend its own GNU tools to the Windows PATH.
         launch = 'tools=$(cd -- "$1" && pwd -P); script=$2; export PATH="$tools:$PATH"; set --; source "$script"'
-        result = subprocess.run(['bash', '-c', launch, 'build-fixture', str(tools),
+        result = subprocess.run([BASH, '-c', launch, 'build-fixture', str(tools),
                                  str(self.root / 'scripts/cli/build-cli.sh')], cwd='/',
                                 env=self.environment, capture_output=True, text=True, timeout=10)
         self.assertEqual(37, result.returncode, result.stderr)

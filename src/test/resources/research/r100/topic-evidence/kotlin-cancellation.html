@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Kotlin coroutine cancellation</title></head>
+<body>
+<main>
+<h1>Kotlin coroutine cancellation</h1>
+<h2>Cooperating with cancellation</h2>
+<p>Cancellation is cooperative.</p>
+<pre><code>while (hasWork()) {
+    ensureActive()
+    processNextItem()
+}</code></pre>
+</main>
+</body>
+</html>

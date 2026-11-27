@@ -1,7 +1,12 @@
 package dev.onionall.brawler.cli
 
+import java.nio.file.Files as NioFiles
+import java.nio.file.LinkOption
 import java.nio.file.Path
+import dev.onionall.brawler.research.LocalResearchSearch
+import dev.onionall.brawler.research.ResearchBatchValidation
 import dev.onionall.brawler.research.ResearchWorkflow
+import dev.onionall.brawler.research.StoredResearchRoute
 import java.util.concurrent.Callable
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -33,6 +38,9 @@ import picocli.CommandLine.ParentCommand
         ResearchCommands.Links::class,
         ResearchCommands.Files::class,
         ResearchCommands.Search::class,
+        ResearchCommands.Document::class,
+        ResearchCommands.Route::class,
+        ResearchCommands.Batch::class,
         SessionCommands.Discover::class,
         SessionCommands.Import::class,
         SessionCommands.Candidates::class,
@@ -147,6 +155,10 @@ class ResearchCommands @JvmOverloads constructor(
         @Throws(Exception::class)
         fun search(query: String, id: String?, host: String?, limit: Int): Map<String, Any?>
 
+        /** Finds the latest verified archive projection by its stored page ID. */
+        @Throws(Exception::class)
+        fun document(pageId: String): Map<String, Any?>
+
         /**
          * **Назначение:** Передать структурированный результат подключённому механизму вывода CLI.
          *
@@ -181,6 +193,9 @@ class ResearchCommands @JvmOverloads constructor(
                         "links",
                         "files",
                         "search",
+                        "document",
+                        "route",
+                        "batch",
                         "export",
                         "thread"),
                 "approval_required" to true,
@@ -714,14 +729,138 @@ class ResearchCommands @JvmOverloads constructor(
             require(provider == "local") {
                 "Automated provider search is unavailable; use search-provider for manual discovery and crawl plan --import for selected seeds"
             }
-            val result = parent.backend.search(query, job, host, limit)
-            parent.backend.print(
-                result +
-                    mapOf(
-                        "network_requests" to 0,
-                        "search_fields" to listOf("url", "title", "text"),
-                        "may_be_truncated" to (rows(result, "results").size == limit)))
+            val result = LocalResearchSearch.search(query, limit) { text, bound ->
+                parent.backend.search(text, job, host, bound)
+            }
+            parent.backend.print(result)
             return 0
+        }
+    }
+
+    /**
+     * Reads the current verified document projection after a local search.
+     * An expected snapshot prevents silently citing a newer archive revision.
+     *
+     * @author Стефан Колесников
+     * @author GPT-6.2 Sol
+     */
+    @Command(
+        name = "document",
+        mixinStandardHelpOptions = true,
+        description = ["Read a bounded document from a verified local archive snapshot."]
+    )
+    class Document : Callable<Int> {
+        @ParentCommand
+        lateinit var parent: ResearchCommands
+
+        @Parameters(index = "0", paramLabel = "PAGE")
+        lateinit var pageId: String
+
+        @Option(names = ["--snapshot"], description = ["Require this exact current snapshot ID."])
+        var expectedSnapshot: String? = null
+
+        @Option(names = ["--max-chars"], defaultValue = "16000", description = ["Limit Markdown to 1..65536 Unicode code points."])
+        var maxChars: Int = 16000
+
+        override fun call(): Int {
+            require(maxChars in 1..65_536) { "Document character limit must be between 1 and 65536" }
+            val document = parent.backend.document(pageId)
+            require(expectedSnapshot == null || expectedSnapshot == document["snapshot_id"]) {
+                "Document snapshot changed; repeat the local search"
+            }
+            val body = document["body_markdown"] as? String
+            val bounded = body?.let { text ->
+                text.substring(0, text.offsetByCodePoints(0, minOf(maxChars, text.codePointCount(0, text.length))))
+            }
+            val fields = setOf(
+                "schema_version", "page_id", "document_id", "job_id", "snapshot_id", "canonical_url",
+                "content_hash", "source_kind", "source_url", "fetched_at", "recorded_at", "title",
+                "document_format", "extraction_status", "limitations", "content_trust"
+            )
+            parent.backend.print(document.filterKeys { it in fields } + mapOf(
+                "body_markdown" to bounded,
+                "body_truncated" to (body != bounded),
+                "network_requests" to 0
+            ))
+            return 0
+        }
+    }
+
+    /**
+     * Finds a bounded evidence path through one stored archive graph.
+     * This read never starts traversal, admission or a worker.
+     *
+     * @author Стефан Колесников
+     * @author GPT-6.2 Sol
+     */
+    @Command(
+        name = "route",
+        mixinStandardHelpOptions = true,
+        description = ["Find a route between two pages in one stored research graph."]
+    )
+    class Route : Callable<Int> {
+        @ParentCommand
+        lateinit var parent: ResearchCommands
+
+        @Option(names = ["--job"], required = true)
+        lateinit var job: String
+
+        @Option(names = ["--from"], required = true)
+        lateinit var from: String
+
+        @Option(names = ["--to"], required = true)
+        lateinit var to: String
+
+        @Option(names = ["--max-hops"], defaultValue = "4")
+        var maxHops: Int = 4
+
+        override fun call(): Int {
+            require(maxHops in 0..100) { "Route hop limit must be between 0 and 100" }
+            val backend = parent.backend
+            backend.print(StoredResearchRoute.find(job, from, to, maxHops, backend.pages(job), backend.links(job)))
+            return 0
+        }
+    }
+
+    /**
+     * Validates local batch intents without submitting research or authorizing sources.
+     *
+     * @author Стефан Колесников
+     * @author GPT-6.2 Sol
+     */
+    @Command(
+        name = "batch",
+        mixinStandardHelpOptions = true,
+        description = ["Validate bounded research objectives from a local JSON file."],
+        subcommands = [Batch.Validate::class]
+    )
+    class Batch : Callable<Int> {
+        @ParentCommand
+        lateinit var parent: ResearchCommands
+
+        override fun call(): Int {
+            parent.backend.print(mapOf("commands" to listOf("validate")))
+            return 0
+        }
+
+        @Command(name = "validate", mixinStandardHelpOptions = true)
+        class Validate : Callable<Int> {
+            @ParentCommand
+            lateinit var batch: Batch
+
+            @Parameters(index = "0", paramLabel = "MANIFEST")
+            lateinit var path: Path
+
+            override fun call(): Int {
+                require(NioFiles.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    "Batch manifest must be a regular local file"
+                }
+                val result = NioFiles.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use {
+                    ResearchBatchValidation.validate(it)
+                }
+                batch.parent.backend.print(result)
+                return if (result["valid"] == true) 0 else 2
+            }
         }
     }
 

@@ -141,4 +141,58 @@ public class ResearchCommandsTest {
                 found.json.path("results").get(0).path("canonical_url").asText());
         }
     }
+
+
+    @Test public void versionedResearchSearchChecksEditionEvidenceBeforeLimiting() throws Exception {
+        Path directory = temporary.newFolder().toPath();
+        Path archive = directory.resolve("archive");
+        String base = "http://aeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaeaqcaibaea37ead.onion/";
+        String job = run(archive, "research", "plan", "--url", base).json.path("plan_id").asText();
+        assertEquals(0, run(archive, "crawl", "approve", job).code);
+        record Doc(String path, String title) {}
+        var fixtures = List.of(
+            new Doc("reference", "JDK 25 Lightweight tasks reference"),
+            new Doc("javase/25/guide", "Lightweight tasks guide"),
+            new Doc("javase/21/mislabelled", "JDK 25 Lightweight tasks"),
+            new Doc("newer", "Java 26 Lightweight tasks"),
+            new Doc("release-notes", "JDK 25 Release notes"),
+            new Doc("unspecified", "Lightweight tasks"),
+            new Doc("old-guide", "Java 21 Lightweight tasks")
+        );
+        for (var entry : fixtures) {
+            Path input = Files.createTempFile(directory, "doc-", ".html");
+            Files.writeString(input, "<!doctype html><html><title>" + entry.title()
+                + "</title><body>See Java 25 lightweight tasks documentation.</body></html>");
+            assertEquals(0, run(archive, "archive", "import", input.toString(), "--plan", job,
+                "--url", base + entry.path()).code);
+        }
+
+        String query = "Java 25 lightweight tasks documentation";
+        var top = run(archive, "research", "search", "--query", query, "--job", job, "--limit", "1");
+        assertEquals(0, top.code);
+        assertEquals("jvm-release", top.json.path("search_mode").asText());
+        assertEquals(1, top.json.path("results").size());
+        assertTrue(top.json.path("may_be_truncated").asBoolean());
+        var first = top.json.path("results").get(0);
+        assertEquals(base + "reference", first.path("canonical_url").asText());
+        assertEquals(25, first.path("match").path("jvm_release").asInt());
+        assertEquals("title", first.path("match").path("version_evidence").get(0).asText());
+
+        var all = run(archive, "research", "search", "--query", query, "--job", job);
+        assertEquals(0, all.code);
+        assertEquals(query, all.json.path("query").asText());
+        assertEquals(0, all.json.path("network_requests").asInt(-1));
+        assertEquals(2, all.json.path("results").size());
+        assertFalse(all.json.path("may_be_truncated").asBoolean());
+        var second = all.json.path("results").get(1);
+        assertEquals(base + "javase/25/guide", second.path("canonical_url").asText());
+        assertEquals("url_path", second.path("match").path("version_evidence").get(0).asText());
+        assertEquals(0, run(archive, "research", "search", "--query", query, "--job", job,
+            "--host", OnionSmoke.HOST).json.path("results").size());
+
+        // The archive command keeps its substring contract for callers that need literal hits.
+        assertEquals(fixtures.size(), run(archive, "search-local", query,
+            "--job", job).json.path("results").size());
+        assertNotEquals(0, run(archive, "research", "search", "--query", query, "--limit", "0").code);
+    }
 }

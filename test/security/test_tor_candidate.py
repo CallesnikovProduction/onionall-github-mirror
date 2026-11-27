@@ -26,7 +26,7 @@ import sys
 mode = Path(sys.argv[0]).name
 args = sys.argv[1:]
 step = 'show' if '--with-colons' in args else 'verify' if mode == 'gpgv' else 'dearmor'
-with open('trace', 'a') as trace:
+with open(os.environ['TEST_GPG_TRACE'], 'a') as trace:
     trace.write(step + '\n')
 if step == 'show':
     print('pub::::::::::')
@@ -34,7 +34,7 @@ if step == 'show':
 elif step == 'verify':
     if os.environ['TEST_BAD_SIGNATURE'] == '1':
         raise SystemExit(8)
-    Path(args[args.index('--output') + 1]).write_bytes(Path('release-fixture').read_bytes())
+    Path(args[args.index('--output') + 1]).write_bytes(Path(os.environ['TEST_RELEASE_FIXTURE']).read_bytes())
 '''
 
 
@@ -51,6 +51,8 @@ def exercise(command, scenario, reference=None):
             path.write_text('#!' + sys.executable + '\n' + FAKE_GPG, encoding='utf-8')
             path.chmod(0o700)
         env = dict(os.environ, PATH=str(bin_dir),
+                   TEST_GPG_TRACE=str(root / 'trace'),
+                   TEST_RELEASE_FIXTURE=str(root / 'release-fixture'),
                    TEST_PRIMARY='WRONG' if scenario == 'wrong-key' else FINGERPRINT,
                    TEST_BAD_SIGNATURE=str(int(scenario == 'wrong-signature')))
         payload = b'untrusted candidate fixture'

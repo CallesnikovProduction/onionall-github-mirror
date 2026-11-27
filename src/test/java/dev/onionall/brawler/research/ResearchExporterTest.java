@@ -309,4 +309,44 @@ public class ResearchExporterTest {
         assertEquals(CLOCK, body.path("pages").get(0).path("recorded_at").asText());
         assertEquals("MANUAL_IMPORT", body.path("pages").get(0).path("page").path("source_kind").asText());
     }
+
+    @Test @SuppressWarnings("unchecked")
+    public void structuredEditsAreExportedAsObservedSourceMetadata() throws Exception {
+        var fixture = fixture("structured");
+        var research = (Map<String, Object>) fixture.get("result");
+        var details = (List<Map<String, Object>>) fixture.get("details");
+        var thread = ((List<Map<String, Object>>) research.get("threads")).getFirst();
+        var post = ((List<Map<String, Object>>) thread.get("posts")).getFirst();
+        String edited = "2026-11-14T13:05:00+03:00";
+        post.put("modified_at", edited);
+        Path root = temporary.newFolder().toPath();
+        var machine = ResearchExporter.export(research, details, "json", root.resolve("machine"));
+        var tree = json.readTree(Path.of((String) machine.get("output_file")).toFile());
+        assertEquals(edited, tree.at("/research/threads/0/posts/0/modified_at").asText());
+        var readable = ResearchExporter.export(research, details, "text", root.resolve("readable"));
+        String text = Files.readString(Path.of((String) readable.get("output_file")));
+        assertTrue(text.contains("Observed edit timestamp: " + edited));
+    }
+
+    @Test @SuppressWarnings("unchecked")
+    public void codeBlocksKeepLayoutAndCannotCloseTheirMarkdownFence() throws Exception {
+        var fixture = fixture("structured");
+        var research = (Map<String, Object>) fixture.get("result");
+        var details = (List<Map<String, Object>>) fixture.get("details");
+        var thread = ((List<Map<String, Object>>) research.get("threads")).getFirst();
+        var post = ((List<Map<String, Object>>) thread.get("posts")).getFirst();
+        String code = "    first()\r\n\r\n" + "```" + "\r\n<script>fixture</script>\u001b";
+        post.put("code_blocks", List.of(Map.of("text", code, "text_truncated", false)));
+        post.put("quotes", List.of(Map.of("code_blocks", List.of(
+            Map.of("text", "  quoted()\n", "text_truncated", true)))));
+        var result = ResearchExporter.export(research, details, "markdown",
+            temporary.newFolder().toPath().resolve("code"));
+        String actual = Files.readString(Path.of((String) result.get("output_file")));
+        assertTrue(actual.contains("Message code 1 (untrusted data):"));
+        assertTrue(actual.contains("````\n    first()\n\n```\n<script>fixture</script>\\u001b\n````\n"));
+        assertTrue(actual.contains("Code in quote 1, block 1 (untrusted data):"));
+        assertTrue(actual.contains("Captured code was truncated.\n"));
+        assertTrue(actual.contains("```\n  quoted()\n"));
+        assertFalse(actual.contains("\u001b"));
+    }
 }

@@ -1,4 +1,4 @@
-"""Canonical CLI, real HTTP over internal SOCKS, then container recreation.
+"""Durable research session over internal SOCKS, with export and recreation readback.
 
 Only an empty canonical fixture archive is accepted. No fabricated catalog rows,
 no direct scheduler mutations, no public network and no volume deletion.
@@ -36,12 +36,15 @@ def cli(arguments, name, **options):
     return json.loads(command(['cli', *arguments], name, **options))
 
 
+def container_ids(service=None):
+    args = ['docker', 'ps', '-q', '--filter', 'label=com.docker.compose.project=onionall-runtime-fixture']
+    if service is not None:
+        args += ['--filter', 'label=com.docker.compose.service=' + service]
+    return subprocess.run(args, capture_output=True, text=True, check=True, timeout=15).stdout.split()
+
+
 def container_id(service):
-    result = subprocess.run(['docker', 'ps', '-q', '--filter',
-                             'label=com.docker.compose.project=onionall-runtime-fixture',
-                             '--filter', 'label=com.docker.compose.service=' + service],
-                            capture_output=True, text=True, check=True, timeout=15)
-    ids = result.stdout.split()
+    ids = container_ids(service)
     require(len(ids) == 1, 'Expected exactly one owned ' + service)
     return ids[0]
 
@@ -95,6 +98,109 @@ def read_archive(job, host, suffix):
     return dict(pages=rows, details=details, edges=edges)
 
 
+def verify_versioned_research(job, host, archive, suffix):
+    """R100 A02 counts a fetched fixture only when ranking and source evidence agree."""
+    query = 'Java 25 virtual threads documentation'
+    base = 'http://' + host
+    legacy, expected = base + '/b', base + '/c'
+    literal = cli(['search-local', query, '--job', job], 'a02-literal-' + suffix)['results']
+    require(len(literal) == 2 and {row['canonical_url'] for row in literal} == {legacy, expected},
+            'A02 fixture did not exercise an incidental reference in the obsolete edition')
+    search = cli(['research', 'search', '--query', query, '--job', job, '--host', host, '--limit', '1'],
+                 'a02-version-' + suffix)
+    hits = search['results']
+    require(search['search_mode'] == 'jvm-release' and search['network_requests'] == 0
+            and not search['may_be_truncated'] and len(hits) == 1,
+            'A02 version selection or its result scope is incorrect')
+    hit = hits[0]
+    require(hit['canonical_url'] == expected and hit['match']['jvm_release'] == 25
+            and 'title' in hit['match']['version_evidence'] and hit['match']['topic_evidence'] == 'title',
+            'A02 accepted the wrong edition or lost its justification')
+    original = next(page for page in archive['details'] if page['canonical_url'] == expected)
+    require(hit['source_kind'] == 'CRAWLER' and hit['job_id'] == job and hit['http_status'] == 200
+            and hit['fetched_at'] and hit['snapshot_id'] == original['snapshot_id']
+            and hit['content_hash'] == original['content_hash'], 'A02 result lacks fetched source evidence')
+    doc = cli(['research', 'document', hit['page_id'], '--snapshot', hit['snapshot_id']],
+              'a02-document-' + suffix)
+    require(all(doc[key] == hit[key] for key in
+                ('page_id', 'canonical_url', 'job_id', 'snapshot_id', 'content_hash', 'source_kind', 'fetched_at'))
+            and doc['network_requests'] == 0 and not doc['body_truncated']
+            and 'Version 25 evidence marker' in doc['body_markdown'],
+            'A02 document projection does not match the captured evidence')
+    return dict(scenario_id='A02', status='PASS', source_kind=hit['source_kind'],
+                literal_matches=len(literal), selected_matches=len(hits), requested_release=25,
+                snapshot_id=hit['snapshot_id'], content_hash=hit['content_hash'])
+
+
+def read_session(session, job, archive, suffix):
+    observation = cli(['research', 'status', session], 'session-' + suffix)
+    saved = observation['session']
+    require(observation['session_id'] == session and saved['session_id'] == session
+            and saved['approved'] and saved['approved_at'], 'Lost approved research session')
+    seeds = saved['seeds']
+    require(len(seeds) == 1 and seeds[0]['job_id'] == job and seeds[0]['execution_state'] == 'ATTEMPTED'
+            and seeds[0]['last_worker_exit_code'] == 0, 'Missing persisted child execution')
+    require(observation['scheduler_readback_current'] and len(observation['per_seed']) == 1
+            and observation['per_seed'][0]['job_id'] == job
+            and observation['per_seed'][0]['status']['authoritative_readback_current'],
+            'Missing authenticated research scheduler readback')
+    require(observation['pages'] == archive['pages'] and observation['links'] == archive['edges']
+            and observation['acquisition_status'] == 'DATA_ACQUIRED', 'Session lost archived page or graph evidence')
+    require(observation['metrics']['seeds_attempted'] == 1 and observation['metrics']['completed'] is None
+            and observation['session_status'] != 'COMPLETED', 'Session manufactured completion')
+    return {key: saved[key] for key in
+            ('approved_at', 'depth', 'pages_per_seed', 'global_page_budget', 'candidates', 'seeds')}
+
+
+def export_payload(session, suffix, fmt, filename, count):
+    destination = 'research-export-' + suffix + '-' + fmt
+    summary = cli(['research', 'export', session, '--format', fmt, '--output', '/state/' + destination],
+                  'export-' + suffix + '-' + fmt)
+    require(summary['session_id'] == session and summary['format'] == fmt
+            and summary['pages_exported'] == count and summary['network_requests'] == 0
+            and summary['output_file'] == '/state/' + destination + '/' + filename,
+            'Research export summary differs from the requested scope')
+    payload = (STATE / destination / filename).read_bytes()
+    require(summary['bytes'] == len(payload) and summary['sha256'] == hashlib.sha256(payload).hexdigest(),
+            'Research export bytes differ from their reported integrity')
+    return payload
+
+
+def verify_json_export(document, session, details):
+    require(document['session_id'] == session and document['export_version'] == 1,
+            'Export has wrong research identity or format')
+    expected = {page['page_id']: page for page in details}
+    rows = document['pages']
+    require(len(rows) == len(expected) and {row['page_id'] for row in rows} == set(expected),
+            'Export omitted or duplicated archived pages')
+    for row in rows:
+        original = expected[row['page_id']]
+        require(row['session_id'] == session and row['job_id'] == original['job_id']
+                and row['source_url'] == original['canonical_url']
+                and row['fetched_at'] == original['fetched_at'], 'Export lost wrapper provenance')
+        page = row['page']
+        require(all(page[key] == original[key] for key in
+                    ('page_id', 'job_id', 'canonical_url', 'snapshot_id', 'content_hash',
+                     'source_kind', 'fetched_at', 'http_status')), 'Export lost archive snapshot provenance')
+
+
+def verify_exports(session, archive, suffix):
+    details = archive['details']
+    payload = export_payload(session, suffix, 'json', 'research.json', len(details))
+    verify_json_export(json.loads(payload), session, details)
+
+    markdown = export_payload(session, suffix, 'markdown', 'research.md', len(details)).decode('utf-8')
+    # Fixture URLs and text markers contain only this subset of escaped punctuation.
+    visible = re.sub(r'\\([:/._])', r'\1', markdown)
+    require(all(page['canonical_url'] in visible for page in details)
+            and all('ARCHIVE_' + marker in visible for marker in ('ALPHA', 'BETA', 'GAMMA')),
+            'Markdown export omitted source URLs or captured content')
+
+
+def request_records():
+    return [json.loads(line) for line in (STATE / 'archive-requests.jsonl').read_text().splitlines()]
+
+
 def verify_traffic(records):
     http = [row for row in records if row['phase'] == 'http']
     require(Counter(row['path'] for row in http) == Counter(
@@ -118,14 +224,37 @@ def run():
         require(doctor['socks5_negotiation'] == 'READY' and doctor['tor_bootstrap'] == 'NOT_CHECKED',
                 'Configured proxy not checked honestly')
         host = (STATE / 'onion-hostname.txt').read_text().strip()
-        plan = cli(['research', 'plan', '--url', 'http://' + host + '/a', '--depth', '2',
-                    '--max-pages', '20'], 'plan')
-        job = plan['plan_id']
+        seed_url = 'http://' + host + '/a'
+        imported = cli(['research', 'import', '--seed', seed_url, '--label', 'Canonical synthetic research'],
+                       'research-import')
+        session = imported['session_id']
+        result['research_session_id'] = session
+        candidates = imported['candidates']
+        require(imported['provider'] == 'manual' and imported['network_requests'] == 0
+                and len(candidates) == 1 and candidates[0]['canonical_url'] == seed_url
+                and not candidates[0]['selected'] and not imported['approved'],
+                'Imported candidate was not an unapproved local seed')
+        selected = cli(['research', 'select', session, '--all-valid'], 'research-select')
+        require(len(selected['candidates']) == 1 and selected['candidates'][0]['selected']
+                and not selected['approved'], 'Selection did not preserve explicit approval')
+        plan = cli(['research', 'plan', '--session', session, '--depth', '2', '--pages-per-seed', '20',
+                    '--global-pages', '20'], 'research-plan')
+        require(plan['depth'] == 2 and plan['pages_per_seed'] == 20 and plan['global_page_budget'] == 20
+                and len(plan['seeds']) == 1 and plan['seeds'][0]['url'] == seed_url,
+                'Stored research scope differs from fixture budget')
+        job = plan['seeds'][0]['job_id']
         result['job_id'] = job
-        refused = cli(['research', 'run', '--plan', job], 'unapproved', success=False)
+        run_session = ['research', 'run', '--session', session, '--total-seconds', '360',
+                       '--slice-seconds', '120', '--request-timeout-ms', '2000']
+        refused = cli(run_session, 'unapproved', success=False)
         require('approval' in json.dumps(refused).lower(), 'Unapproved start refused for unrelated cause')
-        start = cli(['research', 'run', '--plan', job, '--approve'], 'start', timeout=260)
-        require(cli(['crawl', 'show', job], 'approved-plan')['approved'], 'Explicit approval not persisted')
+        require(not cli(['crawl', 'show', job], 'unapproved-plan')['approved']
+                and not (STATE / 'execution' / job).exists(), 'Unapproved start changed child execution state')
+        approved = cli(['research', 'approve', session], 'research-approve')
+        require(approved['approved'] and approved['approved_at']
+                and cli(['crawl', 'show', job], 'approved-plan')['approved'], 'Explicit approval not persisted')
+        cli(run_session, 'start', timeout=360)
+        start = json.loads((STATE / 'execution' / job / 'execution.json').read_text())
         require(start['admission'] == 'COMMITTED' and start['worker_exit_code'] == 0,
                 'Admission/worker execution failed')
         require(start['crawl_completed_verified'] is False, 'Worker exit manufactured completion')
@@ -138,18 +267,27 @@ def run():
         for category in ('FETCH_ERROR', 'ROBOTS_DENIED', 'REDIRECTION'):
             require(any(r['category'] == category for r in status['failure_records']), 'Missing ' + category)
         before = read_archive(job, host, 'before')
-        traffic = [json.loads(line) for line in (STATE / 'archive-requests.jsonl').read_text().splitlines()]
-        http = verify_traffic(traffic)
+        before_session = read_session(session, job, before, 'before')
+        before_a02 = verify_versioned_research(job, host, before, 'before')
+        verify_exports(session, before, 'before')
+        http = verify_traffic(request_records())
         config = json.loads((STATE / 'execution' / job / 'crawler-conf.json').read_text())['config']
         require(config['fetcher.threads.number'] <= 4 and config['fetcher.threads.per.queue'] == 1,
                 'Concurrency ceiling exceeded')
         ids = {name: container_id(name) for name in ('frontier', 'socks-fixture')}
         command(['down'], 'down', timeout=180)
+        require(not container_ids(), 'Fixture containers remained active after stop')
         command(['up'], 'recreated-up', timeout=200)
         require(all(container_id(name) != old for name, old in ids.items()), 'Containers were not recreated')
         require(cli(['config', 'proxy', 'show'], 'proxy-restored')['host'] == proxy['host'], 'Proxy setting lost')
         after = read_archive(job, host, 'after')
         require(before == after, 'Archive or graph changed after container recreation')
+        after_session = read_session(session, job, after, 'after')
+        require(before_session == after_session, 'Research approval, candidates or child scope changed')
+        verify_exports(session, after, 'after')
+        require(verify_versioned_research(job, host, after, 'after') == before_a02,
+                'A02 version evidence changed after container recreation')
+        require(verify_traffic(request_records()) == http, 'Restart and readback caused extra HTTP')
         restored = cli(['crawl', 'status', job], 'restored-status')
         require(restored['authoritative_readback_current'], 'Restored Frontier unavailable')
         require(restored['authoritative_admission'] == status['authoritative_admission'], 'Admission changed')
@@ -159,6 +297,10 @@ def run():
                       frontier_reservations=5, http_requests=len(http), retry_statuses=[503, 200],
                       redirect_status=302, archive_readback=True, containers_recreated=True,
                       frontier_persistence=True, archive_persistence=True, graph_persistence=True,
+                      research_input='MANUAL_SYNTHETIC_SEED', provider_discovery='NOT_RUN',
+                      research_session_persistence=True, research_exports_verified=['json', 'markdown'],
+                      no_fixture_containers_after_stop=True, no_http_on_restart_readback=True,
+                      r100_a02=before_a02,
                       job_state=restored['job_state'], completion=restored['completion'],
                       scheduler_counts=restored['counts'], effective_concurrency=1)
     except Exception as error:

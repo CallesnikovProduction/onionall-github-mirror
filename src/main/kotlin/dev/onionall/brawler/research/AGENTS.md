@@ -22,6 +22,21 @@ ArchiveCommands/ArchiveStore supply only Java compilation-boundary forwarding.
   remain null. Archive acquisition, execution failures and job completion are distinct.
 - ResearchFiles uses verified archived HTML and link hints. Never invent MIME/length,
   follow credentials/symlinks, fetch files automatically or imply downloads are implemented.
+- LocalResearchSearch handles local Java/JDK release-qualified topic queries with
+  bounded archive candidates and explicit title or URL-path release evidence.
+  Keep the original host/job filters and reject conflicting release metadata.
+  The archive substring command keeps its own ordering and output contract.
+- Research document readback uses ArchiveStore's hash-verified projection.
+  Preserve source kind, page/snapshot identity and the source hash. Keep output
+  bounded and refuse a mismatching expected snapshot before emitting the body.
+  CLI truncation and extraction limitations are separate observations.
+- StoredResearchRoute reads a bounded same-job archive graph and preserves
+  exact edge snapshots. Capped, mixed and historical observations stay explicit;
+  a shortest route in loaded data does not grant approval or prove traversal.
+- Batch validation checks local JSON shape and bounded intent budgets. It never
+  grants source approval, creates archive state or starts a session.
+- Extracted message and quote code stays separate, bounded and tied to the
+  original post evidence. Keep literal whitespace and mark truncation visibly.
 - ResearchExporter writes bounded new local outputs with URL/time/job/session boundaries.
   Remote text is untrusted data; do not execute it or send it to external AI services.
 - ThreadCommands/ForumPagination create a separately approved thread-only existing plan
@@ -30,7 +45,9 @@ ArchiveCommands/ArchiveStore supply only Java compilation-boundary forwarding.
   Ordinary research session navigation supports depth0..3. Do not launch thread plans
   using older binaries that lack the thread policy; rollback is read-only for them.
 - ForumExtractor supports two explicit controlled DOM contracts, not universal engines.
-  Missing or ambiguous source author/date/post IDs remain null. Keep quotations, links,
+  Missing or ambiguous source author/date/post IDs remain null. A semantic post's
+  modification timestamp comes only from a visible, unambiguous header time.
+  Keep quotations, links,
   observed attachment hints and per-page extraction limitations separate.
 - ResearchThreads reads verified immutable HTML, records actual page/job/snapshot provenance
   and caches derived observations with existing CAS. Nonunique or conflicting IDs must not

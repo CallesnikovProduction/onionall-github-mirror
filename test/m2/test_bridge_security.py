@@ -86,10 +86,15 @@ class BridgeSecurityTest(unittest.TestCase):
                 text = generated.read_text()
                 self.assertIn('UseBridges 1\n', text)
                 self.assertIn('ClientTransportPlugin obfs4 exec /usr/bin/obfs4proxy', text)
-                self.assertEqual(0o600, generated.stat().st_mode & 0o777)
+                chmod.assert_called_once_with(generated, 0o600)
+                # Windows stat does not expose Unix mode bits; verify effective
+                # protection on the POSIX host that runs the actual Tor entrypoint.
+                if os.name == 'posix':
+                    self.assertEqual(0o600, generated.stat().st_mode & 0o777)
                 return subprocess.CompletedProcess(command, verification_code, dummy_bridge(), dummy_bridge())
             with patch.object(entrypoint, 'SECRET', secret), \
                  patch.object(entrypoint, 'command_args', return_value=(base, [])), \
+                 patch.object(Path, 'chmod', autospec=True, side_effect=Path.chmod) as chmod, \
                  patch.object(entrypoint.subprocess, 'run', side_effect=verify), \
                  patch.object(entrypoint.subprocess, 'Popen', return_value=process) as popen, \
                  patch.object(entrypoint.signal, 'signal'):

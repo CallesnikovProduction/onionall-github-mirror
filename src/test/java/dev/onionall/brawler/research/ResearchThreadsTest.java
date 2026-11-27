@@ -133,6 +133,28 @@ public class ResearchThreadsTest {
         }
     }
 
+    @Test public void distinctObservedEditTimesKeepTheirSnapshotProvenance() throws Exception {
+        String post = """
+            <article id="post-101" itemscope itemtype="https://schema.org/DiscussionForumPosting">
+            <header><time itemprop="dateModified" datetime="%s">Edited</time></header>
+            <div itemprop="text">Same visible message.</div></article>
+            """;
+        String first = "2026-11-14T10:00:00Z";
+        String second = "2026-11-15T10:00:00Z";
+        try (var fixture = new Fixture()) {
+            fixture.add(URL, html(post.formatted(first)));
+            fixture.add(URL + "?page=2", html(post.formatted(second)));
+            var thread = fixture.threads().getFirst();
+            var captures = rows(thread.get("posts"));
+            assertEquals(2, captures.size());
+            assertEquals(List.of(first, second), captures.stream().map(p -> p.get("modified_at")).toList());
+            assertEquals(captures.get(0).get("source_post_id"), captures.get(1).get("source_post_id"));
+            assertEquals("post-101", captures.get(0).get("source_post_id"));
+            assertNotEquals(captures.get(0).get("snapshot_id"), captures.get(1).get("snapshot_id"));
+            assertTrue(((List<?>) thread.get("conflicting_source_post_ids")).contains("post-101"));
+        }
+    }
+
     @Test public void unsupportedDynamicPageCannotHideBehindStructuredPageSuccess() throws Exception {
         try (var fixture = new Fixture()) {
             fixture.add(URL, html(post("p101", "One real static message.")));

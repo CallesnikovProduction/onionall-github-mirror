@@ -160,6 +160,33 @@ public class ForumExtractorTest {
         assertEquals(true, ((Map<?, ?>) posts.get(0).get("evidence")).get("ambiguous_author"));
     }
 
+    @Test public void reportsOnlyUnambiguousStructuredForumEditEvidence() {
+        String published = "2026-11-13T10:00:00Z";
+        String modified = "2026-11-14T13:05:00+03:00";
+        String edit = "<time itemprop='dateModified' datetime='" + modified + "'>Edited</time>";
+        String frame = "<article itemscope itemtype='https://schema.org/DiscussionForumPosting'>"
+            + "<header><time itemprop='datePublished' datetime='" + published + "'>Posted</time>%s</header>"
+            + "<div itemprop='text'>Observed text.%s</div></article>";
+        var posts = posts(parse(
+            frame.formatted(edit, "")
+                + frame.formatted("", "<blockquote>" + edit + "</blockquote>")
+                + frame.formatted(edit + edit, "")
+                + frame.formatted("<time itemprop='dateModified' datetime='yesterday'>Edited</time>", "")
+                + frame.formatted("<time hidden itemprop='dateModified' datetime='" + modified + "'>Edited</time>", "")
+        ));
+        assertEquals(5, posts.size());
+        var edited = posts.getFirst();
+        assertEquals(published, edited.get("posted_at"));
+        assertEquals(modified, edited.get("modified_at"));
+        assertEquals("RAW_TIME_DATETIME_ATTRIBUTE", ((Map<?, ?>) edited.get("evidence")).get("modified_at_basis"));
+        for (int i = 1; i < posts.size(); i++) {
+            var unsupported = posts.get(i);
+            assertNull(unsupported.get("modified_at"));
+            assertNull(((Map<?, ?>) unsupported.get("evidence")).get("modified_at_basis"));
+        }
+        assertEquals(true, ((Map<?, ?>) posts.get(2).get("evidence")).get("partial"));
+    }
+
     @Test public void entitiesAreDecodedOnceAtHtmlBoundaryAndMeaningfulQueriesRemainDistinct() {
         var page = parse("<div class='post' id='p1'><div class='postbody'><div class='content'>" +
             "A &amp; B; literal &amp;amp; remains. <a href='?page=2&amp;thread=42'>normal</a>" +

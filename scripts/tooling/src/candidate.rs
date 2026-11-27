@@ -52,11 +52,9 @@ fn verify_at(
     let signed = read_regular(&bundle.join(SIGNED), 4 * MIB)?;
     fs::write(home.join(KEY), &key)?;
     fs::write(home.join(SIGNED), &signed)?;
-    let keyring = home.join("keyring.gpg");
-    let release = home.join("Release");
-    verify_signature(home, &keyring, &release, pins.fingerprint)?;
+    verify_signature(home, pins.fingerprint)?;
 
-    let release = read_regular(&release, 4 * MIB)?;
+    let release = read_regular(&home.join("Release"), 4 * MIB)?;
     let index = read_regular(&bundle.join(INDEX), 32 * MIB)?;
     verify_release(utf8(&release)?, &index, now)?;
     let package = format!("tor_{VERSION}_amd64.deb");
@@ -155,30 +153,25 @@ fn read_regular(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn verify_signature(
-    home: &Path,
-    keyring: &Path,
-    release: &Path,
-    fingerprint: &str,
-) -> io::Result<()> {
-    let key = home.join(KEY);
+fn verify_signature(home: &Path, fingerprint: &str) -> io::Result<()> {
+    // All filenames here are fixed files in our private temporary home. Using
+    // the child cwd also lets MSYS GnuPG resolve them without Win32 arguments.
     let gpg = || {
         let mut command = Command::new("gpg");
-        command
-            .args([
-                "--no-options",
-                "--batch",
-                "--no-tty",
-                "--no-autostart",
-                "--homedir",
-            ])
-            .arg(home);
+        command.current_dir(home).args([
+            "--no-options",
+            "--batch",
+            "--no-tty",
+            "--no-autostart",
+            "--homedir",
+            ".",
+        ]);
         command
     };
     let shown = home.join("fingerprints");
     let mut show = gpg();
     show.args(["--with-colons", "--import-options", "show-only", "--import"])
-        .arg(&key);
+        .arg(KEY);
     gpg_step(
         &mut show,
         Some(File::create_new(&shown)?),
@@ -189,19 +182,20 @@ fn verify_signature(
         return Err(io::Error::other("Unexpected Tor repository signing key"));
     }
     gpg_step(
-        gpg().args(["--dearmor", "--output"]).arg(keyring).arg(key),
+        gpg().args(["--dearmor", "--output", "keyring.gpg", KEY]),
         None,
         "Cannot prepare Tor repository signing key",
     )?;
     gpg_step(
-        Command::new("gpgv")
-            .arg("--homedir")
-            .arg(home)
-            .arg("--keyring")
-            .arg(keyring)
-            .arg("--output")
-            .arg(release)
-            .arg(home.join(SIGNED)),
+        Command::new("gpgv").current_dir(home).args([
+            "--homedir",
+            ".",
+            "--keyring",
+            "keyring.gpg",
+            "--output",
+            "Release",
+            SIGNED,
+        ]),
         None,
         "Invalid Tor repository signature",
     )
@@ -481,10 +475,16 @@ mod tests {
         fs::write(path.join(DOCKERFILE), b"FROM scratch\n").unwrap();
         let gpg = || {
             let mut command = Command::new("gpg");
-            command
-                .args(["--no-options", "--homedir"])
-                .arg(signing.path())
-                .args(["--batch", "--pinentry-mode", "loopback", "--passphrase", ""]);
+            command.current_dir(signing.path()).args([
+                "--no-options",
+                "--homedir",
+                ".",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+            ]);
             command
         };
         let checked = |command: &mut Command| {
@@ -498,6 +498,7 @@ mod tests {
             );
             result.stdout
         };
+        let _agent = TestAgent(signing.path());
         checked(gpg().args([
             "--quick-generate-key",
             "Test fixture <fixture@example.invalid>",
@@ -505,7 +506,6 @@ mod tests {
             "sign",
             "1d",
         ]));
-        let _agent = TestAgent(signing.path());
         let listed = checked(gpg().args(["--with-colons", "--list-keys"]));
         let fingerprint = primary_fingerprints(utf8(&listed).unwrap()).unwrap()[0];
         fs::write(
@@ -520,15 +520,12 @@ mod tests {
         fs::write(bundle.join(INDEX), &index).unwrap();
         let now = OffsetDateTime::now_utc();
         let release_text = release(index.as_bytes(), &now.format(&Rfc2822).unwrap(), "");
-        let release_path = path.join("Release");
-        fs::write(&release_path, release_text).unwrap();
-        checked(
-            gpg()
-                .arg("--output")
-                .arg(bundle.join(SIGNED))
-                .arg("--clearsign")
-                .arg(release_path),
-        );
+        fs::write(signing.path().join("Release"), release_text).unwrap();
+        fs::write(
+            bundle.join(SIGNED),
+            checked(gpg().args(["--output", "-", "--clearsign", "Release"])),
+        )
+        .unwrap();
         let pin = sha256(data);
         let pins = Candidate {
             fingerprint,
@@ -569,9 +566,8 @@ mod tests {
     impl Drop for TestAgent<'_> {
         fn drop(&mut self) {
             let _ = Command::new("gpgconf")
-                .arg("--homedir")
-                .arg(self.0)
-                .args(["--kill", "gpg-agent"])
+                .current_dir(self.0)
+                .args(["--homedir", ".", "--kill", "gpg-agent"])
                 .output();
         }
     }

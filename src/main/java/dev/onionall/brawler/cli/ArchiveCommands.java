@@ -53,6 +53,9 @@ public final class ArchiveCommands {
             public Map<String, Object> search(String query, String id, String host, int limit) throws Exception {
                 try (var archive = store(root)) { return archive.search(query, id, host, limit); }
             }
+            public Map<String, Object> document(String pageId) throws Exception {
+                try (var archive = store(root)) { return archive.researchDocument(pageId); }
+            }
             public void print(Map<String, ? extends Object> value) throws Exception {
                 root.print(new LinkedHashMap<>(value));
             }
@@ -99,6 +102,9 @@ public final class ArchiveCommands {
                 try (var archive = store(root)) { return archive.links(id, 100); }
             }
             public Map<String, Object> errors(String id) throws Exception { return service(root).errors(id, null, 100); }
+            public Map<String, Object> document(String pageId) throws Exception {
+                try (var archive = store(root)) { return archive.researchDocument(pageId); }
+            }
             public void print(Map<String, ? extends Object> value) throws Exception {
                 root.print(new LinkedHashMap<>(value));
             }

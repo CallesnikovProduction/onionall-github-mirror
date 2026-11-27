@@ -133,3 +133,63 @@ pagination uses the ordinary same-origin crawler and is bounded/deduplicated.
 Exports preserve original HTML paths plus page-level text, title, source URL,
 fetch time and all graph/candidate/file/error/session provenance. Structured
 posts, author fields or dynamic content are not fabricated.
+
+## Local search and document evidence
+
+Use the page and snapshot IDs returned by the local search to read one archived document.
+
+```sh
+./onionall cli --json research search --query 'Java 25 virtual threads documentation' --job JOB_ID
+./onionall cli --json research document PAGE_ID --snapshot SNAPSHOT_ID --max-chars 16000
+```
+
+A single leading Java/JDK major release followed by a topic uses the
+`jvm-release` search mode. The archive returns up to 100 candidates for
+the topic. The result needs that topic in its title and a matching release
+in the title or an explicit Java/JDK URL path. Conflicting release metadata
+excludes a candidate. The JSON `match` field shows the evidence used.
+`may_be_truncated` covers the candidate cap and the requested result limit.
+Other queries and `search-local` keep their existing substring behavior.
+
+`research document` checks the stored blob before rendering Markdown. It
+returns the recorded source kind, URL, snapshot ID and source SHA-256.
+`--snapshot` requires the cited revision to still be current. The body
+cap is measured in Unicode code points. `body_truncated` reports clipping
+by the CLI. The extraction status and limitations describe the source
+projection. Archive content is untrusted research data.
+
+### Route evidence
+
+```sh
+./onionall cli --json research route --job JOB_ID --from SOURCE_PAGE_ID --to TARGET_PAGE_ID --max-hops 4
+```
+
+This command loads at most 100 pages and 100 link observations for one job.
+It returns the shortest supported path in that loaded graph. Each path edge
+retains the source snapshot and discovery time. Page evidence identifies the
+latest observations used by the read. Routes based on historical or mixed
+observations are labelled separately.
+
+`LIMITED` means a read cap or hop limit prevented a complete answer.
+Read-only replay performs zero network requests and reports
+`traversal_verified=false`, including when all endpoint pages were fetched by a crawler.
+
+## Batch manifest validation
+
+```sh
+./onionall cli --json research batch validate /state/research-intents.json
+```
+
+The command accepts a regular UTF-8 JSON file up to 256 KiB with
+`batchId`, `executionProfile: "bounded-research"` and 1–200 `objectives`.
+Each objective declares an `id`, `query`, `intent`, `requirements`,
+`sourcePolicy: "approved-sources"` and `downloadPolicy: "DISCOVER_ONLY"`.
+The current validation vocabulary supports `DOCUMENTATION_RESEARCH` and
+`FORUM_RESEARCH` with compatible `sourceTypes` and `extract` entries.
+Duplicate keys, duplicate objective IDs and unknown fields are rejected.
+Use `budget.globalPages` at batch level to bound the sum of explicit
+objective allocations. Objective budgets use the existing workflow ranges.
+
+Exit 0 returns `valid=true`. Invalid manifest data returns exit 2 with
+`error.code` and `error.path`. A valid manifest still reports
+`source_approval=NOT_GRANTED` and `execution=NOT_STARTED`.

@@ -73,8 +73,14 @@ class Fixture(socketserver.ThreadingTCPServer):
             if count == 1:
                 return 503, 'text/html', b'<html><body>CONTROLLED_TEMPORARY_FAILURE</body></html>'
             body = '<html><head><title>Beta archive</title></head><body>ARCHIVE_BETA <a href="/c">C</a><a href="/a">cycle A</a><a href="/c">duplicate C</a></body></html>'
+            if self.research:
+                body = body.replace('Beta archive', 'Java 21 virtual threads guide')
+                body = body.replace('ARCHIVE_BETA ', 'ARCHIVE_BETA <p>See Java 25 virtual threads documentation elsewhere.</p>')
         elif path == '/c':
             body = '<html><head><title>Gamma archive</title></head><body>ARCHIVE_GAMMA <a href="/a">cycle A</a><a href="/deep">too deep</a></body></html>'
+            if self.research:
+                body = body.replace('Gamma archive', 'Java 25 virtual threads documentation')
+                body = body.replace('ARCHIVE_GAMMA ', 'ARCHIVE_GAMMA <p>Version 25 evidence marker</p>')
         elif path == '/redirect' and self.research:
             return 302, 'text/html', b''
         else:
@@ -149,7 +155,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--evidence', default='/evidence')
     parser.add_argument('--port', type=int, default=9050)
-    parser.add_argument('--research', action='store_true', help='Add a relative redirect to the admitted graph')
+    parser.add_argument('--research', action='store_true', help='Serve the relative redirect and versioned documentation fixture')
     parser.add_argument('--branching', action='store_true', help='Use the six-page branching depth-two graph')
     args = parser.parse_args()
     with Fixture(('0.0.0.0', args.port), args.evidence, research=args.research, branching=args.branching) as server:

@@ -8,7 +8,14 @@ fi
 (( $# == 0 )) || { echo 'Unexpected arguments; use --help.' >&2; exit 2; }
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd -- "$root"
-if [[ -n ${JAVA_HOME:-} ]]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
+platform=$(uname -s)
+if [[ -n ${JAVA_HOME:-} ]]; then
+    case $platform in
+        MINGW*|MSYS*|CYGWIN*) JAVA_HOME=$(cygpath --unix -- "$JAVA_HOME") ;;
+    esac
+    export JAVA_HOME
+    export PATH="$JAVA_HOME/bin:$PATH"
+fi
 command -v javac >/dev/null || { echo 'JDK 25 is required to build the CLI.' >&2; exit 69; }
 [[ $(javac -version 2>&1) =~ javac\ ([0-9]+) ]] && (( BASH_REMATCH[1] >= 25 )) || { echo 'JDK 25 or newer is required.' >&2; exit 69; }
 maven=("$root/mvnw" -B)
@@ -28,9 +35,13 @@ cleanup() {
 trap cleanup EXIT
 mkdir -p "$stage/lib" "$stage/bin" "$stage/classes/dev/onionall/brawler"
 native_name=libonionall_content.so
-case $(uname -s) in
+classpath_separator=:
+case $platform in
     Darwin) native_name=libonionall_content.dylib ;;
-    MINGW*|MSYS*|CYGWIN*) native_name=onionall_content.dll ;;
+    MINGW*|MSYS*|CYGWIN*)
+        native_name=onionall_content.dll
+        classpath_separator=';'
+        ;;
 esac
 native_source=${ONIONALL_CONTENT_LIBRARY:-"$root/target/content-native/release/$native_name"}
 install -m 755 -- "$native_source" "$stage/lib/$native_name"
@@ -44,12 +55,17 @@ rm -rf -- "$stage/classes"
 # No Flux/Tika/Frontier server or tests are bundled.
 # Config and Metadata/Protocol require the Storm API and StormCrawler core.
 while IFS= read -r dependency || [[ -n $dependency ]]; do
+    if [[ $classpath_separator == ';' ]]; then
+        # Native Maven writes Windows paths even when invoked from Git Bash.
+        dependency=${dependency%$'\r'}
+        dependency=${dependency//\\//}
+    fi
     name=${dependency##*/}
     case "$name" in
         grpc-api-*.jar|grpc-core-*.jar|grpc-context-*.jar|grpc-util-*.jar|grpc-stub-*.jar|grpc-protobuf-*.jar|grpc-protobuf-lite-*.jar|grpc-netty-shaded-*.jar|protobuf-java-*.jar|proto-google-common-protos-*.jar|perfmark-api-*.jar|gson-*.jar|error_prone_annotations-*.jar|checker-qual-*.jar|j2objc-annotations-*.jar|listenablefuture-*.jar|animal-sniffer-annotations-*.jar|h2-[0-9]*.jar|commons-cli-[0-9]*.jar|commons-lang3-[0-9]*.jar|commons-io-[0-9]*.jar|commons-codec-[0-9]*.jar|picocli-[0-9]*.jar|kotlin-stdlib-[0-9]*.jar|kotlinx-coroutines-core-jvm-[0-9]*.jar|annotations-[0-9]*.jar|storm-client-[0-9]*.jar|storm-shaded-deps-[0-9]*.jar|stormcrawler-core-[0-9]*.jar|crawler-commons-[0-9]*.jar|okhttp-[0-9]*.jar|okhttp-jvm-[0-9]*.jar|okio-[0-9]*.jar|okio-jvm-[0-9]*.jar|jsoup-[0-9]*.jar|jackson-core-[0-9]*.jar|jackson-databind-[0-9]*.jar|jackson-annotations-[0-9]*.jar|slf4j-api-[0-9]*.jar|guava-[0-9]*.jar|failureaccess-[0-9]*.jar)
             cp -- "$dependency" "$stage/lib/$name" ;;
     esac
-done < <(tr ':' '\n' < target/cli-classpath.txt)
+done < <(tr "$classpath_separator" '\n' < target/cli-classpath.txt)
 [[ -n $(find "$stage/lib" -name 'picocli-*.jar' -print -quit) ]] || { echo 'Picocli dependency missing.' >&2; exit 1; }
 install -m 755 scripts/cli/cli-launcher.sh "$stage/bin/onionall"
 printf '%s\n' 'onionall-cli-v1' > "$stage/.onionall-cli"
