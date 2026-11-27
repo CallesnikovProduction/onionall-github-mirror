@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Rust ownership and borrowing</title></head>
+<body>
+<main>
+<h1>Rust ownership and borrowing</h1>
+<h2>Borrow without taking ownership</h2>
+<p>A shared reference lets a function read a value without taking ownership.</p>
+<pre><code>fn measured(value: &amp;str) -&gt; usize {
+    value.len()
+}
+let title = String::from("fixture");
+let length = measured(&amp;title);</code></pre>
+</main>
+</body>
+</html>

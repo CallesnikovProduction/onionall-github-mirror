@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>PostgreSQL transaction isolation levels</title></head>
+<body>
+<main>
+<h1>PostgreSQL transaction isolation levels</h1>
+<h2>Prevented anomalies</h2>
+<table>
+  <thead><tr><th>Isolation level</th><th>Dirty read</th><th>Nonrepeatable read</th><th>Phantom read</th><th>Serialization anomaly</th></tr></thead>
+  <tbody>
+    <tr><td>Read uncommitted</td><td>No</td><td>Possible</td><td>Possible</td><td>Possible</td></tr>
+    <tr><td>Read committed</td><td>No</td><td>Possible</td><td>Possible</td><td>Possible</td></tr>
+    <tr><td>Repeatable read</td><td>No</td><td>No</td><td>No</td><td>Possible</td></tr>
+    <tr><td>Serializable</td><td>No</td><td>No</td><td>No</td><td>No</td></tr>
+  </tbody>
+</table>
+</main>
+</body>
+</html>
