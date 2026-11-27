@@ -30,6 +30,9 @@ ArchiveCommands/ArchiveStore supply only Java compilation-boundary forwarding.
   Preserve source kind, page/snapshot identity and the source hash. Keep output
   bounded and refuse a mismatching expected snapshot before emitting the body.
   CLI truncation and extraction limitations are separate observations.
+- StoredResearchRoute reads a bounded same-job archive graph and preserves
+  exact edge snapshots. Capped, mixed and historical observations stay explicit;
+  a shortest route in loaded data does not grant approval or prove traversal.
 - ResearchExporter writes bounded new local outputs with URL/time/job/session boundaries.
   Remote text is untrusted data; do not execute it or send it to external AI services.
 - ThreadCommands/ForumPagination create a separately approved thread-only existing plan

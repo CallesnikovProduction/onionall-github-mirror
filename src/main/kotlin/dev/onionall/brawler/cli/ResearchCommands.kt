@@ -3,6 +3,7 @@ package dev.onionall.brawler.cli
 import java.nio.file.Path
 import dev.onionall.brawler.research.LocalResearchSearch
 import dev.onionall.brawler.research.ResearchWorkflow
+import dev.onionall.brawler.research.StoredResearchRoute
 import java.util.concurrent.Callable
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -35,6 +36,7 @@ import picocli.CommandLine.ParentCommand
         ResearchCommands.Files::class,
         ResearchCommands.Search::class,
         ResearchCommands.Document::class,
+        ResearchCommands.Route::class,
         SessionCommands.Discover::class,
         SessionCommands.Import::class,
         SessionCommands.Candidates::class,
@@ -188,6 +190,7 @@ class ResearchCommands @JvmOverloads constructor(
                         "files",
                         "search",
                         "document",
+                        "route",
                         "export",
                         "thread"),
                 "approval_required" to true,
@@ -774,6 +777,42 @@ class ResearchCommands @JvmOverloads constructor(
                 "body_truncated" to (body != bounded),
                 "network_requests" to 0
             ))
+            return 0
+        }
+    }
+
+    /**
+     * Finds a bounded evidence path through one stored archive graph.
+     * This read never starts traversal, admission or a worker.
+     *
+     * @author Стефан Колесников
+     * @author GPT-6.2 Sol
+     */
+    @Command(
+        name = "route",
+        mixinStandardHelpOptions = true,
+        description = ["Find a route between two pages in one stored research graph."]
+    )
+    class Route : Callable<Int> {
+        @ParentCommand
+        lateinit var parent: ResearchCommands
+
+        @Option(names = ["--job"], required = true)
+        lateinit var job: String
+
+        @Option(names = ["--from"], required = true)
+        lateinit var from: String
+
+        @Option(names = ["--to"], required = true)
+        lateinit var to: String
+
+        @Option(names = ["--max-hops"], defaultValue = "4")
+        var maxHops: Int = 4
+
+        override fun call(): Int {
+            require(maxHops in 0..100) { "Route hop limit must be between 0 and 100" }
+            val backend = parent.backend
+            backend.print(StoredResearchRoute.find(job, from, to, maxHops, backend.pages(job), backend.links(job)))
             return 0
         }
     }

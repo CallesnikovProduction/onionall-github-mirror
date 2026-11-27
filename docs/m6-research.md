@@ -157,3 +157,19 @@ returns the recorded source kind, URL, snapshot ID and source SHA-256.
 cap is measured in Unicode code points. `body_truncated` reports clipping
 by the CLI. The extraction status and limitations describe the source
 projection. Archive content is untrusted research data.
+
+### Route evidence
+
+```sh
+./onionall cli --json research route --job JOB_ID --from SOURCE_PAGE_ID --to TARGET_PAGE_ID --max-hops 4
+```
+
+This command loads at most 100 pages and 100 link observations for one job.
+It returns the shortest supported path in that loaded graph. Each path edge
+retains the source snapshot and discovery time. Page evidence identifies the
+latest observations used by the read. Routes based on historical or mixed
+observations are labelled separately.
+
+`LIMITED` means a read cap or hop limit prevented a complete answer.
+Read-only replay performs zero network requests and reports
+`traversal_verified=false`, including when all endpoint pages were fetched by a crawler.
