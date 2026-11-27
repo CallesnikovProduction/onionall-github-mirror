@@ -4,8 +4,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.channels.*;
 import java.nio.file.*;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.*;
 
@@ -13,6 +11,9 @@ import java.util.*;
  * <b>Наблюдение локального процесса и archive ownership.</b>
  *
  * <p>Не допускает URL и не изменяет процессы; неизвестную идентичность сохраняет как неопределённость.
+ *
+ * @author Стефан Колесников
+ * @author GPT-6.1 Sol
  */
 public final class WorkerObservation {
 
@@ -27,23 +28,7 @@ public final class WorkerObservation {
      * @return хэш области или null
      */
     static String scope() {
-        try {
-            String identity;
-            if (System.getProperty("os.name").startsWith("Windows")) {
-                identity = System.getenv("COMPUTERNAME");
-                if (identity == null || identity.isBlank()) {
-                    return null;
-                }
-                identity = "windows:" + identity;
-            } else {
-                identity = Files.readString(Path.of("/proc/sys/kernel/random/boot_id")).strip() + ":" +
-                    Files.readSymbolicLink(Path.of("/proc/self/ns/pid"));
-            }
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                .digest(identity.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
-            return null;
-        }
+        return WorkerProcessIdentity.scope();
     }
 
     /**
@@ -55,11 +40,7 @@ public final class WorkerObservation {
      * @return start instant или null
      */
     static String start(long pid) {
-        try {
-            return ProcessHandle.of(pid).flatMap(p -> p.info().startInstant()).map(Instant::toString).orElse(null);
-        } catch (RuntimeException e) {
-            return null;
-        }
+        return WorkerProcessIdentity.start(pid);
     }
 
     /**
@@ -72,24 +53,7 @@ public final class WorkerObservation {
      * @return true, false либо null при неопределённости
      */
     static Boolean alive(Object pid, Object expected) {
-        if (!(pid instanceof Integer || pid instanceof Long) || !(pid instanceof Number n) || n.longValue() < 1 ||
-            !(expected instanceof String clock)) {
-            return null;
-        }
-        try {
-            Instant instant = Instant.parse(clock);
-            Optional<ProcessHandle> process = ProcessHandle.of(n.longValue());
-            if (process.isEmpty() || !process.get().isAlive()) {
-                return false;
-            }
-            Optional<Instant> actual = process.get().info().startInstant();
-            if (actual.isEmpty()) {
-                return null;
-            }
-            return actual.get().equals(instant) && process.get().isAlive();
-        } catch (RuntimeException e) {
-            return null;
-        }
+        return WorkerProcessIdentity.alive(pid, expected);
     }
 
     /**

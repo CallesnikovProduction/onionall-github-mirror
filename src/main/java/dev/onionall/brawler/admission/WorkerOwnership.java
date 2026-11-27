@@ -63,7 +63,7 @@ final class WorkerOwnership {
             throw blocked("invalid ownership marker");
         }
         if (value == null || !Integer.valueOf(1).equals(value.get("ownership_version")) ||
-            WorkerObservation.scope() == null || !WorkerObservation.scope().equals(value.get("scope")) ||
+            WorkerProcessIdentity.scope() == null || !WorkerProcessIdentity.scope().equals(value.get("scope")) ||
             !lock.toAbsolutePath().normalize().toString().equals(value.get("lock_path")) ||
             !(value.get("run_id") instanceof String run) || !validRun(run)) {
             throw blocked("unknown version/scope/identity");
@@ -110,7 +110,7 @@ final class WorkerOwnership {
             throw blocked("previous child live or UNKNOWN");
         }
         if (!Boolean.FALSE.equals(value.get("child_created"))) {
-            if (!Boolean.FALSE.equals(WorkerObservation.alive(value.get("child_pid"), value.get("child_start")))) {
+            if (!Boolean.FALSE.equals(WorkerProcessIdentity.alive(value.get("child_pid"), value.get("child_start")))) {
                 throw blocked("child stop identity not proved");
             }
         }
@@ -187,7 +187,7 @@ final class WorkerOwnership {
      * @throws IOException при ошибке операции или нарушении её контракта
      */
     static Map<String, Object> intent(Path lock, String phase) throws IOException {
-        String scope = WorkerObservation.scope(), start = WorkerObservation.start(ProcessHandle.current().pid());
+        String scope = WorkerProcessIdentity.scope(), start = WorkerProcessIdentity.start(ProcessHandle.current().pid());
         if (scope == null || start == null) {
             throw blocked("local process identity unavailable");
         }
@@ -338,13 +338,13 @@ final class WorkerOwnership {
             var value = read(lock);
             var parent = ProcessHandle.current().parent();
             if (!ticket.equals(value.get("run_id")) || !"LAUNCHING".equals(value.get("phase")) ||
-                !Boolean.TRUE.equals(WorkerObservation.alive(value.get("owner_pid"), value.get("owner_start"))) ||
+                !Boolean.TRUE.equals(WorkerProcessIdentity.alive(value.get("owner_pid"), value.get("owner_start"))) ||
                 parent.isEmpty() || !(value.get("owner_pid") instanceof Number pid) || parent.get()
                 .pid() != pid.longValue()) {
                 throw blocked("invalid launch handoff");
             }
             value.put("owner_pid", ProcessHandle.current().pid());
-            value.put("owner_start", WorkerObservation.start(ProcessHandle.current().pid()));
+            value.put("owner_start", WorkerProcessIdentity.start(ProcessHandle.current().pid()));
             if (value.get("owner_start") == null) {
                 throw blocked("wrapper identity unavailable");
             }

@@ -110,3 +110,157 @@ Local checkpoints:842081d (server primitive),e95d4f4 (shutdown/canonical identit
 2f2e819 (verified CLI/archive integration). Final file-mode review caught staging
 copy removing the public build script executable bit; restored and checked with
 test -x. User .gitignore remains the only unrelated worktree change. No push.
+
+## 2026-11-28 — архитектура Admission: независимая идентичность процессов
+
+Исходная точка: чистая `main`, HEAD `2e42d22`. Область — пакет `admission`,
+его существующие JVM-тесты и один Kotlin-компонент того же пакета. Пользователь
+разрешил локальный commit всех изменений и запретил push.
+
+**Outcome:** отделить проверку идентичности процессов от представления статуса.
+**Constraints:** сохранить API, nullable-наблюдения, ownership journal v1,
+startup/handoff/cleanup, Windows/Linux-пути, Frontier authority и capability.
+**Evidence:** characterization до переноса, process/crash regressions, native Maven
+build, сравнение `javap` и свежих зависимостей bytecode.
+
+### Наблюдаемая карта ответственности
+
+| Контур | Владельцы и связи |
+| --- | --- |
+| Admission | `CrawlAdmissionService` → `AdmissionClient` / `FrontierReadback`; резервирование и квота остаются на сервере |
+| Discovery | `DurableDiscoveryFilter` → RPC/readback, TorPolicy и ForumPagination; собственные bounds и provenance |
+| Исполнение | `CrawlExecution` → runtime preparation → admission → WorkerLauncher/CrawlWorker; WorkerOwnership хранит локальный cleanup proof |
+| Статус | `WorkerObservation` читает ownership/execution; JobStatus/JobStatusView оценивают и представляют наблюдения; reconciliation принадлежит crawl.JobStatusService |
+
+Проверены callers из worker/ownership/status, tests и `test/admission/WorkerOwnershipProbe.java`,
+reflective entrypoints, generated topology/resources и состав thin CLI.
+Существующий Graphify snapshot `31ce1d7` использован как навигатор, затем связи
+проверены по исходникам и свежему bytecode. Это старый snapshot, не доказательство
+текущей структуры; граф не перестраивался, новая LLM extraction не запускалась.
+
+### Finding и выбранное исправление
+
+**ADMISSION-ARCH-001, medium, TANGLE (architectural judgment):**
+`WorkerOwnership` и его Preparation зависели от `WorkerObservation.scope/start/alive`,
+а `WorkerObservation.read` зависел от WorkerOwnership.read/stopped.
+ArchUnit подтвердил оба направления в baseline bytecode. Низкоуровневая проверка
+PID/start instant/scope находилась в компоненте, который также читает execution,
+собирает диагностическую Map и создаёт JobStatus.Worker. Изменение представления
+статуса затрагивало класс, от которого зависел безопасный запуск.
+
+Сохранение структуры оставляло эту связь. Перенос всего запуска в другой пакет
+затронул бы package-private callers и entrypoints без необходимой пользы.
+Минимальное исправление — общий `WorkerProcessIdentity`, не читающий журнал,
+не формирующий JobStatus и не посылающий сигналы. Новый компонент написан на Kotlin
+согласно корневым инструкциям; он не зависит от Java-исходников приложения.
+Остальной корректный Java-код сохранён.
+
+До:
+
+```mermaid
+flowchart LR
+    Ownership[WorkerOwnership] --> Observation[WorkerObservation]
+    Observation --> Ownership
+    Launcher[WorkerLauncher] --> Observation
+    Child[CrawlWorker.OwnedChild] --> Observation
+```
+
+После:
+
+```mermaid
+flowchart LR
+    Observation[WorkerObservation] --> Ownership[WorkerOwnership]
+    Ownership --> Identity[WorkerProcessIdentity]
+    Observation --> Identity
+    Launcher[WorkerLauncher] --> Identity
+    Child[CrawlWorker.OwnedChild] --> Identity
+```
+
+WorkerObservation.scope/start/alive оставлены совместимыми forwarding API для
+tests/probes. Проверки в новом владельце сохраняют допустимые Integer/Long PID,
+точный start instant, исходный SHA256 scope и три состояния true/false/null.
+Неизвестная идентичность не становится доказательством остановки. Проверка,
+способная опровергнуть исправление: malformed/reused/dead PID characterization,
+hard-crash с живым child и запрет restart до admission, cleanup и handoff tests.
+
+Другие наблюдения не объявлены устранёнными: пакет по-прежнему объединяет несколько
+контуров; `admission ↔ crawl` и связи через archive/adapters сохранены. Общий JSON writer
+пока принадлежит CrawlRuntimePreparer. Эти связи не оправдывают автоматический
+перенос стабильных API в данном изменении. Похожие recovery-пути seed admission и
+discovery не объединялись: у discovery есть page deadline и first-provenance semantics.
+PMD-метрики сложности строгих RPC/JAR/discovery validators сами по себе не доказывают
+нарушение архитектуры. EXEC-002, RPC-001 и terminal provenance остаются отдельными
+неизменёнными контрактными задачами.
+
+### Проверка и границы доказательств
+
+Окружение: Windows 11 amd64, Python 3.12.10, JetBrains JDK 25.0.5.1,
+Maven 3.10.0, Kotlin 2.3.21/JVM target 25; версии проекта не менялись.
+Первый offline baseline с `.runtime/maven-repository` остановился на отсутствующем
+coroutines artifact. Default user cache был недоступен для lock writes в sandbox.
+Существующий `.runtime/maven-linux-repository` содержит необходимые portable Maven
+artifacts. Sandbox запрещал локальные Kotlin daemon sockets; последующие Maven
+запуски выполнялись с разрешёнными loopback/process fixtures. Ничего не устанавливалось
+в систему; внешние onion-сервисы не вызывались.
+
+Для команд ниже JDK 25 выбран через JAVA_HOME/PATH; Maven repository аргумент:
+`-Dmaven.repo.local=.runtime/maven-linux-repository`.
+
+| Gate / команда | Реальный результат |
+| --- | --- |
+| Baseline `mvn -B -o -Dtest=dev.onionall.brawler.admission.*Test test` | PASS: 119 tests, 0 failures/errors, 6 skips |
+| До переноса `mvn -B -o -Dtest=WorkerObservationTest test` | PASS: 6 tests, 0 skips; включены 3 новые characterization cases |
+| После переноса `mvn -B -o -Dtest=WorkerObservationTest,WorkerOwnershipTest,CrawlWorkerTest,CrawlExecutionCleanupTest,WorkerCrashCharacterizationTest test` | PASS: 21 tests, 0 failures/errors/skips |
+| Первый полный `mvn -B -o verify` | FAIL: 469 tests, 1 failure, 11 skips; unchanged CapabilityReliabilityTest.interruptedPermitWaitFailsOnceAndPreservesInterrupt |
+| Диагностический `mvn -B -o -Dtest=CapabilityReliabilityTest surefire:test` | PASS: 9 tests, 0 failures/errors/skips; assertions не менялись |
+| Повторный полный `mvn -B -o verify` | PASS: 469 tests, 0 failures/errors, 11 skips; compilation, native library build и shaded JAR packaging завершены |
+| Admission в итоговом полном прогоне | 122 tests, 0 failures/errors, те же 6 platform skips |
+| `javap -public` существующих 15 Java-классов Admission до/после | PASS: текст сигнатур совпадает; прежние forwarding API сохранены |
+| Состав нового shaded JAR | PASS: WorkerProcessIdentity.class присутствует; thin CLI build script копирует весь admission package и Kotlin stdlib |
+| `git diff --check`, strict UTF-8 и scoped secret-signature check | PASS; raw logs, generated files и JSON анализатора не включены в commit |
+
+Одна промежуточная компиляция остановилась на недоступном Kotlin-вызове Java
+String.strip; заменён эквивалентным trim с Character.isWhitespace. Последующие
+фокусный и полный build прошли. У semaphore-теста await сначала проверяет
+hasQueuedThreads в цикле, затем повторяет проверку в assert; timed acquire может
+покинуть очередь между чтениями. Это объяснение наблюдаемой нестабильности,
+а не доказанное исправление теста: адаптер и его тест оставлены без изменений.
+Первое падение сохранено в `.runtime/admission-refactor/verify-after.log` и
+`verify-first-reports/`; успешный прогон — `verify-final.log`.
+
+Обязательный doctor выполнился; bootstrap PMD 7.29.0 и ArchUnit 1.4.2 прошёл
+offline smoke-tests из уже установленного skill cache. Первый sandbox bootstrap
+без результата был остановлен; успешный offline bootstrap выполнен отдельно.
+Анализ и verify использовали одинаковые engines/rules/scope, JDK 25 и явный
+`--classes target/classes`. Baseline — 232 типа после успешной исходной сборки,
+current — 234 после итогового compile. Оба анализатора completed, конфигурации
+совпали; verify прочитал 81 актуальный JUnit report (469 tests).
+
+Проверка raw bytecode edges подтвердила удаление Ownership → Observation и
+сохранение Observation → Ownership. Все четыре потребителя (Ownership, Observation,
+Launcher, OwnedChild) используют WorkerProcessIdentity; у identity-компонента нет
+исходящих зависимостей на другие классы приложения. Общий пакетный граф не объявлен
+ацикличным. Это доказательство конкретного исправления, не снижение общего score.
+
+Coverage: ArchUnit — compiled JVM dependencies; PMD — Java design heuristics без
+project auxiliary classpath и Java/Kotlin CPD с порогом 60 tokens. Kotlin-компонент
+проверен compiler, тестами и bytecode; отдельные Detekt/Konsist/jQAssistant не
+выбирались для этой локальной задачи. Source inventory анализатора также включает
+три retained `.runtime/native-integrity` копии исходников. Все 41 итоговое CPD
+сообщение в scope содержит такие копии и отклонено как самостоятельное доказательство
+production duplication. Уменьшение Java complexity flags 32 → 31 после переноса
+в Kotlin также не используется как доказательство улучшения.
+
+Полные локальные отчёты вне репозитория: `%TEMP%/admission-deslop-baseline.json`,
+`admission-deslop-current.json`, `admission-deslop-agent-findings.json`.
+Команды tool: `jvm_deslop.py analyze/verify . --engine pmd --engine archunit
+--classes target/classes --scope src/main/java/dev/onionall/brawler/admission
+--scope src/main/kotlin/dev/onionall/brawler/admission --offline`, с явными
+`--java-home`, `--output`; verify добавляет baseline и `--junit target/surefire-reports`.
+Graphify token cost: 0 для новой extraction; использован только локальный snapshot.
+
+11 пропусков относятся к symlink/POSIX/ACL-возможностям платформы; это не успешные
+проверки этих сценариев. Linux process scope, Docker/Storm end-to-end и real Tor
+заново не запускались. Frontier server не изменялся и отдельно не пересобирался.
+Существующий hard-crash case по-прежнему демонстрирует предел JVM containment;
+его прохождение доказывает сохранённый restart guard, а не устранение REC-09.

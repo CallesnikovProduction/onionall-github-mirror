@@ -12,6 +12,55 @@ import static org.junit.Assert.*;
 
 public class WorkerObservationTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
+
+    @Test
+    public void malformedProcessIdentityRemainsUnknown() {
+        String start = WorkerObservation.start(ProcessHandle.current().pid());
+        assertNotNull("Test requires process start identity", start);
+        for (Object pid : Arrays.asList(null, "1", 1.0, 1.0f, (short) 1,
+            java.math.BigInteger.ONE, 0, -1L)) {
+            assertNull("Invalid PID must remain unknown: " + pid, WorkerObservation.alive(pid, start));
+        }
+        for (Object clock : Arrays.asList(null, 1L, "", "not-an-instant")) {
+            assertNull(WorkerObservation.alive(ProcessHandle.current().pid(), clock));
+        }
+        assertNull(WorkerObservation.start(-1));
+    }
+
+    @Test
+    public void liveProcessRequiresExactStartInstantAndScopeIsStable() {
+        long pid = ProcessHandle.current().pid();
+        String start = WorkerObservation.start(pid);
+        assertNotNull("Test requires process start identity", start);
+        assertEquals(Boolean.TRUE, WorkerObservation.alive(pid, start));
+        assertEquals(Boolean.FALSE, WorkerObservation.alive(pid, Instant.EPOCH.toString()));
+        if (pid <= Integer.MAX_VALUE) {
+            assertEquals(Boolean.TRUE, WorkerObservation.alive((int) pid, start));
+        }
+        String scope = WorkerObservation.scope();
+        assertNotNull("Test requires supported local scope", scope);
+        assertTrue(scope.matches("[a-f0-9]{64}"));
+        assertEquals(scope, WorkerObservation.scope());
+    }
+
+    @Test
+    public void exitedOwnedProcessIsAbsentRatherThanUnknown() throws Exception {
+        Path root = temporary.newFolder().toPath();
+        Process process = new ProcessBuilder(CrawlWorkerTest.java(root,
+            CrawlWorkerTest.Fixture.class.getName(), "0"))
+            .redirectErrorStream(true).redirectOutput(root.resolve("process.log").toFile()).start();
+        try {
+            assertTrue(process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(0, process.exitValue());
+            assertEquals(Boolean.FALSE, WorkerObservation.alive(process.pid(), Instant.EPOCH.toString()));
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
+                process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+    }
+
     private static Map<String,Object> execution() {
         String start = WorkerObservation.start(ProcessHandle.current().pid());
         assertNotNull("Test requires process start identity",start);

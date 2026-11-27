@@ -131,7 +131,7 @@ public final class CrawlWorker {
             value.put("phase", "RUNNING");
             value.put("child_created", true);
             value.put("child_pid", process.pid());
-            value.put("child_start", WorkerObservation.start(process.pid()));
+            value.put("child_start", WorkerProcessIdentity.start(process.pid()));
             if (value.get("child_start") == null) {
                 identities = false;
             }
@@ -168,7 +168,7 @@ public final class CrawlWorker {
          * @return нужно ли продолжать ожидание
          */
         private boolean alive(long pid, Instant start) {
-            return !Boolean.FALSE.equals(WorkerObservation.alive(pid, start.toString()));
+            return !Boolean.FALSE.equals(WorkerProcessIdentity.alive(pid, start.toString()));
         }
 
         /**

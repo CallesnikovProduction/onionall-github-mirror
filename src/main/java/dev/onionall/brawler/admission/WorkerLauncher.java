@@ -95,7 +95,7 @@ final class WorkerLauncher {
         result.put("worker_pid", readiness.get("worker_pid"));
         result.put("worker_owner_pid", worker.pid());
         result.put("worker_log", log.toString());
-        result.put("process_scope", WorkerObservation.scope());
+        result.put("process_scope", WorkerProcessIdentity.scope());
         result.put("worker_owner_start_instant", workerIdentity == null ? null : workerIdentity.toString());
         result.put("worker_start_instant", readiness.get("worker_start_instant"));
         result.put("started_at", Instant.now().toString());

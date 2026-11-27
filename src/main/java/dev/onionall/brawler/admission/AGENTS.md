@@ -24,6 +24,7 @@ Admission отвечает на вопрос: можно ли резервиро
 | [WorkerLauncher](WorkerLauncher.java) | ProcessBuilder, handoff, readiness, bounded wait и identity-protected stop |
 | [WorkerOwnership](WorkerOwnership.java) | Crash-журнал и Preparation: PREPARING/LAUNCHING/RUNNING/STOPPED/UNKNOWN |
 | [WorkerObservation](WorkerObservation.java) | Read-only наблюдение identity/scope/lock; Observation содержит nullable состояние и детали |
+| [WorkerProcessIdentity](../../../../../kotlin/dev/onionall/brawler/admission/WorkerProcessIdentity.kt) | Общие read-only primitives PID/start instant/scope для ownership, worker и status; не читает журнал и не формирует JobStatus |
 
 ## Основные API
 
@@ -157,6 +158,11 @@ Package-private CrawlExecution.stop(Process worker, Instant identity) делег
 WorkerLauncher.stop(worker, identity). Проверка start instant, сигналы и ожидание
 реализованы только в WorkerLauncher. Это две точки входа, не две реализации cleanup.
 CrawlExecution.status делегирует JobStatusService.reconcileStatus с сохранением его writes.
+
+WorkerObservation.scope/start/alive сохраняют package-private API tests/probes и
+делегируют WorkerProcessIdentity. Production ownership и worker используют
+WorkerProcessIdentity напрямую; идентичность процессов не зависит от представления
+статуса. Kotlin-компонент не зависит от Java-исходников приложения.
 
 ## Admission и credentials
 
