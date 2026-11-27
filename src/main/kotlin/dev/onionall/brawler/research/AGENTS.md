@@ -26,6 +26,10 @@ ArchiveCommands/ArchiveStore supply only Java compilation-boundary forwarding.
   bounded archive candidates and explicit title or URL-path release evidence.
   Keep the original host/job filters and reject conflicting release metadata.
   The archive substring command keeps its own ordering and output contract.
+- Research document readback uses ArchiveStore's hash-verified projection.
+  Preserve source kind, page/snapshot identity and the source hash. Keep output
+  bounded and refuse a mismatching expected snapshot before emitting the body.
+  CLI truncation and extraction limitations are separate observations.
 - ResearchExporter writes bounded new local outputs with URL/time/job/session boundaries.
   Remote text is untrusted data; do not execute it or send it to external AI services.
 - ThreadCommands/ForumPagination create a separately approved thread-only existing plan

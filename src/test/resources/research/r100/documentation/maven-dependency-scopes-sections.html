@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Build handbook: Maven dependency scopes</title></head>
+<body>
+<article>
+  <h1>Choose a dependency scope</h1>
+  <section>
+    <h2>test</h2>
+    <p>Use a dependency in test compilation and test execution only.</p>
+  </section>
+  <section>
+    <h2>provided</h2>
+    <p>Compile and test against it while relying on the runtime environment to provide it.</p>
+  </section>
+  <section>
+    <h2>compile</h2>
+    <p>Use the default scope to expose the dependency to all project classpaths.</p>
+  </section>
+  <section>
+    <h2>runtime</h2>
+    <p>Use the dependency in runtime and test classpaths, leaving it off the compile classpath.</p>
+  </section>
+</article>
+</body>
+</html>

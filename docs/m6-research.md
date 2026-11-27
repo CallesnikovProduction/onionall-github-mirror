@@ -133,3 +133,27 @@ pagination uses the ordinary same-origin crawler and is bounded/deduplicated.
 Exports preserve original HTML paths plus page-level text, title, source URL,
 fetch time and all graph/candidate/file/error/session provenance. Structured
 posts, author fields or dynamic content are not fabricated.
+
+## Local search and document evidence
+
+Use the page and snapshot IDs returned by the local search to read one archived document.
+
+```sh
+./onionall cli --json research search --query 'Java 25 virtual threads documentation' --job JOB_ID
+./onionall cli --json research document PAGE_ID --snapshot SNAPSHOT_ID --max-chars 16000
+```
+
+A single leading Java/JDK major release followed by a topic uses the
+`jvm-release` search mode. The archive returns up to 100 candidates for
+the topic. The result needs that topic in its title and a matching release
+in the title or an explicit Java/JDK URL path. Conflicting release metadata
+excludes a candidate. The JSON `match` field shows the evidence used.
+`may_be_truncated` covers the candidate cap and the requested result limit.
+Other queries and `search-local` keep their existing substring behavior.
+
+`research document` checks the stored blob before rendering Markdown. It
+returns the recorded source kind, URL, snapshot ID and source SHA-256.
+`--snapshot` requires the cited revision to still be current. The body
+cap is measured in Unicode code points. `body_truncated` reports clipping
+by the CLI. The extraction status and limitations describe the source
+projection. Archive content is untrusted research data.

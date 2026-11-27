@@ -34,6 +34,7 @@ import picocli.CommandLine.ParentCommand
         ResearchCommands.Links::class,
         ResearchCommands.Files::class,
         ResearchCommands.Search::class,
+        ResearchCommands.Document::class,
         SessionCommands.Discover::class,
         SessionCommands.Import::class,
         SessionCommands.Candidates::class,
@@ -148,6 +149,10 @@ class ResearchCommands @JvmOverloads constructor(
         @Throws(Exception::class)
         fun search(query: String, id: String?, host: String?, limit: Int): Map<String, Any?>
 
+        /** Finds the latest verified archive projection by its stored page ID. */
+        @Throws(Exception::class)
+        fun document(pageId: String): Map<String, Any?>
+
         /**
          * **Назначение:** Передать структурированный результат подключённому механизму вывода CLI.
          *
@@ -182,6 +187,7 @@ class ResearchCommands @JvmOverloads constructor(
                         "links",
                         "files",
                         "search",
+                        "document",
                         "export",
                         "thread"),
                 "approval_required" to true,
@@ -719,6 +725,55 @@ class ResearchCommands @JvmOverloads constructor(
                 parent.backend.search(text, job, host, bound)
             }
             parent.backend.print(result)
+            return 0
+        }
+    }
+
+    /**
+     * Reads the current verified document projection after a local search.
+     * An expected snapshot prevents silently citing a newer archive revision.
+     *
+     * @author Стефан Колесников
+     * @author GPT-6.2 Sol
+     */
+    @Command(
+        name = "document",
+        mixinStandardHelpOptions = true,
+        description = ["Read a bounded document from a verified local archive snapshot."]
+    )
+    class Document : Callable<Int> {
+        @ParentCommand
+        lateinit var parent: ResearchCommands
+
+        @Parameters(index = "0", paramLabel = "PAGE")
+        lateinit var pageId: String
+
+        @Option(names = ["--snapshot"], description = ["Require this exact current snapshot ID."])
+        var expectedSnapshot: String? = null
+
+        @Option(names = ["--max-chars"], defaultValue = "16000", description = ["Limit Markdown to 1..65536 Unicode code points."])
+        var maxChars: Int = 16000
+
+        override fun call(): Int {
+            require(maxChars in 1..65_536) { "Document character limit must be between 1 and 65536" }
+            val document = parent.backend.document(pageId)
+            require(expectedSnapshot == null || expectedSnapshot == document["snapshot_id"]) {
+                "Document snapshot changed; repeat the local search"
+            }
+            val body = document["body_markdown"] as? String
+            val bounded = body?.let { text ->
+                text.substring(0, text.offsetByCodePoints(0, minOf(maxChars, text.codePointCount(0, text.length))))
+            }
+            val fields = setOf(
+                "schema_version", "page_id", "document_id", "job_id", "snapshot_id", "canonical_url",
+                "content_hash", "source_kind", "source_url", "fetched_at", "recorded_at", "title",
+                "document_format", "extraction_status", "limitations", "content_trust"
+            )
+            parent.backend.print(document.filterKeys { it in fields } + mapOf(
+                "body_markdown" to bounded,
+                "body_truncated" to (body != bounded),
+                "network_requests" to 0
+            ))
             return 0
         }
     }
