@@ -1,6 +1,7 @@
 package dev.onionall.brawler.cli
 
 import java.nio.file.Path
+import dev.onionall.brawler.research.LocalResearchSearch
 import dev.onionall.brawler.research.ResearchWorkflow
 import java.util.concurrent.Callable
 import picocli.CommandLine.Command
@@ -714,13 +715,10 @@ class ResearchCommands @JvmOverloads constructor(
             require(provider == "local") {
                 "Automated provider search is unavailable; use search-provider for manual discovery and crawl plan --import for selected seeds"
             }
-            val result = parent.backend.search(query, job, host, limit)
-            parent.backend.print(
-                result +
-                    mapOf(
-                        "network_requests" to 0,
-                        "search_fields" to listOf("url", "title", "text"),
-                        "may_be_truncated" to (rows(result, "results").size == limit)))
+            val result = LocalResearchSearch.search(query, limit) { text, bound ->
+                parent.backend.search(text, job, host, bound)
+            }
+            parent.backend.print(result)
             return 0
         }
     }
