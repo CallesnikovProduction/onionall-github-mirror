@@ -1,7 +1,10 @@
 package dev.onionall.brawler.cli
 
+import java.nio.file.Files as NioFiles
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import dev.onionall.brawler.research.LocalResearchSearch
+import dev.onionall.brawler.research.ResearchBatchValidation
 import dev.onionall.brawler.research.ResearchWorkflow
 import dev.onionall.brawler.research.StoredResearchRoute
 import java.util.concurrent.Callable
@@ -37,6 +40,7 @@ import picocli.CommandLine.ParentCommand
         ResearchCommands.Search::class,
         ResearchCommands.Document::class,
         ResearchCommands.Route::class,
+        ResearchCommands.Batch::class,
         SessionCommands.Discover::class,
         SessionCommands.Import::class,
         SessionCommands.Candidates::class,
@@ -191,6 +195,7 @@ class ResearchCommands @JvmOverloads constructor(
                         "search",
                         "document",
                         "route",
+                        "batch",
                         "export",
                         "thread"),
                 "approval_required" to true,
@@ -814,6 +819,48 @@ class ResearchCommands @JvmOverloads constructor(
             val backend = parent.backend
             backend.print(StoredResearchRoute.find(job, from, to, maxHops, backend.pages(job), backend.links(job)))
             return 0
+        }
+    }
+
+    /**
+     * Validates local batch intents without submitting research or authorizing sources.
+     *
+     * @author Стефан Колесников
+     * @author GPT-6.2 Sol
+     */
+    @Command(
+        name = "batch",
+        mixinStandardHelpOptions = true,
+        description = ["Validate bounded research objectives from a local JSON file."],
+        subcommands = [Batch.Validate::class]
+    )
+    class Batch : Callable<Int> {
+        @ParentCommand
+        lateinit var parent: ResearchCommands
+
+        override fun call(): Int {
+            parent.backend.print(mapOf("commands" to listOf("validate")))
+            return 0
+        }
+
+        @Command(name = "validate", mixinStandardHelpOptions = true)
+        class Validate : Callable<Int> {
+            @ParentCommand
+            lateinit var batch: Batch
+
+            @Parameters(index = "0", paramLabel = "MANIFEST")
+            lateinit var path: Path
+
+            override fun call(): Int {
+                require(NioFiles.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    "Batch manifest must be a regular local file"
+                }
+                val result = NioFiles.newInputStream(path, LinkOption.NOFOLLOW_LINKS).use {
+                    ResearchBatchValidation.validate(it)
+                }
+                batch.parent.backend.print(result)
+                return if (result["valid"] == true) 0 else 2
+            }
         }
     }
 

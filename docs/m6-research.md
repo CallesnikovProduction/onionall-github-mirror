@@ -173,3 +173,23 @@ observations are labelled separately.
 `LIMITED` means a read cap or hop limit prevented a complete answer.
 Read-only replay performs zero network requests and reports
 `traversal_verified=false`, including when all endpoint pages were fetched by a crawler.
+
+## Batch manifest validation
+
+```sh
+./onionall cli --json research batch validate /state/research-intents.json
+```
+
+The command accepts a regular UTF-8 JSON file up to 256 KiB with
+`batchId`, `executionProfile: "bounded-research"` and 1–200 `objectives`.
+Each objective declares an `id`, `query`, `intent`, `requirements`,
+`sourcePolicy: "approved-sources"` and `downloadPolicy: "DISCOVER_ONLY"`.
+The current validation vocabulary supports `DOCUMENTATION_RESEARCH` and
+`FORUM_RESEARCH` with compatible `sourceTypes` and `extract` entries.
+Duplicate keys, duplicate objective IDs and unknown fields are rejected.
+Use `budget.globalPages` at batch level to bound the sum of explicit
+objective allocations. Objective budgets use the existing workflow ranges.
+
+Exit 0 returns `valid=true`. Invalid manifest data returns exit 2 with
+`error.code` and `error.path`. A valid manifest still reports
+`source_approval=NOT_GRANTED` and `execution=NOT_STARTED`.
