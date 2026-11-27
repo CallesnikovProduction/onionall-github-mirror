@@ -37,8 +37,10 @@ jobs:
         run: ./onionall --fixture up
       - name: Check controlled runtime
         run: ./onionall --fixture status
-      - name: Crawl depth two, read archive and recreate runtime
-        run: python3 -B test/admission/canonical_e2e.py
+      - name: Run durable research session, verify exports and recreate runtime
+        run: |
+          python3 -B -m unittest discover -s test/admission -p test_canonical_research.py
+          python3 -B test/admission/canonical_e2e.py
       - name: Retain bounded canonical acceptance result
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
