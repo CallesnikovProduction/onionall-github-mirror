@@ -53,6 +53,38 @@ class CliBuildTest(unittest.TestCase):
                              capture.read_text().splitlines())
             self.assertFalse((root / 'target').exists())
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows drive-qualified JAVA_HOME')
+    def test_windows_java_home_selects_jdk_before_path(self):
+        with tempfile.TemporaryDirectory(prefix='cli native Java home ') as tmp:
+            root = Path(tmp)
+            script = root / 'scripts/cli/build-cli.sh'
+            script.parent.mkdir(parents=True)
+            shutil.copy2(ROOT / 'scripts/cli/build-cli.sh', script)
+            jdk = root / 'selected jdk'
+            javac = jdk / 'bin/javac'
+            javac.parent.mkdir(parents=True)
+            javac.write_text('#!/bin/bash\nprintf "%s\\n" "selected" > "$TRACE"\necho "javac 25.0.5"\n',
+                             encoding='utf-8', newline='\n')
+            javac.chmod(0o755)
+            fallback = root / 'fallback/javac'
+            fallback.parent.mkdir()
+            fallback.write_text('#!/bin/bash\necho "javac 17"\n', encoding='utf-8', newline='\n')
+            fallback.chmod(0o755)
+            wrapper = root / 'mvnw'
+            wrapper.write_text('#!/bin/bash\nexit 42\n', encoding='utf-8', newline='\n')
+            wrapper.chmod(0o755)
+            trace = root / 'jdk-trace.txt'
+
+            for home in (str(jdk), jdk.as_posix()):
+                with self.subTest(home=home):
+                    result = subprocess.run([BASH, str(script)], env=dict(
+                        os.environ, JAVA_HOME=home, TRACE=str(trace),
+                        PATH=str(fallback.parent) + os.pathsep + os.environ['PATH'],
+                    ), capture_output=True, text=True, timeout=15)
+                    self.assertEqual(42, result.returncode, result.stderr)
+                    self.assertEqual('selected', trace.read_text(encoding='utf-8').strip())
+                    trace.unlink()
+
     def test_missing_wrapper_never_falls_back_to_path_maven(self):
         with tempfile.TemporaryDirectory(prefix='missing project wrapper ') as tmp:
             root = Path(tmp)

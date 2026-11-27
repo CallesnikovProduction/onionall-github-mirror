@@ -8,7 +8,14 @@ fi
 (( $# == 0 )) || { echo 'Unexpected arguments; use --help.' >&2; exit 2; }
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)
 cd -- "$root"
-if [[ -n ${JAVA_HOME:-} ]]; then export PATH="$JAVA_HOME/bin:$PATH"; fi
+platform=$(uname -s)
+if [[ -n ${JAVA_HOME:-} ]]; then
+    case $platform in
+        MINGW*|MSYS*|CYGWIN*) JAVA_HOME=$(cygpath --unix -- "$JAVA_HOME") ;;
+    esac
+    export JAVA_HOME
+    export PATH="$JAVA_HOME/bin:$PATH"
+fi
 command -v javac >/dev/null || { echo 'JDK 25 is required to build the CLI.' >&2; exit 69; }
 [[ $(javac -version 2>&1) =~ javac\ ([0-9]+) ]] && (( BASH_REMATCH[1] >= 25 )) || { echo 'JDK 25 or newer is required.' >&2; exit 69; }
 maven=("$root/mvnw" -B)
@@ -29,7 +36,7 @@ trap cleanup EXIT
 mkdir -p "$stage/lib" "$stage/bin" "$stage/classes/dev/onionall/brawler"
 native_name=libonionall_content.so
 classpath_separator=:
-case $(uname -s) in
+case $platform in
     Darwin) native_name=libonionall_content.dylib ;;
     MINGW*|MSYS*|CYGWIN*)
         native_name=onionall_content.dll
