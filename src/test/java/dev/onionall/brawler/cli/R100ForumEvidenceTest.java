@@ -143,6 +143,62 @@ public class R100ForumEvidenceTest {
         assertEquals(List.of(FIRST_TEXT, SECOND_TEXT, MULTILINGUAL_TEXT), text);
     }
 
+    @Test(timeout = 15_000)
+    public void f02MergesOverlappingPostsAcrossFiveCapturedPages() throws Exception {
+        String topic = URL.replace("/42", "/43");
+        var plan = cli("research", "thread", "plan", topic + "?page=1", "--max-pages", "5");
+        String threadSession = plan.required("session_id").asText();
+        String threadJob = plan.required("seeds").get(0).required("job_id").asText();
+        assertFalse(plan.required("approved").asBoolean());
+        assertTrue(cli("research", "approve", threadSession).required("approved").asBoolean());
+        Path work = temporary.newFolder().toPath();
+        var snapshots = new HashSet<String>();
+        // Import in reverse order to distinguish numeric ordering from capture order.
+        for (int number = 5; number >= 1; number--) {
+            String next = number < 5 ? "<a rel='next' href='?page=" + (number + 1) + "'>Next</a>" : "";
+            Path input = Files.writeString(work.resolve("page-" + number + ".html"), """
+                <!doctype html><title>Five-page thread</title>
+                <div class="post" id="p200"><div class="postbody">
+                  <div class="content">Repeated message across pagination.</div>
+                </div></div>
+                <div class="post" id="p20%d"><div class="postbody">
+                  <div class="content">Distinct message from page %d.</div>
+                </div></div>
+                %s
+                """.formatted(number, number, next));
+            var receipt = cli("archive", "import", input.toString(), "--plan", threadJob,
+                "--url", topic + "?page=" + number);
+            assertEquals("MANUAL_IMPORT", receipt.required("import_mode").asText());
+            assertTrue(snapshots.add(receipt.required("snapshot_id").asText()));
+        }
+
+        var result = cli("research", "thread", "show", threadSession);
+        var threads = result.required("threads");
+        assertEquals(1, threads.size());
+        var thread = threads.get(0);
+        assertEquals(5, thread.required("captured_pages").size());
+        assertEquals("VERIFIED_NUMERIC_PAGINATION", thread.required("ordering_status").asText());
+        assertEquals("OBSERVED_PAGINATION_CAPTURED", thread.required("completeness_status").asText());
+        assertFalse(thread.required("full_thread_coverage_verified").asBoolean());
+        var pagination = thread.required("observed_pagination");
+        assertEquals(4, pagination.size());
+        for (var edge : pagination) assertTrue(edge.required("captured").asBoolean());
+
+        var posts = thread.required("posts");
+        var ids = new ArrayList<String>();
+        for (var post : posts) ids.add(post.required("source_post_id").asText());
+        assertEquals(List.of("p200", "p201", "p202", "p203", "p204", "p205"), ids);
+        var repeatedSources = new HashSet<String>();
+        for (var source : posts.get(0).required("provenance")) {
+            assertEquals(threadJob, source.required("job_id").asText());
+            assertEquals("MANUAL_IMPORT", source.required("source_kind").asText());
+            assertTrue(source.required("fetched_at").isNull());
+            assertTrue(repeatedSources.add(source.required("snapshot_id").asText()));
+        }
+        assertEquals(snapshots, repeatedSources);
+        assertEquals(threads, cli("research", "thread", "show", threadSession).required("threads"));
+    }
+
     private JsonNode observedPosts() throws IOException {
         var result = cli("research", "thread", "show", session);
         assertEquals(session, result.required("session_id").asText());
