@@ -107,3 +107,17 @@ forums require separate owner approval of exact URLs/origins and budgets before
 any real crawl. Previous M6 seed approval does not cover new forums. Real smoke
 uses at most1–2 approved origins, total20 HTML per origin including independently
 allocated thread work, max5 per thread, per-host1, robots and no binaries.
+
+## Literal code in public posts
+
+Structured post evidence keeps a separate `code_blocks` array for visible
+`pre > code` elements. Quotes keep their own code blocks. Each record contains
+the ordinal in its post, decoded text and `text_truncated`. The code inherits
+the post's archived source URL, page and snapshot IDs. Extraction retains
+indentation and line breaks up to 32 blocks and 16,384 UTF-16 units per post
+across its message and quotes. A code budget cut marks extraction partial.
+Distinct formatting does not establish duplicate identity.
+
+JSON keeps the captured text. In Markdown the notebook emits code in an inert
+fence separately from normalized prose and quoted text. The readable export
+normalizes CRLF and makes control characters visible.

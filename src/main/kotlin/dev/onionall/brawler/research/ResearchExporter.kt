@@ -8,6 +8,7 @@ import java.io.IOException
 import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.io.Writer
+import dev.onionall.brawler.archive.ArchiveTextDocuments
 import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -440,6 +441,11 @@ object ResearchExporter {
                     quoted(writer, quote, markdown)
                 }
 
+                codeBlocks(writer, post["code_blocks"], "Message code", markdown)
+                for ((quoteIndex, quote) in records(post["quotes"]).withIndex()) {
+                    codeBlocks(writer, quote["code_blocks"], "Code in quote " + (quoteIndex + 1) + ", block", markdown)
+                }
+
                 val references = records(post["referenced_links"])
                 if (references.isNotEmpty()) table(writer, listOf("Referenced URL"), references.map {
                     listOf(it["url"] ?: it["target_url"])
@@ -615,6 +621,21 @@ object ResearchExporter {
             inline(it, markdown)
         })
         writer.write("\n")
+    }
+
+    /** Renders observed code separately from normalized prose without making it active Markdown. */
+    private fun codeBlocks(writer: Writer, value: Any?, label: String, markdown: Boolean) {
+        for ((index, block) in records(value).withIndex()) {
+            val text = block["text"] as? String ?: continue
+            val safe = plain(text.replace("\r\n", "\n"))
+            writer.write("\n$label " + (index + 1) + " (untrusted data):\n")
+            if (block["text_truncated"] == true) writer.write("Captured code was truncated.\n")
+            if (markdown) {
+                writer.write("\n")
+                writer.write(ArchiveTextDocuments.fencedText(safe))
+                writer.write("\n\n")
+            } else quoted(writer, safe, false)
+        }
     }
 
     /**

@@ -296,6 +296,7 @@ object ResearchThreads {
                     // позволяет объединить provenance наблюдений.
                     if (
                         previous != null &&
+                        !codeTruncated(previous) && !codeTruncated(post) &&
                         semantics(previous) == semantics(post)
                     ) {
 
@@ -649,6 +650,10 @@ object ResearchThreads {
         null
     }
 
+    /** Нельзя подтвердить совпадение кода по одному усечённому префиксу. */
+    private fun codeTruncated(post: Map<String, Any?>): Boolean =
+        (post["evidence"] as? Map<*, *>)?.get("code_blocks_truncated") == true
+
     /**
      * Формирует содержательную сигнатуру сообщения.
      *
@@ -658,7 +663,7 @@ object ResearchThreads {
      * Учитывает:
      * - автора и дату публикации;
      * - основной и цитируемый текст;
-     * - структуру цитат;
+     * - структуру цитат и наблюдаемый буквальный код;
      * - наблюдаемые ссылки и их атрибуты;
      * - вложения и их описательные metadata.
      *
@@ -687,6 +692,7 @@ object ResearchThreads {
             post["text"],
             post["quoted_text"],
             post["quotes"],
+            post["code_blocks"],
 
             records(post["referenced_links"]).map {
                 listOf(
