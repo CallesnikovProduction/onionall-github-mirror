@@ -12,7 +12,11 @@ fi
 native_name=libonionall_content.so
 case $(uname -s) in
     Darwin) native_name=libonionall_content.dylib ;;
-    MINGW*|MSYS*|CYGWIN*) native_name=onionall_content.dll ;;
+    MINGW*|MSYS*|CYGWIN*)
+        native_name=onionall_content.dll
+        # Native Java requires drive-qualified classpath and FFM library paths.
+        app=$(cygpath -am -- "$app")
+        ;;
 esac
 exec "$java_bin" --enable-native-access=ALL-UNNAMED "-Donionall.content.library=$app/lib/$native_name" \
     -Dslf4j.internal.verbosity=ERROR -cp "$app/lib/*" dev.onionall.brawler.cli.Onionall "$@"
