@@ -1,0 +1,74 @@
+{
+  "workload": "LOCAL_ARCHIVE_SEARCH",
+  "maxPages": 4,
+  "resultLimit": 10,
+  "cases": [
+    {
+      "scenarioId": "A02",
+      "query": "Java 25 virtual threads documentation",
+      "researchIntent": "VERSIONED_DOCUMENTATION",
+      "expectedTrajectory": [
+        "retrieve documentation",
+        "select requested edition",
+        "verify source"
+      ],
+      "relevantDocumentIds": [
+        "edition25"
+      ]
+    },
+    {
+      "scenarioId": "J07",
+      "query": "Uncharted boreal queue allocator",
+      "researchIntent": "DOCUMENTATION",
+      "expectedTrajectory": [
+        "search the available corpus",
+        "report no confirmed matches"
+      ],
+      "relevantDocumentIds": []
+    }
+  ],
+  "variants": [
+    {
+      "id": "development",
+      "layout": "article",
+      "documents": [
+        {
+          "id": "edition25",
+          "title": "Java 25 virtual threads documentation",
+          "text": "Fictional documentation fixture, edition 25."
+        },
+        {
+          "id": "older-book",
+          "title": "Guide for edition 21",
+          "text": "This guide does not cover Java 25 virtual threads documentation."
+        },
+        {
+          "id": "project-note",
+          "title": "About the queue project",
+          "text": "A synthetic page about a boreal data series."
+        }
+      ]
+    },
+    {
+      "id": "evaluation",
+      "layout": "section",
+      "documents": [
+        {
+          "id": "older-index",
+          "title": "Edition 21 index",
+          "text": "For Java 25 virtual threads documentation, consult the separate current manual."
+        },
+        {
+          "id": "project-note",
+          "title": "Boreal allocator index",
+          "text": "This fictional project note covers an unrelated allocation method."
+        },
+        {
+          "id": "edition25",
+          "title": "Reference: Java 25 virtual threads documentation",
+          "text": "Reference entry for the fictional edition 25 corpus."
+        }
+      ]
+    }
+  ]
+}
