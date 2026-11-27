@@ -8,10 +8,13 @@ import sys
 import tempfile
 import unittest
 
+from shell_fixture import BASH
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
 class RunnerShellTest(unittest.TestCase):
+    @unittest.skipUnless(BASH, 'Bash required for actual runner contract')
     def test_failed_run_survives_failed_cleanup_and_m1_env_precedes_compose(self):
         for name in ('run-controlled-crawl.sh', 'run-startup-check.sh'):
             with self.subTest(name=name), tempfile.TemporaryDirectory(prefix='scripts with spaces ') as tmp:
@@ -48,7 +51,7 @@ if 'down' in a: sys.exit(43)
                            PYTHON=str(python), M1_PROJECT_NAME='onionall-brawler-m1-012345abcdef',
                            M1_CACHED_IMAGES='1', CALLS=str(calls))
                 env.pop('JAVA_HOME', None)
-                result = subprocess.run(['bash', str(script)], cwd='/', env=env,
+                result = subprocess.run([BASH, str(script)], cwd='/', env=env,
                                         capture_output=True, text=True, timeout=15)
                 self.assertEqual(42, result.returncode, result.stderr)
                 rows = [json.loads(line) for line in calls.read_text().splitlines()]
@@ -58,9 +61,10 @@ if 'down' in a: sys.exit(43)
                     for row in rows:
                         if row['args'][0] == 'compose':
                             self.assertEqual('.runtime/m1/onionall-brawler-m1-012345abcdef', row['relative'])
-                            self.assertEqual(str(root / row['relative']), row['directory'])
+                            self.assertEqual(root / row['relative'], Path(row['directory']))
                     self.assertIn('Cleanup could not be verified', result.stderr)
 
+    @unittest.skipUnless(BASH, 'Bash required for actual runner contract')
     def test_help_does_not_start_tools(self):
         names = ['runners/run-controlled-crawl.sh', 'runners/run-startup-check.sh',
                  'runners/run-tor-acceptance.sh', 'security/check-tor-connectivity.sh',
@@ -68,7 +72,7 @@ if 'down' in a: sys.exit(43)
                  'cli/uninstall-cli.sh', 'patches/build-storm-lifecycle.sh']
         for name in names:
             with self.subTest(name=name):
-                result = subprocess.run(['bash', str(ROOT / 'scripts' / name), '--help'], cwd='/',
+                result = subprocess.run([BASH, str(ROOT / 'scripts' / name), '--help'], cwd='/',
                                         capture_output=True, text=True, timeout=10)
                 self.assertEqual(0, result.returncode, result.stderr)
                 self.assertTrue(result.stdout.strip())

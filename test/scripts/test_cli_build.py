@@ -6,12 +6,9 @@ import subprocess
 import tempfile
 import unittest
 
+from shell_fixture import BASH, bash_directory
+
 ROOT = Path(__file__).resolve().parents[2]
-BASH = shutil.which('bash')
-if not BASH and os.name == 'nt':
-    candidate = Path(os.environ.get('ProgramFiles', 'C:/Program Files')) / 'Git/bin/bash.exe'
-    if candidate.is_file():
-        BASH = str(candidate)
 
 
 @unittest.skipUnless(BASH, 'Bash required for actual build-entrypoint contract')
@@ -24,7 +21,7 @@ class CliBuildTest(unittest.TestCase):
         tools = root / 'tools'
         tools.mkdir()
         poison = tools / 'mvn'
-        poison.write_text('#!/bin/bash\nexit 99\n', encoding='utf-8')
+        poison.write_text('#!/bin/bash\nexit 99\n', encoding='utf-8', newline='\n')
         poison.chmod(0o755)
         env = dict(os.environ, ONIONALL_OFFLINE=str(int(offline)), CAPTURE=str(capture),
                    PATH=str(tools) + os.pathsep + os.environ['PATH'])
@@ -39,13 +36,14 @@ class CliBuildTest(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='cli build with spaces ') as tmp:
             root = Path(tmp)
             wrapper = root / 'mvnw'
-            wrapper.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$CAPTURE"\nexit 42\n', encoding='utf-8')
+            wrapper.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$CAPTURE"\nexit 42\n', encoding='utf-8', newline='\n')
             wrapper.chmod(0o755)
             result, capture = self.run_build(root, True)
             self.assertEqual(42, result.returncode, result.stderr)
-            self.assertEqual(['-B', '-o', '-f', str(root / 'crawler/pom.xml'),
+            shell_root = bash_directory(root)
+            self.assertEqual(['-B', '-o', '-f', shell_root + '/crawler/pom.xml',
                               'verify', 'dependency:build-classpath',
-                              '-Dmdep.outputFile=' + str(root / 'target/cli-classpath.txt')],
+                              '-Dmdep.outputFile=' + shell_root + '/target/cli-classpath.txt'],
                              capture.read_text().splitlines())
             self.assertFalse((root / 'target').exists())
 
