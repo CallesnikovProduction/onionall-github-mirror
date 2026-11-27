@@ -1,5 +1,8 @@
 package dev.onionall.brawler.research
 
+import dev.onionall.brawler.archive.NativeContent
+import dev.onionall.brawler.archive.NativeContentException
+
 import java.io.ByteArrayInputStream
 import java.net.URI
 import dev.onionall.brawler.tor.UriReferences
@@ -82,6 +85,7 @@ object ForumExtractor {
         "script", "style", "noscript", "template",
         "iframe", "object", "embed", "svg", "canvas"
     )
+    private val chrome = setOf("nav", "header", "footer", "aside", "form", "button")
 
     // Расширения потенциальных документных вложений.
     // Наличие расширения не подтверждает реальный MIME-тип.
@@ -124,31 +128,49 @@ object ForumExtractor {
     @JvmStatic fun extract(
         url: String,
         html: ByteArray
-    ): Map<String, Any?> {
+    ): Map<String, Any?> = capture(url, html).result
+
+    /** DOM roots are scoped to one verified capture and are never persisted. */
+    internal data class Capture(
+        val result: Map<String, Any?>,
+        val document: Document? = null,
+        val roots: Map<Int, Pair<Element, Element>> = emptyMap(),
+        val idCounts: Map<String, Int> = emptyMap()
+    )
+
+    internal fun capture(
+        url: String,
+        html: ByteArray,
+        includeRoots: Boolean = false,
+        document: Document? = null
+    ): Capture {
 
         // Проверяем синтаксис source URL до разбора HTML.
         val source = safeSource(url)
-            ?: return failed("INVALID_SOURCE_URL")
+            ?: return Capture(failed("INVALID_SOURCE_URL"))
 
         // Ограничиваем размер входа для bounded extraction.
         if (html.isEmpty() || html.size > MAX_HTML_BYTES) {
-            return failed("HTML_SIZE_LIMIT", source)
+            return Capture(failed("HTML_SIZE_LIMIT", source))
         }
 
         return try {
             parse(
                 source,
-                Jsoup.parse(
+                document ?: Jsoup.parse(
                     ByteArrayInputStream(html),
                     null,
                     source
-                )
+                ),
+                includeRoots
             )
+        } catch (failure: NativeContentException) {
+            throw failure
         } catch (_: Exception) {
 
             // Не возвращаем частично сформированный результат
             // после необработанной ошибки извлечения.
-            failed("HTML_EXTRACTION_FAILED", source)
+            Capture(failed("HTML_EXTRACTION_FAILED", source))
         }
     }
 
@@ -169,12 +191,13 @@ object ForumExtractor {
      */
     private fun parse(
         source: String,
-        document: Document
-    ): Map<String, Any?> {
+        document: Document,
+        includeRoots: Boolean
+    ): Capture {
 
         // Общий читаемый текст извлекается независимо
         // от успешности распознавания отдельных сообщений.
-        val page = pageText(document)
+        val raw = arrayListOf(pageText(document))
         val title = document.title().take(2048)
 
         // Рассматриваем только два явно поддерживаемых
@@ -182,13 +205,14 @@ object ForumExtractor {
         val rawCandidates = document.select(
             "div.post[id],article[itemscope][itemtype=\"$SCHEMA\"]"
         )
+        val candidateSet = rawCandidates.toHashSet()
 
         // Исключаем вложенные post-контейнеры и контейнеры
         // внутри цитат, чтобы не считать их отдельными постами.
         val candidates = rawCandidates.filter { candidate ->
             candidate.parents().none { ancestor ->
                 ancestor.tagName() == "blockquote" ||
-                        rawCandidates.contains(ancestor)
+                        ancestor in candidateSet
             }
         }
 
@@ -201,8 +225,10 @@ object ForumExtractor {
             .eachCount()
 
         val posts = mutableListOf<Map<String, Any?>>()
+        val roots = if (includeRoots) HashMap<Int, Pair<Element, Element>>() else null
         val limitations = linkedSetOf<String>()
         var unsupported = 0
+        val pending = ArrayList<PendingPost>()
 
         // Лимит применяется к кандидатам до проверки layout.
         // Неподдерживаемый контейнер тоже занимает позицию.
@@ -211,24 +237,32 @@ object ForumExtractor {
         ) {
             val layout = layout(container)
 
-            if (layout == null) {
+            if (layout == null || hidden(container) || hidden(layout.body)) {
                 unsupported++
                 continue
             }
 
-            val post = post(
-                source,
-                document,
-                container,
-                layout,
-                index + 1,
-                idCounts
-            )
+            val bodyIndex = raw.size
+            raw += readable(layout.body, MAX_POST_TEXT, skipQuotes = true)
+            val quoteNodes = layout.body.select("blockquote")
+            val selectedQuotes = quoteNodes.take(MAX_QUOTES)
+            for (quote in selectedQuotes) raw += readable(quote, MAX_POST_TEXT, skipQuotes = true)
+            val authors = layout.authorNodes.filterNot(::hidden)
+            if (authors.size == 1) raw += readable(authors.single(), 256)
+            pending += PendingPost(container, layout, index + 1, bodyIndex,
+                selectedQuotes, quoteNodes.size > MAX_QUOTES, authors.size)
+        }
+        val normalized = NativeContent.normalizeText(raw.map { it.text })
+        val text = raw.mapIndexed { i, draft -> draft.copy(text = normalized[i]) }
+        val page = text.first()
+        for (candidate in pending) {
+            val post = post(source, document, candidate, text, idCounts)
 
             if (post == null) {
                 unsupported++
             } else {
                 posts += post
+                roots?.put(candidate.ordinal, candidate.container to candidate.layout.body)
             }
         }
 
@@ -303,7 +337,7 @@ object ForumExtractor {
             limitations += "POST_BOUNDARIES_NOT_ESTABLISHED"
         }
 
-        return linkedMapOf(
+        val result = linkedMapOf(
             "source_url" to source,
             "title" to title,
             "page_text" to page.text,
@@ -334,6 +368,7 @@ object ForumExtractor {
                 "engine_compatibility" to "CONTROLLED_DOM_CONTRACTS_ONLY"
             )
         )
+        return Capture(result, document, roots.orEmpty(), if (includeRoots) idCounts else emptyMap())
     }
 
     /**
@@ -358,6 +393,16 @@ object ForumExtractor {
         val authorSelector: String,
         val timeNodes: List<Element>,
         val timeSelector: String
+    )
+
+    private data class PendingPost(
+        val container: Element,
+        val layout: Layout,
+        val ordinal: Int,
+        val bodyIndex: Int,
+        val quoteNodes: List<Element>,
+        val quotesTruncated: Boolean,
+        val authorCount: Int
     )
 
     /**
@@ -497,9 +542,8 @@ object ForumExtractor {
      *
      * @param source URL страницы, содержащей сообщение.
      * @param document исходный DOM страницы.
-     * @param container DOM-контейнер сообщения.
-     * @param layout распознанный DOM-контракт.
-     * @param ordinal позиция контейнера на странице.
+     * @param candidate DOM-границы и позиции текстовых сегментов.
+     * @param normalized нормализованные сегменты всего документа.
      * @param idCounts количество вхождений DOM ID.
      *
      * @return структурированное сообщение или null,
@@ -508,37 +552,14 @@ object ForumExtractor {
     private fun post(
         source: String,
         document: Document,
-        container: Element,
-        layout: Layout,
-        ordinal: Int,
+        candidate: PendingPost,
+        normalized: List<Text>,
         idCounts: Map<String, Int>
     ): Map<String, Any?>? {
-
-        // Не извлекаем содержимое скрытых контейнеров.
-        if (hidden(container) || hidden(layout.body)) {
-            return null
-        }
-
-        // Клонируем body, чтобы удалить цитаты из основного
-        // текста без изменения исходного DOM.
-        val ownBody = layout.body.clone()
-        ownBody.select("blockquote").remove()
-
-        val text = readable(ownBody, MAX_POST_TEXT)
-
-        // Цитаты обрабатываем отдельно от основного текста.
-        val quoteNodes = layout.body.select("blockquote")
-
-        val quotes = quoteNodes.take(MAX_QUOTES).map { quote ->
-            val copy = quote.clone()
-
-            // Удаляем вложенные цитаты из текущей копии,
-            // чтобы не дублировать их текст.
-            copy.select("blockquote")
-                .filter { it !== copy }
-                .forEach { it.remove() }
-
-            val value = readable(copy, MAX_POST_TEXT)
+        val (container, layout, ordinal, bodyIndex, quoteNodes, quotesTruncated, authorCount) = candidate
+        val text = normalized[bodyIndex]
+        val quotes = quoteNodes.mapIndexed { index, quote ->
+            val value = normalized[bodyIndex + 1 + index]
 
             mapOf(
                 // Количество blockquote-предков до body.
@@ -597,13 +618,11 @@ object ForumExtractor {
         }
 
         // Скрытые поля не участвуют в определении автора/даты.
-        val authorNodes = layout.authorNodes.filterNot(::hidden)
         val timeNodes = layout.timeNodes.filterNot(::hidden)
 
         // Если авторов несколько, singleOrNull вернёт null.
         // Не выбираем первого произвольно.
-        val author = authorNodes.singleOrNull()
-            ?.let { readable(it, 256) }
+        val author = if (authorCount == 1) normalized[bodyIndex + 1 + quoteNodes.size] else null
 
         val rawAuthor = author?.text
             ?.takeIf { it.isNotEmpty() }
@@ -619,9 +638,9 @@ object ForumExtractor {
         val partial =
             text.truncated ||
                     quotes.any { it["text_truncated"] == true } ||
-                    quoteNodes.size > MAX_QUOTES ||
+                    quotesTruncated ||
                     links.truncated ||
-                    authorNodes.size > 1 ||
+                    authorCount > 1 ||
                     timeNodes.size > 1 ||
                     author?.truncated == true ||
                     (rawTime?.length ?: 0) > 128
@@ -665,7 +684,7 @@ object ForumExtractor {
 
                 "author_selector" to
                         layout.authorSelector.takeIf {
-                            authorNodes.size == 1
+                            authorCount == 1
                         },
 
                 "time_selector" to
@@ -680,7 +699,7 @@ object ForumExtractor {
                             null
                         },
 
-                "ambiguous_author" to (authorNodes.size > 1),
+                "ambiguous_author" to (authorCount > 1),
                 "ambiguous_datetime" to (timeNodes.size > 1),
 
                 "quote_selector" to "blockquote",
@@ -695,7 +714,7 @@ object ForumExtractor {
 
                 "duplicate_dom_id" to duplicate,
                 "text_truncated" to text.truncated,
-                "quotes_truncated" to (quoteNodes.size > MAX_QUOTES),
+                "quotes_truncated" to quotesTruncated,
 
                 "links_truncated" to links.truncated,
                 "partial" to partial
@@ -941,7 +960,9 @@ object ForumExtractor {
      */
     private fun readable(
         root: Element,
-        limit: Int
+        limit: Int,
+        skipQuotes: Boolean = false,
+        skipChrome: Boolean = false
     ): Text {
 
         val result = StringBuilder()
@@ -963,7 +984,8 @@ object ForumExtractor {
 
             // Добавляем исходный текст TextNode.
             if (node is TextNode && !visit.leave) {
-                result.append(node.wholeText)
+                val text = node.wholeText
+                result.append(text, 0, minOf(text.length, limit - result.length + 1))
             }
 
             if (node !is Element) {
@@ -973,6 +995,8 @@ object ForumExtractor {
             // Исключаем скрипты, стили и скрытые элементы.
             if (
                 node.tagName() in removed ||
+                skipQuotes && node !== root && node.tagName() == "blockquote" ||
+                skipChrome && node.tagName() in chrome ||
                 node.hasAttr("hidden") ||
                 node.attr("aria-hidden") == "true"
             ) {
@@ -1040,23 +1064,14 @@ object ForumExtractor {
             end--
         }
 
-        // Убираем лишние пробелы на концах строк
-        // и сокращаем длинные серии пустых строк.
-        val text = result.substring(0, end)
-            .lineSequence()
-            .map { it.trimEnd() }
-            .joinToString("\n")
-            .replace(Regex("\n{3,}"), "\n\n")
-            .trim()
-
-        return Text(text, truncated)
+        return Text(result.substring(0, end), truncated)
     }
 
     /**
      * Извлекает общий читаемый текст страницы.
      *
-     * Работает с копией DOM, удаляя типичные навигационные
-     * элементы, формы, кнопки и служебные блоки.
+     * Пропускает навигацию, формы, кнопки и служебные блоки
+     * при обходе исходного DOM.
      *
      * Если существует ровно один main, использует его.
      * Иначе обрабатывает body.
@@ -1066,17 +1081,10 @@ object ForumExtractor {
      */
     private fun pageText(document: Document): Text {
 
-        // Не изменяем DOM, из которого извлекаются posts.
-        val copy = document.clone()
+        val main = document.select("main").filter { node -> node.parents().none { it.normalName() in chrome } }
+            .singleOrNull() ?: document.body()
 
-        copy.select(
-            "nav,header,footer,aside,form,button"
-        ).remove()
-
-        val main = copy.select("main").singleOrNull()
-            ?: copy.body()
-
-        return readable(main, MAX_PAGE_TEXT)
+        return readable(main, MAX_PAGE_TEXT, skipChrome = true)
     }
 
     /**

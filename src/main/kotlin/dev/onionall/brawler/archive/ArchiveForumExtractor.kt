@@ -2,11 +2,9 @@ package dev.onionall.brawler.archive
 
 import dev.onionall.brawler.research.ForumExtractor
 import dev.onionall.brawler.tor.UriReferences
-import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.URI
 import java.util.UUID
-import org.jsoup.Jsoup
 
 /**
  * Archive-owned чтение discussion structure из проверенного immutable snapshot.
@@ -18,8 +16,6 @@ import org.jsoup.Jsoup
  * @author GPT-6.1 Sol
  */
 object ArchiveForumExtractor {
-    private const val SCHEMA = "https://schema.org/DiscussionForumPosting"
-
     /**
      * Не fetch-ит документы; исходные bytes и snapshot identity предоставляет Archive.
      * Source post ID отделён от deterministic internal observation ID. Неизвестные
@@ -37,21 +33,19 @@ object ArchiveForumExtractor {
         if (try { UUID.fromString(snapshotId).toString() != snapshotId } catch (_: Exception) { true }) {
             throw IOException("Invalid archive snapshot identifier")
         }
-        val baseline = ForumExtractor.extract(url, html)
+        val capture = ForumExtractor.capture(url, html, includeRoots = true)
+        val baseline = capture.result
         if (baseline["extraction_status"] == "FAILED") return baseline + mapOf("schema_version" to 1,
             "snapshot_id" to snapshotId, "body_markdown" to null, "thread_id" to null, "forum" to null,
             "completeness_status" to "PARTIAL_OR_UNKNOWN", "full_thread_coverage_verified" to false)
-        val document = Jsoup.parse(ByteArrayInputStream(html), null, url)
+        val document = checkNotNull(capture.document)
         val linkBase = try {
             val declared = document.selectFirst("base[href]")?.attr("href")?.trim()
             if (declared == null) url else UriReferences.resolve(url, declared).toASCIIString()
         } catch (_: Exception) { url }
-        val raw = document.select("div.post[id],article[itemscope][itemtype=\"$SCHEMA\"]")
-        val candidates = raw.filter { candidate -> candidate.parents().none { it.tagName() == "blockquote" || raw.contains(it) } }
-        val counts = document.select("[id]").map { it.id() }.filter { it.isNotBlank() }.groupingBy { it }.eachCount()
         @Suppress("UNCHECKED_CAST")
         val originalPosts = (baseline["posts"] as? List<Map<String, Any?>>).orEmpty()
-        val uniqueIds = originalPosts.mapNotNull { it["source_post_id"] as? String }.filter { counts[it] == 1 }.toSet()
+        val uniqueIds = originalPosts.mapNotNull { it["source_post_id"] as? String }.filter { capture.idCounts[it] == 1 }.toSet()
         val limitations = (baseline["limitations"] as? List<*>)?.filterIsInstance<String>()?.toMutableSet() ?: linkedSetOf()
         fun explicit(selector: String, attribute: String): String? {
             val values = document.select(selector).map { it.attr(attribute).trim() }.filter { it.isNotEmpty() }.distinct()
@@ -70,27 +64,23 @@ object ArchiveForumExtractor {
                 else resolved.fragment?.takeIf { it in uniqueIds }
             } catch (_: Exception) { null }
         }
-        val posts = originalPosts.map { post ->
+        val roots = originalPosts.map { post -> capture.roots.getValue((post["ordinal"] as Number).toInt()) }
+        val markdown = NativeContent.renderAll(listOf(document.body()) + roots.map { it.second }, url)
+        val posts = originalPosts.mapIndexed { index, post ->
             val ordinal = (post["ordinal"] as Number).toInt()
-            val container = candidates.getOrNull(ordinal - 1)
-            val body = when (post["extraction_method"]) {
-                "CONTROLLED_POST_BODY_V1" -> container?.children()?.singleOrNull { it.tagName() == "div" && it.hasClass("postbody") }
-                    ?.children()?.singleOrNull { it.tagName() == "div" && it.hasClass("content") }
-                "SCHEMA_DISCUSSION_ARTICLE_V1" -> container?.children()?.singleOrNull { it.tagName() == "div" && "text" in it.attr("itemprop").split(Regex("\\s+")) }
-                else -> null
-            }
-            val rendered = body?.let { ArchiveHtmlMarkdown.render(it, url) }
-            if (rendered?.truncated == true) limitations += "ARCHIVE_MARKDOWN_TRUNCATED"
-            val rawReply = container?.attr("data-reply-to")?.takeIf { it.isNotBlank() }
+            val (container, body) = roots[index]
+            val rendered = markdown[index + 1]
+            if (rendered.truncated) limitations += "ARCHIVE_MARKDOWN_TRUNCATED"
+            val rawReply = container.attr("data-reply-to").takeIf { it.isNotBlank() }
             val reply = rawReply?.let { target(it, true) }
             if (rawReply != null && reply == null) limitations += "UNRESOLVED_EXPLICIT_REPLY_REFERENCE"
-            val quoted = body?.select("blockquote")?.flatMap { quote ->
+            val quoted = body.select("blockquote").flatMap { quote ->
                 val references = mutableListOf<String>()
                 if (quote.hasAttr("data-post-id")) target(quote.attr("data-post-id"), true)?.let { references += it }
                 if (quote.hasAttr("cite")) target(quote.attr("cite"), false)?.let { references += it }
                 references += quote.select("cite a[href]").mapNotNull { target(it.attr("href"), false) }
                 references
-            }?.distinct().orEmpty()
+            }.distinct()
             val id = post["source_post_id"] as? String
             val canonical = if (id != null && id in uniqueIds) url.substringBefore('#') + "#" +
                 URI(null, null, null, -1, null, null, id).rawFragment else null
@@ -100,11 +90,11 @@ object ArchiveForumExtractor {
                 "snapshot_id" to snapshotId, "thread_id" to threadId,
                 "canonical_url" to canonical, "parent_post_id" to reply, "reply_to" to reply,
                 "quoted_post_ids" to quoted, "body_text" to post["text"],
-                "body_markdown" to rendered?.markdown, "body_markdown_includes_quotes" to true,
+                "body_markdown" to rendered.markdown, "body_markdown_includes_quotes" to true,
                 "links" to post["referenced_links"],
-                "extraction_status" to if (rendered == null || rendered.truncated || rawReply != null && reply == null) "PARTIAL" else "STRUCTURED_POST")
+                "extraction_status" to if (rendered.truncated || rawReply != null && reply == null) "PARTIAL" else "STRUCTURED_POST")
         }
-        val page = ArchiveHtmlMarkdown.render(document.body(), url)
+        val page = markdown.first()
         if (page.truncated) limitations += "ARCHIVE_MARKDOWN_TRUNCATED"
         return baseline + linkedMapOf("schema_version" to 1, "snapshot_id" to snapshotId,
             "thread_id" to threadId, "forum" to forum, "posts" to posts,

@@ -1,5 +1,6 @@
 """User installation contracts for a prebuilt distribution; no Maven or network."""
 import os
+import sys
 from pathlib import Path
 import subprocess
 import tempfile
@@ -27,11 +28,14 @@ class InstallationTest(unittest.TestCase):
             self.assertEqual(0,result.returncode,result.stderr)
             self.assertIn('onionall 0.1.0',result.stdout)
             app=Path(env['XDG_DATA_HOME'])/'onionall/cli'
+            native = app/'lib'/('libonionall_content.dylib' if sys.platform == 'darwin' else 'libonionall_content.so')
+            self.assertTrue(native.is_file())
             note=app/'notes.txt';note.write_text('keep')
             downloads=app.parent/'downloads';downloads.mkdir();(downloads/'page.html').write_text('keep')
             self.assertNotEqual(0,self.invoke('install-cli.sh',env,'--no-build').returncode)
             self.assertEqual(0,self.invoke('uninstall-cli.sh',env).returncode)
             self.assertFalse(launcher.is_symlink())
+            self.assertFalse(native.exists())
             self.assertEqual('keep',note.read_text())
             self.assertEqual('keep',(downloads/'page.html').read_text())
 

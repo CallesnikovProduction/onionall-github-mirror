@@ -16,12 +16,23 @@ Use the [portable development workflow](../README.md#development-without-install
 
 The launcher builds the JDK 25 toolchain image, verifies root and crawler POMs,
 packages the CLI and prepares/builds the independent Frontier Maven project.
+The image also builds `libonionall_content.so` with the pinned Rust compiler.
+`target/onionall/lib/` carries the library with the CLI. The launcher supplies
+its absolute path and enables Java 25 native access. Archive HTML Markdown and
+Research session results/export require the library when processing archived HTML.
+The operation reports an error if the library or its ABI is unavailable.
 The same image ships the Rust operational CLI. It owns Compose lifecycle and
 forwards JVM commands with the existing deployment defaults.
 The exact pinned base is extracted automatically; no manual JAR download needed.
 Maven/Wrapper caches persist under `.runtime/`, outputs use the caller UID/GID.
 `--clean` affects generated Maven outputs, never runtime storage. Legacy native
-build scripts remain available when an explicitly selected JDK 25 is installed.
+build scripts remain available with an explicitly selected JDK 25 and Rust 1.93+
+with its platform linker. A direct Maven build places the native library under
+`target/content-native/release/` (`onionall_content.dll` on Windows).
+For direct JVM CLI invocations, pass
+`--enable-native-access=ALL-UNNAMED -Donionall.content.library=<absolute-library-path>`
+or supply the absolute path through `ONIONALL_CONTENT_LIBRARY`.
+The packaged launcher selects the managed library beside the CLI JAR.
 
 IDEA: import `crawler/pom.xml` and `frontier-server/pom.xml` as separate Maven
 projects, with Maven JDK 25. First prepare the server's exact pinned dependency:

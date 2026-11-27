@@ -357,11 +357,12 @@ object ForumPagination {
             html.toString(Charsets.UTF_8),
             source
         )
+        return observations(source, doc)
+    }
 
-        // HTML base не должен переопределять исходную
-        // точку разрешения pagination-ссылок.
-        doc.select("base").remove()
-
+    internal fun observations(source: String, doc: org.jsoup.nodes.Document): List<Map<String, Any?>> {
+        // Для pagination используется source, а не base из документа.
+        // DOM остаётся доступен другим потребителям снимка.
         // Лимит применяется к исходным DOM-элементам
         // до проверки их пригодности.
         return doc

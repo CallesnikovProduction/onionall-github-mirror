@@ -67,6 +67,12 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId> <!-- Unit-тесты -->
                 <version>3.6.0</version>
+                <configuration>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                    <systemPropertyVariables>
+                        <onionall.content.directory>${project.build.directory}/content-native/release</onionall.content.directory>
+                    </systemPropertyVariables>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -91,6 +97,20 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <executions>
+                    <execution>
+                        <id>build-native-content</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>exec</goal></goals>
+                        <configuration>
+                            <skip>${onionall.content.prebuilt}</skip>
+                            <executable>cargo</executable>
+                            <arguments>
+                                <argument>build</argument><argument>--release</argument><argument>--locked</argument><argument>--offline</argument>
+                                <argument>--manifest-path</argument><argument>${project.basedir}/src/native/content/Cargo.toml</argument>
+                                <argument>--target-dir</argument><argument>${project.build.directory}/content-native</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
                     <execution>
                         <goals>
                             <goal>exec</goal>
@@ -257,6 +277,11 @@
         </dependency>
     </dependencies>
     <profiles>
+        <profile>
+            <id>prebuilt-native-content</id>
+            <activation><property><name>env.ONIONALL_CONTENT_LIBRARY</name></property></activation>
+            <properties><onionall.content.prebuilt>true</onionall.content.prebuilt></properties>
+        </profile>
         <profile>
             <id>java25</id>
             <properties><java.version>25</java.version></properties>

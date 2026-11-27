@@ -492,7 +492,7 @@ object ResearchExporter {
         // Файловые кандидаты отображаются без предположений
         // о реальном MIME, размере или факте скачивания.
         section("File candidates")
-        if (files.isEmpty()) writer.write("No file candidates observed.")
+        if (files.isEmpty()) writer.write("No file candidates observed.\n")
         else table(writer, listOf("Name", "Type hint", "Verified MIME", "Source page", "Target URL", "Known bytes", "Status", "Downloaded"), files.map {
             listOf(it["original_filename"], it["extension"] ?: it["declared_content_type"],
                 it["content_type"].takeIf { _ -> it["content_metadata_verified"] == true },

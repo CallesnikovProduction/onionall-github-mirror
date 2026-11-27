@@ -16,6 +16,7 @@ import java.util.HexFormat
 import java.util.Locale
 import java.util.UUID
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
 
 /**
  * Извлекает кандидатов на документы из проверенных архивных HTML-снимков.
@@ -159,29 +160,43 @@ object ResearchFiles {
     @Throws(IOException::class)
     fun extract(sessionId: String, pages: List<Map<String, Any?>>,
                 loadPage: (String) -> Map<String, Any?>, archiveRoot: Path): List<Map<String, Any?>> {
-        identifier(sessionId)
         if (pages.size > 100) throw IOException("Research page inspection limit reached")
         val root = archiveRoot.toAbsolutePath().normalize()
         noSymlinks(root)
-        val candidates = LinkedHashMap<String, Map<String, Any?>>()
+        val collector = Collector(sessionId)
 
-        // Каждая запись сопоставляется с метаданными,
-        // повторно полученными из архивного хранилища.
         for (row in pages) {
+            if (collector.full) break
+            val page = loadPage(identifier(row["page_id"] as? String))
+            collector.add(row, page) { source -> Jsoup.parse(ByteArrayInputStream(body(page, root)), null, source) }
+        }
+        return collector.results()
+    }
+
+    /** Accumulates candidates in capture order without retaining documents. */
+    internal class Collector(private val sessionId: String) {
+        private val candidates = LinkedHashMap<String, Map<String, Any?>>()
+        var full = false
+            private set
+
+        init { identifier(sessionId) }
+
+        fun results(): List<Map<String, Any?>> = candidates.values.toList()
+
+        fun add(row: Map<String, Any?>, page: Map<String, Any?>, readDocument: (String) -> Document) {
+            if (full) return
             val pageId = identifier(row["page_id"] as? String)
-            val page = loadPage(pageId)
             val job = identifier(page["job_id"] as? String)
 
             // Не продолжаем извлечение, если ключевые
             // метаданные архивной страницы изменились.
             if (page["page_id"] != pageId || page["job_id"] != row["job_id"] ||
-                page["content_hash"] != row["content_hash"]) {
+                page["snapshot_id"] != row["snapshot_id"] || page["content_hash"] != row["content_hash"]) {
                 throw IOException("Archive snapshot changed; inspect after the worker stops")
             }
 
             val source = canonical(page["canonical_url"] as? String ?: throw IOException("Missing source URL"))
             val sourceUri = URI(source)
-            val html = body(page, root)
             val captured = page["fetched_at"] ?: page["recorded_at"]
             val clock = timestamp(captured)
             val kind = page["source_kind"] as? String
@@ -189,7 +204,7 @@ object ResearchFiles {
 
             // Парсим локальный архивный HTML, используя URL
             // страницы как базовый адрес документа.
-            val document = Jsoup.parse(ByteArrayInputStream(html), null, source)
+            val document = readDocument(source)
 
             // HTML base[href] влияет на разрешение относительных
             // ссылок. Некорректное значение заменяется source URI.
@@ -258,7 +273,10 @@ object ResearchFiles {
                 }
 
                 // Лимит применяется к числу уникальных кандидатов.
-                if (candidates.size == MAX_CANDIDATES) return candidates.values.toList()
+                if (candidates.size == MAX_CANDIDATES) {
+                    full = true
+                    return
+                }
 
                 // Метаданные фактического файла не подтверждены:
                 // загрузка документа в этом компоненте отсутствует.
@@ -278,7 +296,6 @@ object ResearchFiles {
                     "downloaded" to false, "provenance" to listOf(evidence))
             }
         }
-        return candidates.values.toList()
     }
 
     /**

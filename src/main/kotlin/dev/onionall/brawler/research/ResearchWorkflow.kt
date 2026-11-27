@@ -2,6 +2,7 @@ package dev.onionall.brawler.research
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import dev.onionall.brawler.tor.TorPolicy
+import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.URI
 import java.nio.channels.FileChannel
@@ -12,6 +13,7 @@ import java.nio.file.StandardOpenOption.*
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.*
+import org.jsoup.Jsoup
 
 /**
  * Прикладной координатор исследовательских сессий.
@@ -982,6 +984,19 @@ class ResearchWorkflow @JvmOverloads constructor(
         id: String,
         runtime: Path?,
         token: Path?
+    ): Map<String, Any?> = results(id, runtime, token, null)
+
+    /** Computes export and readable projections from the same verified versions. */
+    internal fun exportResults(id: String): Pair<Map<String, Any?>, List<Map<String, Any?>>> {
+        val readable = ArrayList<Map<String, Any?>>()
+        return results(id, null, null, readable) to readable
+    }
+
+    private fun results(
+        id: String,
+        runtime: Path?,
+        token: Path?,
+        readable: MutableList<Map<String, Any?>>?
     ): Map<String, Any?> {
 
         var doc = session(id)
@@ -1036,23 +1051,38 @@ class ResearchWorkflow @JvmOverloads constructor(
             )
         }
 
-        // Извлечение дискуссий выполняется из архивных данных.
-        val threads = ResearchThreads.extract(
-            doc,
-            details.values.toList(),
-            backend.archiveRoot()
-        )
+        if (pages.size > 100) throw IOException("Research page inspection limit reached")
+        val root = backend.archiveRoot()
+        val captured = ArrayList<Pair<Map<String, Any?>, Map<String, Any?>>>()
+        val candidates = ResearchFiles.Collector(id)
+        for (row in pages) {
+            val page = details.getValue(row["page_id"] as String)
+            val source = page["canonical_url"] as String
+            val thread = ResearchThreads.includes(doc, source)
+            if (!thread && candidates.full && readable == null) continue
 
-        // Связываем файловые кандидаты с источниками-постами.
-        val files = ResearchThreads.attachPostSources(
-            ResearchFiles.extract(
-                id,
-                pages,
-                { details.getValue(it) },
-                backend.archiveRoot()
-            ),
-            threads
-        )
+            // A DOM lives only for this iteration. Identity was checked against the
+            // job/page/snapshot/hash captured above, before reading the immutable blob.
+            val html = ResearchFiles.verifiedHtml(page, root)
+            val document = Jsoup.parse(ByteArrayInputStream(html), null, source)
+            if (thread || readable != null) {
+                val parsed = ForumExtractor.capture(source, html, document = document).result
+                if (thread) {
+                    // Historical pagination uses forced UTF-8. Preserve its evidence
+                    // when Jsoup detected a different encoding for content extraction.
+                    val pagination = if (document.charset() == Charsets.UTF_8) {
+                        ForumPagination.observations(source, document)
+                    } else {
+                        ForumPagination.observations(source, html)
+                    }
+                    captured += page to (parsed + mapOf("pagination" to pagination))
+                }
+                readable?.add(readableDetails(page, parsed))
+            }
+            candidates.add(row, page) { document }
+        }
+        val threads = ResearchThreads.aggregate(doc, captured)
+        val files = ResearchThreads.attachPostSources(candidates.results(), threads)
 
         // Обновляем derived cache при изменении результатов.
         if (
@@ -1363,17 +1393,16 @@ class ResearchWorkflow @JvmOverloads constructor(
                 )
             )
 
-            page + mapOf(
-                "readable_text" to parsed["page_text"],
-                "readable_extraction_status" to
-                        parsed["extraction_status"],
-                "readable_extraction_method" to
-                        parsed["extraction_method"],
-                "readable_text_truncated" to
-                        (parsed["evidence"] as? Map<*, *>)
-                            ?.get("page_text_truncated")
-            )
+            readableDetails(page, parsed)
         }
+
+    private fun readableDetails(page: Map<String, Any?>, parsed: Map<String, Any?>): Map<String, Any?> =
+        page + mapOf(
+            "readable_text" to parsed["page_text"],
+            "readable_extraction_status" to parsed["extraction_status"],
+            "readable_extraction_method" to parsed["extraction_method"],
+            "readable_text_truncated" to (parsed["evidence"] as? Map<*, *>)?.get("page_text_truncated")
+        )
 
     /**
      * Загружает полные данные страниц и проверяет

@@ -162,7 +162,7 @@ public final class SnapshotRepository {
                         links, manual)
         );
         try {
-            return readPage(written.pageId(), written.snapshotId());
+            return verifiedPage(written.pageId(), written.snapshotId());
         } catch (IOException e) {
             throw new IOException(
                     "Archive write COMMITTED; response readback failed; replay is safe",
@@ -427,7 +427,13 @@ public final class SnapshotRepository {
      * @throws IOException при ошибке операции или нарушении контракта
      */
     public Map<String, Object> page(String pageId) throws IOException {
-        return readPage(pageId, null);
+        return verifiedPage(pageId, null);
+    }
+
+    private Map<String, Object> verifiedPage(String pageId, String snapshotId) throws IOException {
+        var result = readPage(pageId, snapshotId);
+        blobs.verify((String) result.get("content_hash"), ((Number) result.get("content_size")).intValue());
+        return result;
     }
 
     /** Читает current latest либо exact committed version, сохраняя прежний page JSON. */
@@ -445,8 +451,6 @@ public final class SnapshotRepository {
                 }
                 Map<String, Object> result = snapshotRow(rs);
                 result.put("text", rs.getString("extracted_text"));
-                String digest = rs.getString("content_hash");
-                blobs.verify(digest, rs.getInt("content_size"));
                 List<Map<String, Object>> history = new ArrayList<>();
                 try (PreparedStatement versions = context.connection().prepareStatement(
                         "SELECT id,content_hash,recorded_at FROM snapshots WHERE page_id=? ORDER BY CAST(recorded_at AS TIMESTAMP(9) WITH TIME ZONE),id"
@@ -493,7 +497,7 @@ public final class SnapshotRepository {
      * @throws IOException при недоступном/повреждённом snapshot
      */
     public Map<String, Object> researchDocument(String pageId) throws IOException {
-        var value = new LinkedHashMap<>(page(pageId));
+        var value = readPage(pageId, null);
         byte[] raw = blobs.read((String) value.get("content_hash"), ((Number) value.get("content_size")).intValue());
         var extracted = ArchiveForumExtractor.extract((String) value.get("canonical_url"), raw,
             (String) value.get("snapshot_id"));

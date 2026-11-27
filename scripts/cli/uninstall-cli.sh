@@ -20,7 +20,9 @@ for directory in bin lib; do
     [[ -d $app/$directory && ! -L $app/$directory ]] || { echo 'Unsafe installation subdirectory; refusing removal.' >&2; exit 1; }
 done
 while IFS= read -r relative; do
-    [[ $relative == bin/onionall || $relative =~ ^lib/[A-Za-z0-9][A-Za-z0-9._+-]*\.jar$ ]] || { echo 'Invalid install manifest.' >&2; exit 1; }
+    [[ $relative == bin/onionall || $relative == lib/libonionall_content.so ||
+       $relative == lib/libonionall_content.dylib || $relative == lib/onionall_content.dll ||
+       $relative =~ ^lib/[A-Za-z0-9][A-Za-z0-9._+-]*\.jar$ ]] || { echo 'Invalid install manifest.' >&2; exit 1; }
 done < "$app/.files"
 while IFS= read -r relative; do rm -f -- "$app/$relative"; done < "$app/.files"
 rm -f -- "$app/.files" "$app/.onionall-cli"

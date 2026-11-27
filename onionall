@@ -39,6 +39,7 @@ case ${1:-} in
         if [[ $mode == test ]]; then
             docker build --platform "$platform" -f docker/toolchain/Dockerfile --target tooling-test .
             docker build --platform "$platform" -f docker/toolchain/Dockerfile --target recovery-test .
+            docker build --platform "$platform" -f docker/toolchain/Dockerfile --target content-test .
         fi
         docker build --platform "$platform" -f docker/toolchain/Dockerfile -t "$image" .
         mkdir -p .runtime/toolchain-home .runtime/maven-linux-repository

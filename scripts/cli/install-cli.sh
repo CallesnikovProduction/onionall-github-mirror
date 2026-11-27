@@ -15,7 +15,9 @@ source_dir="$root/target/onionall"
 [[ -f $source_dir/.onionall-cli && ! -L $source_dir ]] || { echo 'Build the CLI distribution first.' >&2; exit 1; }
 [[ -z $(find "$source_dir" -type l -print -quit) ]] || { echo 'Refusing symlinks in distribution.' >&2; exit 1; }
 while IFS= read -r relative; do
-    [[ $relative == bin/onionall || $relative =~ ^lib/[A-Za-z0-9][A-Za-z0-9._+-]*\.jar$ ]] || { echo 'Invalid distribution manifest.' >&2; exit 1; }
+    [[ $relative == bin/onionall || $relative == lib/libonionall_content.so ||
+       $relative == lib/libonionall_content.dylib || $relative == lib/onionall_content.dll ||
+       $relative =~ ^lib/[A-Za-z0-9][A-Za-z0-9._+-]*\.jar$ ]] || { echo 'Invalid distribution manifest.' >&2; exit 1; }
 done < "$source_dir/.files"
 data_home=${XDG_DATA_HOME:-$HOME/.local/share}
 bin_home=${XDG_BIN_HOME:-$HOME/.local/bin}

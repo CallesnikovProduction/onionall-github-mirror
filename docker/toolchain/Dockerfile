@@ -29,6 +29,20 @@ RUN --network=none cargo fmt --check \
 FROM scratch AS tooling-artifact
 COPY --from=tooling-test /source/target/release/onionall-tooling /onionall-tooling
 
+FROM rust-toolchain AS content-build
+WORKDIR /source
+COPY src/native/content/ ./
+RUN --network=none cargo build --offline --locked --release
+
+FROM content-build AS content-test
+RUN rustup component add rustfmt clippy
+RUN --network=none cargo fmt --check \
+    && cargo clippy --offline --locked --all-targets -- -D warnings \
+    && cargo test --offline --locked
+
+FROM scratch AS content-artifact
+COPY --from=content-test /source/target/release/libonionall_content.so /libonionall_content.so
+
 # The upstream service is an input only; the runtime uses our Admission overlay.
 FROM --platform=linux/amd64 crawlercommons/url-frontier@sha256:8fd86c533163bfbcd98006bf8523efe731eea82a87dfe8db1df32a93d1973453 AS frontier
 FROM docker:28.5.2-cli@sha256:625d9431a9f54c5a2bc90f24f0e1c3d55b1349fd857dd85035f98c2c9acbdd4d AS docker-cli
@@ -39,6 +53,8 @@ COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker-cli /usr/local/libexec/docker/cli-plugins/ /usr/local/libexec/docker/cli-plugins/
 COPY --from=recovery-build /source/scripts/recovery/target/release/onionall-recovery /usr/local/bin/onionall-recovery
 COPY --from=tooling-build /source/target/release/onionall-tooling /usr/local/bin/onionall-tooling
+COPY --from=content-build /source/target/release/libonionall_content.so /usr/local/lib/libonionall_content.so
 COPY --from=frontier /home/urlfrontier/urlfrontier-service.jar /opt/frontier/urlfrontier-service.jar
 RUN echo 'ff1b774bf81343234e6f34878f8b7c9a826371b3e305e96bf0e204895e3562df  /opt/frontier/urlfrontier-service.jar' | sha256sum -c -
 ENV URLFRONTIER_BASE_JAR=/opt/frontier/urlfrontier-service.jar
+ENV ONIONALL_CONTENT_LIBRARY=/usr/local/lib/libonionall_content.so

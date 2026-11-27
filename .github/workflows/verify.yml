@@ -20,6 +20,7 @@ jobs:
       M1_HTTP_SMOKE: '1'
       URLFRONTIER_BASE_JAR: ${{ github.workspace }}/.runtime/ci/urlfrontier-service.jar
       ONIONALL_TOOLING: ${{ github.workspace }}/.runtime/ci/tooling/onionall-tooling
+      ONIONALL_CONTENT_LIBRARY: ${{ github.workspace }}/.runtime/ci/content/libonionall_content.so
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -31,9 +32,10 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
-      - name: Build and test the Rust tooling
+      - name: Build and test the Rust tooling and content library
         run: |
           docker build --platform linux/amd64 -f docker/toolchain/Dockerfile --target tooling-artifact --output type=local,dest=.runtime/ci/tooling .
+          docker build --platform linux/amd64 -f docker/toolchain/Dockerfile --target content-artifact --output type=local,dest=.runtime/ci/content .
           python3 -B test/scripts/check_runtime_cli.py "$ONIONALL_TOOLING"
       - name: Recover pinned Frontier base (no container execution)
         shell: bash
@@ -57,6 +59,7 @@ jobs:
           artifacts = {
               'app': Path('target/onionall-brawler-0.1.0-SNAPSHOT.jar'),
               'cli': Path('target/onionall/lib/onionall-cli.jar'),
+              'content': Path('target/onionall/lib/libonionall_content.so'),
               'frontier': Path('frontier-server/target/urlfrontier-admission.jar'),
           }
           manifest = {'build_version': 1, 'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),

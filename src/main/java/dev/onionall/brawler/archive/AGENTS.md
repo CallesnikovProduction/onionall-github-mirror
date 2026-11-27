@@ -27,7 +27,7 @@ catalog_guard/CAS revision и capacity guard; core schema version не меня�
 | [DocumentRepository](internal/DocumentRepository.java) | Additive v1 UTF-8 Markdown/plain text, immutable versions и .txt blobs |
 | [ResearchExportService](internal/ResearchExportService.java) | Guarded verified capture HTML/text и передача exporter вне JDBC lock |
 | ArchiveTextDocuments (Kotlin archive) | Strict UTF-8/media validation, lossless source и inert Markdown |
-| ArchiveForumExtractor / ArchiveHtmlMarkdown (Kotlin archive) | Controlled phpBB/semantic post structure, explicit replies, readable body |
+| ArchiveForumExtractor / NativeContent (Kotlin archive + Rust) | Controlled phpBB/semantic post structure, explicit replies, bounded inert Markdown |
 | ArchiveResearchBundle (Kotlin archive) | Paired JSON/Markdown bundle, atomic final manifest, no overwrite |
 | [ArchiveParseFilter](ArchiveParseFilter.java) | Проверка pipeline config/approval и commit HTML до parser emission |
 | [ArchiveStatusUpdaterBolt](ArchiveStatusUpdaterBolt.java) | Stock-Frontier fixture updater; общая recordOutcome перед store superclass |

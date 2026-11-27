@@ -105,13 +105,7 @@ final class BlobStore {
      * @throws IOException при отсутствующем или повреждённом объекте
      */
     byte[] read(String digest, int expectedSize) throws IOException {
-        Path file = destination(digest);
-        verifyFile(file, digest, expectedSize);
-        byte[] bytes = Files.readAllBytes(file);
-        if (bytes.length != expectedSize || !hash(bytes).equals(digest)) {
-            throw new IOException("Archive object changed during read");
-        }
-        return bytes;
+        return readVerified(destination(digest), digest, expectedSize);
     }
 
     /**
@@ -233,11 +227,22 @@ final class BlobStore {
             String digest,
             int expectedSize
     ) throws IOException {
+        readVerified(file, digest, expectedSize);
+    }
+
+    private static byte[] readVerified(Path file, String digest, int expectedSize) throws IOException {
         ArchiveSupport.noSymlinks(file);
         if (expectedSize < 1 || expectedSize > ArchiveStore.MAX_HTML_BYTES
             || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)
-            || Files.size(file) != expectedSize || !hash(Files.readAllBytes(file)).equals(digest)) {
+            || Files.size(file) != expectedSize) {
             throw new IOException("Content-addressed snapshot object missing/inconsistent");
+        }
+        try (var stream = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            byte[] bytes = stream.readNBytes(expectedSize + 1);
+            if (bytes.length != expectedSize || !hash(bytes).equals(digest)) {
+                throw new IOException("Content-addressed snapshot object missing/inconsistent");
+            }
+            return bytes;
         }
     }
 

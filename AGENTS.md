@@ -34,6 +34,13 @@ Kotlin [ResearchCommands](src/main/kotlin/dev/onionall/brawler/cli/ResearchComma
 adds bounded plan/run/result/graph/file-candidate and local-search commands. Its Backend is wired
 to existing Java CrawlService/ArchiveStore by ArchiveCommands; Kotlin does not
 depend on Java sources at compile time. Research ID is the existing plan ID.
+Verified archive content uses [NativeContent](src/main/kotlin/dev/onionall/brawler/archive/NativeContent.kt)
+and the [Rust content library](src/native/content) for Markdown and batched readable-text
+normalization. JVM retains Jsoup parsing, URL policy, provenance and persistence.
+Keep the library in the CLI distribution and verify both Archive and Research paths.
+The packaged launcher selects a managed absolute native path. FFM uses confined
+request/response buffers, an explicit versioned ABI and bounded batches that keep
+each document projection intact when a multi-document frame reaches its limit.
 Kotlin [RuntimeCommands](src/main/kotlin/dev/onionall/brawler/cli/RuntimeCommands.kt)
 edits only SOCKS host/port in the existing descriptor and probes SOCKS negotiation.
 Canonical up retains that endpoint. Doctor does not prove Tor identity/bootstrap

@@ -27,6 +27,13 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$stage/lib" "$stage/bin" "$stage/classes/dev/onionall/brawler"
+native_name=libonionall_content.so
+case $(uname -s) in
+    Darwin) native_name=libonionall_content.dylib ;;
+    MINGW*|MSYS*|CYGWIN*) native_name=onionall_content.dll ;;
+esac
+native_source=${ONIONALL_CONTENT_LIBRARY:-"$root/target/content-native/release/$native_name"}
+install -m 755 -- "$native_source" "$stage/lib/$native_name"
 for package in cli tor tools discovery archive admission crawl research; do
     [[ -d target/classes/dev/onionall/brawler/$package ]] || { echo "Missing compiled package: $package" >&2; exit 1; }
     cp -R -- "target/classes/dev/onionall/brawler/$package" "$stage/classes/dev/onionall/brawler/"

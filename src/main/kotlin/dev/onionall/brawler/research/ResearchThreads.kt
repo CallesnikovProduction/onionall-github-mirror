@@ -106,16 +106,24 @@ object ResearchThreads {
         session: Map<String, Any?>,
         details: List<Map<String, Any?>>,
         root: Path
-    ): List<Map<String, Any?>> {
+    ): List<Map<String, Any?>> = aggregate(session, details.mapNotNull { page ->
+        val source = page["canonical_url"] as String
+        if (!includes(session, source)) return@mapNotNull null
+        val html = ResearchFiles.verifiedHtml(page, root)
+        page to (ForumExtractor.extract(source, html) + mapOf("pagination" to ForumPagination.observations(source, html)))
+    })
 
-        // Явная thread identity применяется только
-        // для специально созданного THREAD-плана.
-        val explicit =
-            if (session["mode"] == "THREAD") {
-                session["thread_seed_url"] as? String
-            } else {
-                null
-            }
+    private fun explicitSeed(session: Map<String, Any?>): String? =
+        (session["thread_seed_url"] as? String)?.takeIf { session["mode"] == "THREAD" }
+
+    internal fun includes(session: Map<String, Any?>, source: String): Boolean =
+        explicitSeed(session)?.let { ForumPagination.identity(source) == ForumPagination.identity(it) } ?: true
+
+    internal fun aggregate(
+        session: Map<String, Any?>,
+        captures: List<Pair<Map<String, Any?>, Map<String, Any?>>>
+    ): List<Map<String, Any?>> {
+        val explicit = explicitSeed(session)
 
         // Сохраняем порядок первого появления дискуссий.
         //
@@ -128,52 +136,17 @@ object ResearchThreads {
                         >
                 >()
 
-        for (page in details) {
+        for ((page, parsed) in captures) {
 
             val source = page["canonical_url"] as String
-
-            // Для THREAD исключаем архивные страницы,
-            // которые не принадлежат выбранной дискуссии.
-            if (
-                explicit != null &&
-                ForumPagination.identity(source) !=
-                ForumPagination.identity(explicit)
-            ) {
-                continue
-            }
-
-            // Используем только HTML, прошедший
-            // проверку архивного содержимого.
-            val html = ResearchFiles.verifiedHtml(
-                page,
-                root
-            )
-
-            val parsed = ForumExtractor.extract(
-                source,
-                html
-            )
 
             val identity = ForumPagination.identity(
                 explicit ?: source
             )
 
-            // Пагинация извлекается из уже имеющегося HTML.
-            // Новые страницы здесь не запрашиваются.
-            val pagination = ForumPagination.observations(
-                source,
-                html
-            )
-
             groups.getOrPut(identity) {
                 mutableListOf()
-            }.add(
-                page to (
-                        parsed + mapOf(
-                            "pagination" to pagination
-                        )
-                        )
-            )
+            }.add(page to parsed)
         }
 
         // Глобальные бюджеты одного вызова extract().
@@ -581,49 +554,41 @@ object ResearchThreads {
     fun attachPostSources(
         files: List<Map<String, Any?>>,
         threads: List<Map<String, Any?>>
-    ): List<Map<String, Any?>> = files.map { file ->
+    ): List<Map<String, Any?>> {
+        class Match {
+            var seen = false
+            var sourceId: Any? = null
+            val observations = linkedSetOf<Any?>()
 
-        val matches = threads
-            .flatMap {
-                ResearchWorkflow.maps(
-                    it["posts"]
-                )
+            fun add(post: Map<String, Any?>) {
+                sourceId = if (seen) null else post["source_post_id"]
+                seen = true
+                observations += post["post_id"]
             }
-            .filter { post ->
+        }
 
-                // Сообщение должно происходить
-                // из той же архивной страницы.
-                ResearchWorkflow.maps(
-                    post["provenance"]
-                ).any {
-                    it["source_page_id"] ==
-                            file["source_page_id"]
-                } &&
-
-                        // Файл должен совпадать с одним
-                        // из наблюдаемых вложений сообщения.
-                        ResearchWorkflow.maps(
-                            post["attachments"]
-                        ).any {
-                            comparable(it["target_url"]) != null &&
-                                    comparable(it["target_url"]) ==
-                                    comparable(file["target_url"])
-                        }
+        val index = HashMap<Any?, MutableMap<String, Match>>()
+        val matches = files.map { file ->
+            comparable(file["target_url"])?.let { target ->
+                index.getOrPut(file["source_page_id"]) { HashMap() }.getOrPut(target) { Match() }
             }
-
-        file + mapOf(
-            // Только однозначное соответствие позволяет
-            // выбрать один наблюдаемый source_post_id.
-            "source_post_id" to
-                    matches.singleOrNull()?.get("source_post_id"),
-
-            // Internal observation IDs сохраняются
-            // даже при нескольких совпадениях.
-            "source_post_observation_ids" to
-                    matches.map {
-                        it["post_id"]
-                    }.distinct()
-        )
+        }
+        if (index.isNotEmpty()) for (thread in threads) {
+            for (post in ResearchWorkflow.maps(thread["posts"])) {
+                val pages = ResearchWorkflow.maps(post["provenance"]).map { it["source_page_id"] }
+                    .distinct().mapNotNull(index::get)
+                if (pages.isEmpty()) continue
+                val targets = ResearchWorkflow.maps(post["attachments"]).mapNotNull { comparable(it["target_url"]) }.toSet()
+                for (page in pages) for (target in targets) page[target]?.add(post)
+            }
+        }
+        return files.mapIndexed { i, file ->
+            val match = matches[i]
+            file + mapOf(
+                "source_post_id" to match?.sourceId,
+                "source_post_observation_ids" to match?.observations?.toList().orEmpty()
+            )
+        }
     }
 
     /**

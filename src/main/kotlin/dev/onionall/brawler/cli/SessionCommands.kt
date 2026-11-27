@@ -409,8 +409,8 @@ object SessionCommands {
          * @author GPT-6.1 Sol
          */
         override fun call(): Int {
-            val result = workflow().results(id, null, null)
-            return show(ResearchExporter.export(result, workflow().pageDetails(result), format, output))
+            val (result, details) = workflow().exportResults(id)
+            return show(ResearchExporter.export(result, details, format, output))
         }
     }
 }
