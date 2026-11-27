@@ -5,6 +5,8 @@ import dev.onionall.brawler.archive.NativeContentException
 
 import java.io.ByteArrayInputStream
 import java.net.URI
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 import dev.onionall.brawler.tor.UriReferences
 import java.util.Locale
 import org.jsoup.Jsoup
@@ -388,6 +390,7 @@ object ForumExtractor {
      * @property authorSelector описание расположения автора.
      * @property timeNodes кандидаты на дату публикации.
      * @property timeSelector описание расположения даты.
+     * @property modifiedNodes кандидаты на указанный в заголовке момент изменения сообщения.
      */
     private data class Layout(
         val method: String,
@@ -396,7 +399,8 @@ object ForumExtractor {
         val authorNodes: List<Element>,
         val authorSelector: String,
         val timeNodes: List<Element>,
-        val timeSelector: String
+        val timeSelector: String,
+        val modifiedNodes: List<Element> = emptyList()
     )
 
     private data class PendingPost(
@@ -528,7 +532,12 @@ object ForumExtractor {
                                 node.hasAttr("datetime")
                     }
                 },
-                ":scope > header > time[itemprop=datePublished][datetime]"
+                ":scope > header > time[itemprop=datePublished][datetime]",
+                headers.flatMap {
+                    it.children().filter { node ->
+                        node.tagName() == "time" && item(node, "dateModified") && node.hasAttr("datetime")
+                    }
+                }
             )
         }
 
@@ -640,6 +649,20 @@ object ForumExtractor {
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
 
+        // Schema.org dateModified describes the current captured version. Keep
+        // the declared offset and never infer an edit from body or quote text.
+        val modifiedNodes = layout.modifiedNodes.filterNot(::hidden)
+        val modified = modifiedNodes.singleOrNull()?.attr("datetime")?.trim()
+            ?.takeIf { it.length in 1..128 }
+            ?.takeIf {
+                try {
+                    OffsetDateTime.parse(it)
+                    true
+                } catch (_: DateTimeParseException) {
+                    false
+                }
+            }
+
         // Частичность отражает усечение или неоднозначность.
         val partial =
             text.truncated ||
@@ -649,6 +672,7 @@ object ForumExtractor {
                     links.truncated ||
                     authorCount > 1 ||
                     timeNodes.size > 1 ||
+                    (modifiedNodes.isNotEmpty() && modified == null) ||
                     author?.truncated == true ||
                     (rawTime?.length ?: 0) > 128
 
@@ -661,6 +685,7 @@ object ForumExtractor {
             "source_page_url" to source,
             "author" to rawAuthor?.take(256),
             "posted_at" to rawTime?.take(128),
+            "modified_at" to modified,
             "text" to text.text,
             "code_blocks" to code.byContainer[layout.body].orEmpty(),
 
@@ -707,6 +732,7 @@ object ForumExtractor {
                             null
                         },
 
+                "modified_at_basis" to "RAW_TIME_DATETIME_ATTRIBUTE".takeIf { modified != null },
                 "ambiguous_author" to (authorCount > 1),
                 "ambiguous_datetime" to (timeNodes.size > 1),
 

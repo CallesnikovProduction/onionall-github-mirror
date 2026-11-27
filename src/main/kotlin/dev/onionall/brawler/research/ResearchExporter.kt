@@ -422,6 +422,7 @@ object ResearchExporter {
                 section("MESSAGE ${postIndex + 1}", 4)
                 field("Author", post["author"])
                 field("Posted at", post["posted_at"])
+                post["modified_at"]?.let { field("Observed edit timestamp", it) }
                 field("Source post ID", post["source_post_id"])
                 field("Post ID", post["post_id"])
                 field("Source URL", post["source_page_url"])

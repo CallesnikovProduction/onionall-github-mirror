@@ -311,6 +311,24 @@ public class ResearchExporterTest {
     }
 
     @Test @SuppressWarnings("unchecked")
+    public void structuredEditsAreExportedAsObservedSourceMetadata() throws Exception {
+        var fixture = fixture("structured");
+        var research = (Map<String, Object>) fixture.get("result");
+        var details = (List<Map<String, Object>>) fixture.get("details");
+        var thread = ((List<Map<String, Object>>) research.get("threads")).getFirst();
+        var post = ((List<Map<String, Object>>) thread.get("posts")).getFirst();
+        String edited = "2026-11-14T13:05:00+03:00";
+        post.put("modified_at", edited);
+        Path root = temporary.newFolder().toPath();
+        var machine = ResearchExporter.export(research, details, "json", root.resolve("machine"));
+        var tree = json.readTree(Path.of((String) machine.get("output_file")).toFile());
+        assertEquals(edited, tree.at("/research/threads/0/posts/0/modified_at").asText());
+        var readable = ResearchExporter.export(research, details, "text", root.resolve("readable"));
+        String text = Files.readString(Path.of((String) readable.get("output_file")));
+        assertTrue(text.contains("Observed edit timestamp: " + edited));
+    }
+
+    @Test @SuppressWarnings("unchecked")
     public void codeBlocksKeepLayoutAndCannotCloseTheirMarkdownFence() throws Exception {
         var fixture = fixture("structured");
         var research = (Map<String, Object>) fixture.get("result");

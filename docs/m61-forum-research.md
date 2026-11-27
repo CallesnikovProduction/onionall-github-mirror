@@ -34,7 +34,10 @@ schema.org DiscussionForumPosting articles. These are controlled DOM contracts,
 not an assertion of universal engine compatibility. Author, raw datetime and DOM
 post ID stay null when missing/ambiguous. Main text, nested quotes, link targets
 and observed attachment hints remain distinct. Internal observation IDs are
-labelled separately from actual source_post_id.
+labelled separately from actual source_post_id. For semantic posts, a single
+visible header `dateModified` time with an explicit offset is exposed as
+`modified_at` with its DOM evidence. The value describes the captured version.
+Edit history remains unknown. [Schema.org dateModified](https://schema.org/dateModified)
 
 Unknown layouts return readable page text with zero invented posts. Static
 JavaScript shells can be labelled UNSUPPORTED_DYNAMIC_CONTENT by an explicit

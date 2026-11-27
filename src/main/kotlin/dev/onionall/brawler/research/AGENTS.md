@@ -45,7 +45,9 @@ ArchiveCommands/ArchiveStore supply only Java compilation-boundary forwarding.
   Ordinary research session navigation supports depth0..3. Do not launch thread plans
   using older binaries that lack the thread policy; rollback is read-only for them.
 - ForumExtractor supports two explicit controlled DOM contracts, not universal engines.
-  Missing or ambiguous source author/date/post IDs remain null. Keep quotations, links,
+  Missing or ambiguous source author/date/post IDs remain null. A semantic post's
+  modification timestamp comes only from a visible, unambiguous header time.
+  Keep quotations, links,
   observed attachment hints and per-page extraction limitations separate.
 - ResearchThreads reads verified immutable HTML, records actual page/job/snapshot provenance
   and caches derived observations with existing CAS. Nonunique or conflicting IDs must not
