@@ -14,6 +14,8 @@ import org.apache.stormcrawler.protocol.ProtocolResponse;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 /**
  * <b>Точка входа Picocli и интерактивного меню.</b>
  *
@@ -633,7 +635,10 @@ public final class Onionall implements Callable<Integer> {
      * @param args аргументы CLI
      */
     public static void main(String[] args) {
-        System.exit(execute(args, new PrintWriter(System.out, true), new PrintWriter(System.err, true),
-            System.console() != null, System.getenv(), Onionall::realFetch));
+        boolean terminal = System.console() != null;
+        // Programmatic callers receive UTF-8 even when the host console uses a legacy code page.
+        PrintWriter out = terminal ? new PrintWriter(System.out, true) : new PrintWriter(System.out, true, UTF_8);
+        PrintWriter err = terminal ? new PrintWriter(System.err, true) : new PrintWriter(System.err, true, UTF_8);
+        System.exit(execute(args, out, err, terminal, System.getenv(), Onionall::realFetch));
     }
 }
