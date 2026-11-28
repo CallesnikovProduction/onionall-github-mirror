@@ -3,10 +3,12 @@ package dev.onionall.brawler.archive.internal;
 import dev.onionall.brawler.archive.ArchiveStore;
 import dev.onionall.brawler.archive.ArchiveForumExtractor;
 import java.io.IOException;
-import java.nio.file.*;
 import java.sql.*;
 import java.time.Instant;
 import java.util.*;
+
+import dev.onionall.brawler.archive.internal.ArchiveContext;
+import dev.onionall.brawler.archive.internal.BlobStore;
 import org.jsoup.Jsoup;
 import static dev.onionall.brawler.archive.internal.ArchiveSupport.*;
 

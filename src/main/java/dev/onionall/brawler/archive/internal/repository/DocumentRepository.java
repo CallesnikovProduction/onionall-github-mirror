@@ -2,6 +2,9 @@ package dev.onionall.brawler.archive.internal;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import dev.onionall.brawler.archive.ArchiveTextDocuments;
+import dev.onionall.brawler.archive.internal.ArchiveContext;
+import dev.onionall.brawler.archive.internal.BlobStore;
+
 import java.io.IOException;
 import java.sql.*;
 import java.time.Instant;

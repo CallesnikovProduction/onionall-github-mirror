@@ -3,6 +3,7 @@ package dev.onionall.brawler.archive.internal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
+
 import org.junit.Test;
 import static org.junit.Assert.*;
 

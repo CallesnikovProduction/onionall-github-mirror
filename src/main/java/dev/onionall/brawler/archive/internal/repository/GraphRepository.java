@@ -1,5 +1,7 @@
 package dev.onionall.brawler.archive.internal;
 
+import dev.onionall.brawler.archive.internal.ArchiveContext;
+
 import java.io.IOException;
 import java.net.URI;
 import java.sql.*;

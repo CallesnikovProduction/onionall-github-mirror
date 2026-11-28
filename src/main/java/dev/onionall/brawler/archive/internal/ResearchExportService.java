@@ -1,6 +1,7 @@
 package dev.onionall.brawler.archive.internal;
 
 import dev.onionall.brawler.archive.ArchiveResearchBundle;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;

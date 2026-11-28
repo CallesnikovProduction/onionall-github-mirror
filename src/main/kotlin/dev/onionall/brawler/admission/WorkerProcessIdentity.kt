@@ -11,26 +11,29 @@ import java.util.HexFormat
  * Наблюдает локальную идентичность процессов для ownership и статуса worker.
  * Не читает журнал, не формирует статус и не посылает сигналы процессам.
  *
- * @author Стефан Колесников
+ * @author Stephan Kolesnikov
  * @author GPT-6.1 Sol
  */
 internal object WorkerProcessIdentity {
+
     /**
      * Хэш Windows host либо Linux boot/PID namespace; ошибка оставляет scope неизвестным.
      * Scope ограничивает применимость PID, но сам по себе не доказывает containment.
      */
-    @JvmStatic
-    fun scope(): String? {
+    @JvmStatic fun scope(): String? {
         return try {
             val identity = if (System.getProperty("os.name").startsWith("Windows")) {
                 val host = System.getenv("COMPUTERNAME")
                 // Match Java String.isBlank, including its Unicode whitespace semantics.
-                if (host == null || host.codePoints().allMatch { Character.isWhitespace(it) }) return null
+                if (host == null || host.codePoints().allMatch {
+                    Character.isWhitespace(it)
+                }) return null
                 "windows:$host"
             } else {
                 Files.readString(Path.of("/proc/sys/kernel/random/boot_id"))
-                    .trim { Character.isWhitespace(it) } + ":" +
-                    Files.readSymbolicLink(Path.of("/proc/self/ns/pid"))
+                    .trim { Character.isWhitespace(it) } +
+                        ":" +
+                        Files.readSymbolicLink(Path.of("/proc/self/ns/pid"))
             }
             HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
                 .digest(identity.toByteArray(StandardCharsets.UTF_8)))
@@ -40,9 +43,11 @@ internal object WorkerProcessIdentity {
     }
 
     /** Возвращает start instant PID либо null, если идентичность недоступна. */
-    @JvmStatic
-    fun start(pid: Long): String? = try {
-        ProcessHandle.of(pid).flatMap { it.info().startInstant() }.map(Instant::toString).orElse(null)
+    @JvmStatic fun start(pid: Long): String? = try {
+        ProcessHandle.of(pid)
+            .flatMap { it.info().startInstant() }
+            .map(Instant::toString)
+            .orElse(null)
     } catch (_: RuntimeException) {
         null
     }
@@ -52,9 +57,15 @@ internal object WorkerProcessIdentity {
      * отсутствующего процесса или другого start instant, null для неизвестной идентичности.
      * Принимает только Integer/Long PID из существующих JSON-наблюдений.
      */
-    @JvmStatic
-    fun alive(pid: Any?, expected: Any?): Boolean? {
-        if ((pid !is Int && pid !is Long) || pid !is Number || pid.toLong() < 1 || expected !is String) {
+    @JvmStatic fun alive(
+        pid: Any?,
+        expected: Any?
+    ): Boolean? {
+        if ((pid !is Int && pid !is Long) ||
+            pid !is Number ||
+            pid.toLong() < 1 ||
+            expected !is String
+        ) {
             return null
         }
         return try {
@@ -64,7 +75,9 @@ internal object WorkerProcessIdentity {
                 false
             } else {
                 val actual = process.get().info().startInstant()
-                if (actual.isEmpty) null else actual.get() == instant && process.get().isAlive
+
+                if (actual.isEmpty) null
+                else actual.get() == instant && process.get().isAlive
             }
         } catch (_: RuntimeException) {
             null
