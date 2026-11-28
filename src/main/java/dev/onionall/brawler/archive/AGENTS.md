@@ -18,7 +18,7 @@ catalog_guard/CAS revision и capacity guard; core schema version не меня�
 | [PlanRepository](internal/PlanRepository.java) | Specification, approval, canonical scope и плановые queries |
 | [ObservationRepository](internal/ObservationRepository.java) | Admission JSON и bounded status transitions |
 | [BlobStore](internal/BlobStore.java) | SHA-256 verification, capacity и immutable no-replace publication |
-| [SnapshotRepository](internal/SnapshotRepository.java) | Archive/import, identity, versions, latest и verified page readback |
+| [SnapshotRepository](internal/SnapshotRepository.java) | Archive/import, identity, versions, latest, HTML search metadata и verified page readback |
 | [GraphRepository](internal/GraphRepository.java) | First-snapshot edges, provenance и same-job target resolution |
 | [FailureRepository](internal/FailureRepository.java) | Aggregate + observation transaction и sequence pagination |
 | [ArchiveQueryService](internal/ArchiveQueryService.java) | Job projection, search и export |
@@ -72,6 +72,10 @@ jobId у pages/search может быть null для общего просмо�
 cursor принадлежит конкретной истории, limit проверяется в диапазоне 1..100.
 Search сопоставляет literal URL/title/text; необязательные jobId и валидный onion
 host ограничивают SQL до LIMIT. Это bounded catalog query, не внешний provider.
+HTML и text search SQL/row mapping принадлежат SnapshotRepository и DocumentRepository.
+ArchiveQueryService проверяет общие фильтры и объединяет detached metadata под одним
+consistentRead/catalog_guard; SQL latest projection и ResultSet mapper snapshots
+не передаются в orchestration. Общая сортировка и итоговый LIMIT остаются в сервисе.
 archive принимает crawler status/contentType и discovery provenance; importHtml явно
 использует source_kind=MANUAL_IMPORT, http_status=0 и fetched_at=null.
 

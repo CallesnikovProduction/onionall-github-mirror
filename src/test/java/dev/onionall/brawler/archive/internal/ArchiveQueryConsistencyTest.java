@@ -16,9 +16,10 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 /**
- * <b>Проверяет единый read boundary metadata export на настоящем H2.</b>
+ * <b>Проверяет единый read boundary metadata export и поиска на настоящем H2.</b>
  *
- * <p>JDBC proxy пытается записать страницу между job projection и pages query.
+ * <p>JDBC proxy пытается записать страницу между job projection и pages query
+ * либо между HTML и text search queries.
  * H2 lock timeout детерминированно доказывает удержание catalog_guard; sleeps нет.
  *
  * @author Stephan Kolesnikov
@@ -30,6 +31,14 @@ public class ArchiveQueryConsistencyTest {
     private static final byte[] HTML = "<html>consistent export</html>".getBytes(StandardCharsets.UTF_8);
 
     @Test public void exportHoldsGuardAcrossJobPagesAndLinksUntilReadCompletes() throws Exception {
+        assertReadConsistency(false);
+    }
+
+    @Test public void searchHoldsGuardAcrossHtmlAndTextUntilReadCompletes() throws Exception {
+        assertReadConsistency(true);
+    }
+
+    private void assertReadConsistency(boolean search) throws Exception {
         var root = Files.createTempDirectory("archive-export-consistency");
         Files.createDirectories(root.resolve("objects"));
         String jdbc = "jdbc:h2:file:" + root.resolve("catalog") +
@@ -50,7 +59,8 @@ public class ArchiveQueryConsistencyTest {
             Connection proxy = (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(),
                 new Class<?>[] {Connection.class}, (ignored, method, arguments) -> {
                     if (method.getName().equals("prepareStatement") && arguments[0] instanceof String sql &&
-                        sql.startsWith(SnapshotRepository.LATEST) && armed.compareAndSet(true, false)) {
+                        (search ? sql.contains("archive_document_pages_v1") && sql.contains("LOCATE(")
+                            : sql.startsWith(SnapshotRepository.LATEST)) && armed.compareAndSet(true, false)) {
                         intercepted.set(true);
                         IOException rejected = assertThrows(IOException.class, () -> writer.serializableRead(() ->
                             writerSnapshots.archive(job[0], URL, 0, URL, 200, "text/html", HTML, List.of())));
@@ -58,7 +68,7 @@ public class ArchiveQueryConsistencyTest {
                         while (cause != null && !(cause instanceof SQLException)) {
                             cause = cause.getCause();
                         }
-                        assertTrue("Writer must fail because export owns catalog_guard", cause instanceof SQLException);
+                        assertTrue("Writer must fail because the read owns catalog_guard", cause instanceof SQLException);
                         assertEquals(50200, ((SQLException) cause).getErrorCode());
                     }
                     try {
@@ -77,16 +87,26 @@ public class ArchiveQueryConsistencyTest {
                     (String) plans.createPlan(List.of(URL), 1, 1, "consistency-fixture").get("plan_id"));
                 reader.serializableRead(() -> plans.approvePlan(job[0]));
                 armed.set(true);
-                Map<String, Object> exported = reader.serializableRead(() -> queries.exportSummary(job[0], 10));
+                Map<String, Object> exported = reader.serializableRead(() -> search
+                    ? queries.search("consistent", job[0], 10) : queries.exportSummary(job[0], 10));
                 assertTrue(intercepted.get());
-                assertEquals(0L, ((Map<?, ?>) exported.get("job")).get("archived_pages"));
-                assertTrue(((List<?>) exported.get("pages")).isEmpty());
-                assertTrue(((List<?>) exported.get("links")).isEmpty());
+                if (search) {
+                    assertTrue(((List<?>) exported.get("results")).isEmpty());
+                } else {
+                    assertEquals(0L, ((Map<?, ?>) exported.get("job")).get("archived_pages"));
+                    assertTrue(((List<?>) exported.get("pages")).isEmpty());
+                    assertTrue(((List<?>) exported.get("links")).isEmpty());
+                }
                 writer.serializableRead(() -> writerSnapshots.archive(job[0], URL, 0, URL, 200,
                     "text/html", HTML, List.of()));
-                Map<String, Object> after = reader.serializableRead(() -> queries.exportSummary(job[0], 10));
-                assertEquals(1L, ((Map<?, ?>) after.get("job")).get("archived_pages"));
-                assertEquals(1, ((List<?>) after.get("pages")).size());
+                Map<String, Object> after = reader.serializableRead(() -> search
+                    ? queries.search("consistent", job[0], 10) : queries.exportSummary(job[0], 10));
+                if (search) {
+                    assertEquals(1, ((List<?>) after.get("results")).size());
+                } else {
+                    assertEquals(1L, ((Map<?, ?>) after.get("job")).get("archived_pages"));
+                    assertEquals(1, ((List<?>) after.get("pages")).size());
+                }
             }
         }
     }

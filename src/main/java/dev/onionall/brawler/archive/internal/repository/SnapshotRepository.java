@@ -351,7 +351,7 @@ public final class SnapshotRepository {
      * @return snapshot metadata; файл здесь не проверяется
      * @throws SQLException при ошибке чтения column
      */
-    Map<String, Object> snapshotRow(ResultSet rs) throws SQLException {
+    private Map<String, Object> snapshotRow(ResultSet rs) throws SQLException {
         Map<String, Object> row = new LinkedHashMap<>();
         for (String key : List.of(
                 "page_id",
@@ -380,6 +380,54 @@ public final class SnapshotRepository {
                 .toString()
         );
         return row;
+    }
+
+    /**
+     * <b>Ищет metadata последних HTML snapshots.</b>
+     *
+     * <p>Caller проверяет фильтры и удерживает context consistentRead для общего
+     * HTML/text результата. SQL и ResultSet остаются внутри владельца snapshots;
+     * все фильтры применяются до per-source LIMIT. Blob здесь не открывается.
+     *
+     * @param query проверенная literal substring
+     * @param jobId проверенный job filter либо null
+     * @param host проверенный lowercase onion hostname либо null
+     * @param limit проверенный максимум 1..100
+     * @return detached metadata без JDBC-ресурсов
+     * @throws IOException при JDBC failure
+     */
+    List<Map<String, Object>> search(String query, String jobId, String host, int limit) throws IOException {
+        List<Map<String, Object>> result = new ArrayList<>();
+        // Cast legacy variable-precision Instant strings at read time; no data migration.
+        try (PreparedStatement statement = context.connection().prepareStatement(
+                LATEST +
+                        " WHERE (LOCATE(LOWER(?),LOWER(s.title))>0 OR LOCATE(LOWER(?),LOWER(s.extracted_text))>0" +
+                        " OR LOCATE(LOWER(?),LOWER(p.canonical_url))>0)" +
+                        (jobId == null ? "" : " AND p.job_id=?") +
+                        (host == null ? "" : " AND (LOCATE(?,LOWER(p.canonical_url))=1 OR LOCATE(?,LOWER(p.canonical_url))=1)") +
+                        " ORDER BY CAST(s.recorded_at AS TIMESTAMP(9) WITH TIME ZONE) DESC,p.id LIMIT ?"
+        )) {
+            statement.setString(1, query);
+            statement.setString(2, query);
+            statement.setString(3, query);
+            int index = 4;
+            if (jobId != null) {
+                statement.setString(index++, jobId);
+            }
+            if (host != null) {
+                statement.setString(index++, "http://" + host + "/");
+                statement.setString(index++, "https://" + host + "/");
+            }
+            statement.setInt(index, limit);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    result.add(snapshotRow(rs));
+                }
+            }
+            return result;
+        } catch (SQLException e) {
+            throw failure(e);
+        }
     }
 
     /**
