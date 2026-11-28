@@ -173,48 +173,18 @@ public final class ArchiveQueryService {
                 throw new IOException("Require a valid onion host filter");
             }
         }
-        List<Map<String, Object>> result = new ArrayList<>();
-
-        // Cast legacy variable-precision Instant strings at read time; no data migration.
-        try (PreparedStatement statement = context.connection().prepareStatement(
-                SnapshotRepository.LATEST +
-                        " WHERE (LOCATE(LOWER(?),LOWER(s.title))>0 OR LOCATE(LOWER(?),LOWER(s.extracted_text))>0" +
-                        " OR LOCATE(LOWER(?),LOWER(p.canonical_url))>0)" +
-                        (jobId == null ? "" : " AND p.job_id=?") +
-                        (host == null ? "" : " AND (LOCATE(?,LOWER(p.canonical_url))=1 OR LOCATE(?,LOWER(p.canonical_url))=1)") +
-                        " ORDER BY CAST(s.recorded_at AS TIMESTAMP(9) WITH TIME ZONE) DESC,p.id LIMIT ?"
-        )) {
-            statement.setString(1, query);
-            statement.setString(2, query);
-            statement.setString(3, query);
-            int index = 4;
-            if (jobId != null) {
-                statement.setString(index++, jobId);
-            }
-            if (host != null) {
-                statement.setString(index++, "http://" + host + "/");
-                statement.setString(index++, "https://" + host + "/");
-            }
-            statement.setInt(index, limit);
-            try (ResultSet rs = statement.executeQuery()) {
-                while (rs.next()) {
-                    result.add(snapshots.snapshotRow(rs));
-                }
-            }
-            result.addAll(documents.search(query, jobId, host, limit));
-            result.sort(Comparator.<Map<String, Object>, java.time.Instant>comparing(
-                row -> java.time.Instant.parse((String) row.get("recorded_at"))).reversed()
-                .thenComparing(row -> (String) row.get("page_id")));
-            if (result.size() > limit) { result.subList(limit, result.size()).clear(); }
-            return Map.of(
-                    "query", query,
-                    "results", result,
-                    "limit", limit,
-                    "provider", "local-archive"
-            );
-        } catch (SQLException e) {
-            throw failure(e);
-        }
+        List<Map<String, Object>> result = new ArrayList<>(snapshots.search(query, jobId, host, limit));
+        result.addAll(documents.search(query, jobId, host, limit));
+        result.sort(Comparator.<Map<String, Object>, java.time.Instant>comparing(
+            row -> java.time.Instant.parse((String) row.get("recorded_at"))).reversed()
+            .thenComparing(row -> (String) row.get("page_id")));
+        if (result.size() > limit) { result.subList(limit, result.size()).clear(); }
+        return Map.of(
+                "query", query,
+                "results", result,
+                "limit", limit,
+                "provider", "local-archive"
+        );
     }
 
     /**

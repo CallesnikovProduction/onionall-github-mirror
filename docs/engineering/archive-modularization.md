@@ -237,3 +237,119 @@ HTML сначала проверяется по approval/scope/budgets, копи
 Context подтверждает commit, затем page читает metadata и проверяет blob. Ошибка
 ответа после commit не отменяет persistence. Parser emission остаётся после возврата
 archive; Frontier сохраняет scheduling authority и отдельную at-least-once границу.
+
+## 2026-11-28 — ownership HTML search
+
+**Outcome:** скрыть SQL latest snapshots и ResultSet mapping от search orchestration.
+**Constraints:** прежний ArchiveStore API/JSON, literal search, job/host filters до
+LIMIT, nanosecond timestamp ordering, общий catalog_guard, core-v2 и blob lifecycle.
+**Evidence:** исходные Archive tests, characterization и отрицательный контроль
+на настоящем H2, focused/full Maven verification, javap и одинаковый набор анализаторов.
+
+### Исходное дерево и изоляция
+
+Основное дерево на `8ba796a` уже содержало пользовательские staged/unstaged изменения,
+включая перенос шести repositories в `internal.repository`. Пользователь попросил
+сохранить их и коммитить только новые дополнения. Исходный Maven test остановился
+на компиляции: новый package не имеет доступа к ArchiveSupport, BlobStore и
+package-private ArchiveContext.connection/capacity/objects, а также к package-private
+repository helpers. Тесты этого дерева не запускались; старый bytecode не выдаётся
+за проверку новых package declarations. Расширение JDBC visibility не применялось.
+
+Работа продолжена в отдельном worktree от `8ba796a`, ветка
+`codex/archive-architecture`. Здесь сначала установлен успешный baseline. Этот
+рефакторинг независим от незавершённого пользовательского переноса и автоматически
+в основное дерево не переносится. SHA256 файлов и staged patch основного дерева,
+а также его HEAD сверены с началом работы: изменений нет. Отдельная пользовательская
+правка admission.WorkerProcessIdentity также сохранена.
+
+### Наблюдения и treatment review
+
+| Приоритет / finding | Доказательство и решение |
+| --- | --- |
+| High: незавершённая package boundary в основном дереве | Подтверждена ошибками javac до наших изменений; сохранена по указанию пользователя. Требует отдельного завершения переноса, а не public connection accessor |
+| Medium: FIELD_LEAK, latest HTML representation в query service | ArchiveQueryService.searchInternal собирал SQL из SnapshotRepository.LATEST и передавал ResultSet в snapshots.snapshotRow. Caller знал snapshot join, columns и JDBC lifecycle; исправлено в этой ветке |
+| Остальные package cycles / hotspots | ArchiveContext является намеренным владельцем lifecycle/transaction; archive/internal и более широкий archive/admission/crawl graph не объявлены ацикличными. Перестройка всего persistence kernel не обоснована этим изменением |
+
+Сохранение прежней структуры оставляло два места, согласуемых при изменении HTML
+latest projection: SnapshotRepository и search orchestration. Минимальная коррекция
+повторяет уже существующую границу DocumentRepository.search: HTML query и mapping
+перенесены в package-private SnapshotRepository.search, возвращающий detached metadata.
+snapshotRow стал private; все его production callers находятся в том же repository.
+LATEST остаётся package-private для существующих fault-injection tests.
+
+До:
+
+```mermaid
+flowchart LR
+    Service[ArchiveQueryService.search] --> Layout[Snapshot latest SQL / columns]
+    Service --> Mapper[SnapshotRepository.snapshotRow / borrowed ResultSet]
+    Service --> Text[DocumentRepository.search]
+```
+
+После:
+
+```mermaid
+flowchart LR
+    Service[ArchiveQueryService.search] --> HTML[SnapshotRepository.search]
+    Service --> Text[DocumentRepository.search]
+    HTML --> Private[Private ResultSet mapping / latest SQL]
+```
+
+Сервис сохраняет validation, один consistentRead/catalog_guard, объединение HTML/text,
+сортировку по Instant DESC/page_id и итоговый LIMIT. SQL predicates, bindings и
+per-source LIMIT перенесены без изменения. HTML statement теперь закрывается до
+text query; общий guard удерживается до materialization всего ответа. Возвращаемые
+Map/JSON поля не менялись. Обобщённый SQL builder не добавлялся: похожие HTML/text
+queries работают с разными storage schemas и projection invariants. CPD сам по себе
+не обосновывает их объединение. Job projection SQL в ArchiveQueryService сохранён.
+
+### Проверки
+
+Windows 11 amd64, JetBrains JDK 25.0.5.1, Maven 3.10.0, Python 3.12.10;
+Kotlin/JVM target 25 и зависимости проекта не менялись. В JAVA_HOME/PATH выбран
+тот же JDK. Maven использовал существующий абсолютный путь к
+`.runtime/maven-linux-repository` основного checkout; network resolution не нужен.
+Команды выполнялись в изолированном worktree, с разрешёнными локальными fixtures.
+
+| Gate | Результат |
+| --- | --- |
+| Baseline: все 18 Archive test classes, `mvn -B -o -Dtest=<classes> test` | PASS: 105 tests, 0 failures/errors, 2 platform skips |
+| До переноса: ArchiveQueryConsistencyTest, ArchiveStoreTest, ArchiveDocumentWorkflowTest, ArchiveFailureQueryHardeningTest | PASS: 27 tests, 0 failures/errors, 1 skip; новый search consistency case проходит на исходной реализации |
+| Отрицательный контроль нового case | При временной замене только search consistentRead на serializableRead Maven ожидаемо FAIL: 1 test / 1 failure, writer смог пройти без catalog_guard. Исходный guard восстановлен в finally; assertions не ослаблялись |
+| Focused после переноса: предыдущие классы + ArchiveRepositoryContractsTest, ResearchCommandsTest | PASS: 37 tests, 0 failures/errors, 1 skip |
+| Полный `mvn -B -o verify` | PASS: 470 tests, 0 failures/errors, 11 platform skips; compile, native build и shaded JAR packaging завершены |
+| `javap -public ArchiveStore` до/после | PASS: public signatures совпадают |
+| `javap -c -p ArchiveQueryService` до/после | PASS: searchInternal больше не вызывает Connection.prepareStatement и SnapshotRepository.snapshotRow; вызывает SnapshotRepository.search |
+
+Новый H2 case перехватывает text search после HTML read и пытается записать страницу
+через другой ArchiveContext/connection. Writer получает H2 lock timeout 50200,
+а после возврата search его запись проходит и видна следующему чтению. Existing
+export case сохраняет прежние assertions для job/pages/links. Chronology, literal
+query, latest versions, host/job filters и CLI search проверены существующими тестами.
+
+Raw logs и контрольные снимки остаются в ignored `.runtime/archive-refactor` основного
+checkout; они не входят в commit. 11 skips относятся к symlink/POSIX/ACL ограничениям
+Windows и не выдаются за успешные проверки этих сценариев. Docker/Storm end-to-end,
+Linux runtime и real Tor не запускались. Frontier и production schema не менялись.
+
+Doctor/toolchain preflight выполнен; bootstrap использовал cached PMD 7.29.0 и
+ArchUnit 1.4.2, оба offline smoke-tests passed. Baseline и current analysis:
+одинаковые engines/rules, explicit `--classes target/classes`, source scope
+`src/main/java/dev/onionall/brawler/archive`. Оба completed, ArchUnit прочитал
+234 свежих типа в обоих запусках; verify — 81 JUnit report с 470 tests.
+Изолированный checkout исключил retained `.runtime/native-integrity` mirrors основного
+дерева из source context. PMD работает без project auxiliary classpath; CPD — Java/Kotlin,
+60 tokens. Kotlin design analyzers и jQAssistant не выбирались для этой Java-границы.
+Heuristic GodClass flags 2 → 1 не являются доказательством исправления; package cycle,
+шесть dependency hotspots и два CPD сообщения остались. Конкретное доказательство —
+private mapper, отсутствие JDBC search call у orchestration и сохранённое поведение.
+
+Полные локальные JSON вне проекта: `%TEMP%/archive-deslop-baseline.json`,
+`archive-deslop-current.json`, `archive-deslop-agent-findings.json`.
+Tool commands: `jvm_deslop.py analyze/verify . --engine pmd --engine archunit
+--classes target/classes --scope src/main/java/dev/onionall/brawler/archive --offline`,
+с explicit `--java-home`, `--output` и baseline/current paths; verify добавляет
+`--junit target/surefire-reports`. Whitespace, strict UTF-8, local Markdown links,
+scoped secret signatures и final diff проверены. Новые production dependencies,
+schema migration, public JDBC API и изменения scheduling authority отсутствуют.
