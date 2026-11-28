@@ -353,3 +353,17 @@ Tool commands: `jvm_deslop.py analyze/verify . --engine pmd --engine archunit
 `--junit target/surefire-reports`. Whitespace, strict UTF-8, local Markdown links,
 scoped secret signatures и final diff проверены. Новые production dependencies,
 schema migration, public JDBC API и изменения scheduling authority отсутствуют.
+
+## 2026-11-28 — интеграция в main
+
+По последующему запросу владельца все текущие изменения включены в main,
+ветка codex/archive-architecture объединена без конфликтов. Repository files
+сохранены в internal/repository, но используют Java package archive.internal:
+закрытая JDBC boundary сохранена, public accessors не добавлялись. Импорты и
+документационные ссылки согласованы. Предыдущее ограничение о некомпилируемом
+основном дереве устранено.
+
+Итоговый main: mvn -B -o -Dmaven.repo.local=.runtime/maven-linux-repository verify
+на JBR 25.0.5.1 — BUILD SUCCESS, 470 tests, 0 failures/errors, 11 platform skips.
+Локальное evidence: .runtime/archive-refactor/main-verify.log. Публикация в
+существующий origin/main явно разрешена пользователем; force push не используется.
